@@ -1,0 +1,14 @@
+name: App Container Deployment
+id: "34-app-container"
+category: C
+description: |
+  Demonstrates the app.container module — a high-level application deployment
+  abstraction that sits on top of platform modules (platform.kubernetes or
+  platform.ecs). Exposes deploy/status/rollback operations via HTTP pipelines.
+  Uses step.app_deploy, step.app_status, and step.app_rollback.
+  The backing platform.kubernetes module uses a mock backend so no real
+  Kubernetes cluster is required. All deployment state is tracked in-memory.
+components:
+  - workflow (engine)
+  - platform plugin (platform.kubernetes, app.container, app pipeline steps)
+status: testable

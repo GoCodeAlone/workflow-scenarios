@@ -295,6 +295,18 @@
       "failCount": 0,
       "notes": "IaC state backend (iac.state) with filesystem persistence + generic IaC pipeline steps. Full lifecycle: plan → apply → status → drift-detect → destroy. No real cluster required (kind backend).",
       "blockers": []
+    },
+    "34-app-container": {
+      "status": "ready",
+      "namespace": "wf-scenario-34",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 19,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "App container deployment abstraction. Deploy/status/rollback lifecycle using in-memory mock backend. Backed by app.container module with platform.kubernetes (kind) environment. No real cluster required.",
+      "blockers": []
     }
   }
 }

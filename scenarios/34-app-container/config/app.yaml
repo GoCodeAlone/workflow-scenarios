@@ -1,0 +1,95 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: prod-cluster
+    type: platform.kubernetes
+    config:
+      type: kind
+
+  - name: my-app
+    type: app.container
+    config:
+      environment: prod-cluster
+      image: nginx:1.25
+      replicas: 2
+      ports: [8080]
+      cpu: "500m"
+      memory: "256Mi"
+      health_path: /healthz
+      env:
+        APP_ENV: production
+        LOG_LEVEL: info
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "34-app-container"
+
+  app-deploy:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/app/deploy
+        method: POST
+    steps:
+      - name: deploy
+        type: step.app_deploy
+        config:
+          app: my-app
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  app-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/app/status
+        method: GET
+    steps:
+      - name: status
+        type: step.app_status
+        config:
+          app: my-app
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  app-rollback:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/app/rollback
+        method: POST
+    steps:
+      - name: rollback
+        type: step.app_rollback
+        config:
+          app: my-app
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
