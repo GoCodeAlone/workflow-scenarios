@@ -1,0 +1,39 @@
+name: Progressive Order System
+id: "16-progressive-orders"
+category: progressive-deployment
+description: |
+  Simulates building an e-commerce order system with iteratively evolving
+  requirements across three deployment phases:
+
+    Phase 1 (v1-basic-orders.yaml):
+      Basic order CRUD — create, list, get orders. Orders are stored with
+      status=pending. No state machine yet.
+
+    Phase 2 (v2-state-machine.yaml):
+      Adds order lifecycle state machine: pending → paid → shipped → delivered.
+      Cancel from pending or paid. A state_transitions log table is added.
+      Phase 1 orders (status=pending) are still queryable and can be paid.
+
+    Phase 3 (v3-notifications.yaml):
+      Adds a messaging.broker for event publishing on each state transition.
+      New endpoints: POST /api/v1/orders/{id}/notes and
+      GET /api/v1/orders/{id}/history. All Phase 1/2 data persists.
+
+  The critical invariant: data created in Phase 1 must remain intact and
+  operable through all subsequent upgrades.
+
+components:
+  - workflow (engine)
+  - SQLite (order storage)
+  - messaging.broker (Phase 3)
+tags:
+  - progressive-deployment
+  - state-persistence
+  - state-machine
+  - e-commerce
+  - messaging
+  - multi-phase
+status: pending
+notes: |
+  Run test/run.sh to execute all three phases sequentially.
+  Port-forward uses 18016.

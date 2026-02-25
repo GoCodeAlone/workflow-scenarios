@@ -1,0 +1,628 @@
+# ============================================================
+# Scenario 16 — Phase 3: Add Notifications + Notes + History
+#
+# Extends Phase 2 by adding:
+#   - messaging.broker for event publishing on state transitions
+#   - order_notes table for freeform notes per order
+#   - POST /api/v1/orders/{id}/notes — add a note
+#   - GET /api/v1/orders/{id}/history — full transition log
+#
+# All Phase 1 and Phase 2 data persists unchanged.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: db
+    type: storage.sqlite
+    config:
+      dbPath: "/data/orders.db"
+      maxConnections: 5
+      walMode: true
+
+  - name: broker
+    type: messaging.broker
+    config:
+      maxQueueSize: 1000
+      deliveryTimeout: "30s"
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  # ----------------------------------------------------------------
+  # Health
+  # ----------------------------------------------------------------
+  health:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "16-progressive-orders"
+            phase: "v3-notifications"
+
+  # ----------------------------------------------------------------
+  # Internal — idempotent schema init (v3)
+  # ----------------------------------------------------------------
+  init-db:
+    trigger:
+      type: http
+      config:
+        path: /internal/init-db
+        method: POST
+    steps:
+      - name: create-orders-table
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            CREATE TABLE IF NOT EXISTS orders (
+              id           TEXT    PRIMARY KEY,
+              customer_email TEXT  NOT NULL,
+              items        TEXT    NOT NULL,
+              total        REAL    DEFAULT 0,
+              status       TEXT    NOT NULL DEFAULT 'pending',
+              created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+              updated_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+            )
+      - name: create-transitions-table
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            CREATE TABLE IF NOT EXISTS state_transitions (
+              id         INTEGER PRIMARY KEY AUTOINCREMENT,
+              order_id   TEXT    NOT NULL,
+              from_state TEXT,
+              to_state   TEXT    NOT NULL,
+              reason     TEXT,
+              created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+            )
+      - name: create-notes-table
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            CREATE TABLE IF NOT EXISTS order_notes (
+              id         INTEGER PRIMARY KEY AUTOINCREMENT,
+              order_id   TEXT    NOT NULL,
+              note       TEXT    NOT NULL,
+              author     TEXT    DEFAULT 'system',
+              created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+            )
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            message: "v3 schema initialised"
+
+  # ----------------------------------------------------------------
+  # Orders — existing CRUD + events published on creation
+  # ----------------------------------------------------------------
+  create-order:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/orders
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: validate
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [customer_email, items]
+          source: "steps.parse-body.body"
+      - name: gen-id
+        type: step.set
+        config:
+          values:
+            order_id: "order-{{ uuidv4 }}"
+      - name: insert
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            INSERT INTO orders (id, customer_email, items, total, status)
+            VALUES (?, ?, ?, ?, 'pending')
+          params:
+            - "{{ .order_id }}"
+            - "{{ .body.customer_email }}"
+            - "{{ json .body.items }}"
+            - "{{ .body.total }}"
+      - name: log-created
+        type: step.db_exec
+        config:
+          database: db
+          query: "INSERT INTO state_transitions (order_id, from_state, to_state, reason) VALUES (?, NULL, 'pending', 'Order created')"
+          params:
+            - "{{ .order_id }}"
+      - name: publish-created
+        type: step.publish
+        config:
+          topic: "order-events"
+          broker: broker
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body:
+            id: "{{ .order_id }}"
+            status: pending
+            customer_email: "{{ .body.customer_email }}"
+            message: order created
+
+  list-orders:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/orders
+        method: GET
+    steps:
+      - name: get-orders
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, customer_email, total, status, created_at, updated_at FROM orders ORDER BY created_at DESC LIMIT 100"
+          mode: list
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.get-orders.rows"
+
+  get-order:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/orders/{id}
+        method: GET
+    steps:
+      - name: fetch
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, customer_email, items, total, status, created_at, updated_at FROM orders WHERE id = ?"
+          params:
+            - "{{ .id }}"
+          mode: single
+      - name: check-exists
+        type: step.conditional
+        config:
+          field: steps.fetch.row.id
+          routes:
+            "": not-found
+          default: respond-order
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: order not found
+      - name: respond-order
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.fetch.row"
+
+  # ----------------------------------------------------------------
+  # State machine transitions (now with event publishing)
+  # ----------------------------------------------------------------
+  pay-order:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/orders/{id}/pay
+        method: POST
+    steps:
+      - name: fetch
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, status FROM orders WHERE id = ?"
+          params:
+            - "{{ .id }}"
+          mode: single
+      - name: check-state
+        type: step.conditional
+        config:
+          field: steps.fetch.row.status
+          routes:
+            pending: do-pay
+            paid: already-paid
+            shipped: invalid-state
+            delivered: invalid-state
+            cancelled: invalid-state
+          default: not-found
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: order not found
+      - name: already-paid
+        type: step.json_response
+        config:
+          status: 409
+          body:
+            error: order already paid
+      - name: invalid-state
+        type: step.json_response
+        config:
+          status: 422
+          body:
+            error: cannot pay order in current state
+      - name: do-pay
+        type: step.db_exec
+        config:
+          database: db
+          query: "UPDATE orders SET status = 'paid', updated_at = datetime('now') WHERE id = ?"
+          params:
+            - "{{ .id }}"
+      - name: log-pay
+        type: step.db_exec
+        config:
+          database: db
+          query: "INSERT INTO state_transitions (order_id, from_state, to_state, reason) VALUES (?, 'pending', 'paid', 'Payment received')"
+          params:
+            - "{{ .id }}"
+      - name: publish-paid
+        type: step.publish
+        config:
+          topic: "order-events"
+          broker: broker
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            id: "{{ .id }}"
+            status: paid
+            message: order paid
+
+  ship-order:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/orders/{id}/ship
+        method: POST
+    steps:
+      - name: fetch
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, status FROM orders WHERE id = ?"
+          params:
+            - "{{ .id }}"
+          mode: single
+      - name: check-state
+        type: step.conditional
+        config:
+          field: steps.fetch.row.status
+          routes:
+            paid: do-ship
+            pending: not-paid
+            shipped: already-shipped
+            delivered: invalid-state
+            cancelled: invalid-state
+          default: not-found
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: order not found
+      - name: not-paid
+        type: step.json_response
+        config:
+          status: 422
+          body:
+            error: cannot ship unpaid order
+      - name: already-shipped
+        type: step.json_response
+        config:
+          status: 409
+          body:
+            error: order already shipped
+      - name: invalid-state
+        type: step.json_response
+        config:
+          status: 422
+          body:
+            error: cannot ship order in current state
+      - name: do-ship
+        type: step.db_exec
+        config:
+          database: db
+          query: "UPDATE orders SET status = 'shipped', updated_at = datetime('now') WHERE id = ?"
+          params:
+            - "{{ .id }}"
+      - name: log-ship
+        type: step.db_exec
+        config:
+          database: db
+          query: "INSERT INTO state_transitions (order_id, from_state, to_state, reason) VALUES (?, 'paid', 'shipped', 'Shipment dispatched')"
+          params:
+            - "{{ .id }}"
+      - name: publish-shipped
+        type: step.publish
+        config:
+          topic: "order-events"
+          broker: broker
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            id: "{{ .id }}"
+            status: shipped
+            message: order shipped
+
+  deliver-order:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/orders/{id}/deliver
+        method: POST
+    steps:
+      - name: fetch
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, status FROM orders WHERE id = ?"
+          params:
+            - "{{ .id }}"
+          mode: single
+      - name: check-state
+        type: step.conditional
+        config:
+          field: steps.fetch.row.status
+          routes:
+            shipped: do-deliver
+            pending: invalid-state
+            paid: invalid-state
+            delivered: already-delivered
+            cancelled: invalid-state
+          default: not-found
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: order not found
+      - name: already-delivered
+        type: step.json_response
+        config:
+          status: 409
+          body:
+            error: order already delivered
+      - name: invalid-state
+        type: step.json_response
+        config:
+          status: 422
+          body:
+            error: cannot deliver order in current state
+      - name: do-deliver
+        type: step.db_exec
+        config:
+          database: db
+          query: "UPDATE orders SET status = 'delivered', updated_at = datetime('now') WHERE id = ?"
+          params:
+            - "{{ .id }}"
+      - name: log-deliver
+        type: step.db_exec
+        config:
+          database: db
+          query: "INSERT INTO state_transitions (order_id, from_state, to_state, reason) VALUES (?, 'shipped', 'delivered', 'Delivered to customer')"
+          params:
+            - "{{ .id }}"
+      - name: publish-delivered
+        type: step.publish
+        config:
+          topic: "order-events"
+          broker: broker
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            id: "{{ .id }}"
+            status: delivered
+            message: order delivered
+
+  cancel-order:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/orders/{id}/cancel
+        method: POST
+    steps:
+      - name: fetch
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, status FROM orders WHERE id = ?"
+          params:
+            - "{{ .id }}"
+          mode: single
+      - name: check-state
+        type: step.conditional
+        config:
+          field: steps.fetch.row.status
+          routes:
+            pending: do-cancel
+            paid: do-cancel
+            shipped: cannot-cancel
+            delivered: cannot-cancel
+            cancelled: already-cancelled
+          default: not-found
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: order not found
+      - name: cannot-cancel
+        type: step.json_response
+        config:
+          status: 422
+          body:
+            error: cannot cancel order that has already shipped
+      - name: already-cancelled
+        type: step.json_response
+        config:
+          status: 409
+          body:
+            error: order already cancelled
+      - name: do-cancel
+        type: step.db_exec
+        config:
+          database: db
+          query: "UPDATE orders SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?"
+          params:
+            - "{{ .id }}"
+      - name: log-cancel
+        type: step.db_exec
+        config:
+          database: db
+          query: "INSERT INTO state_transitions (order_id, from_state, to_state, reason) VALUES (?, ?, 'cancelled', 'Customer cancelled')"
+          params:
+            - "{{ .id }}"
+            - "{{ steps.fetch.row.status }}"
+      - name: publish-cancelled
+        type: step.publish
+        config:
+          topic: "order-events"
+          broker: broker
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            id: "{{ .id }}"
+            status: cancelled
+            message: order cancelled
+
+  # ----------------------------------------------------------------
+  # New in Phase 3: Notes and History
+  # ----------------------------------------------------------------
+  add-note:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/orders/{id}/notes
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: validate
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [note]
+          source: "steps.parse-body.body"
+      - name: check-order-exists
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id FROM orders WHERE id = ?"
+          params:
+            - "{{ .id }}"
+          mode: single
+      - name: order-check
+        type: step.conditional
+        config:
+          field: steps.check-order-exists.row.id
+          routes:
+            "": not-found
+          default: insert-note
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: order not found
+      - name: insert-note
+        type: step.db_exec
+        config:
+          database: db
+          query: "INSERT INTO order_notes (order_id, note, author) VALUES (?, ?, ?)"
+          params:
+            - "{{ .id }}"
+            - "{{ .body.note }}"
+            - "{{ .body.author }}"
+      - name: fetch-created
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, order_id, note, author, created_at FROM order_notes WHERE id = last_insert_rowid()"
+          mode: single
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body_from: "steps.fetch-created.row"
+
+  get-history:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/orders/{id}/history
+        method: GET
+    steps:
+      - name: fetch-transitions
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, order_id, from_state, to_state, reason, created_at FROM state_transitions WHERE order_id = ? ORDER BY created_at ASC"
+          params:
+            - "{{ .id }}"
+          mode: list
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.fetch-transitions.rows"
+
+  # ----------------------------------------------------------------
+  # Broker subscriber — log order events
+  # ----------------------------------------------------------------
+  order-event-log:
+    steps:
+      - name: log
+        type: step.log
+        config:
+          level: info
+          message: "Order event received from broker"
+
+triggers:
+  event:
+    subscriptions:
+      - topic: "order-events"
+        workflow: "pipeline:order-event-log"
+        action: "log"

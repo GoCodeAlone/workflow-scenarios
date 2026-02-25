@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wf-scenario-17
+  labels:
+    scenario: "17-full-lifecycle"

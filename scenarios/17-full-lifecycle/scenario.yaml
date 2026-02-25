@@ -1,0 +1,43 @@
+name: Full Lifecycle — Config → API → UI → Deploy → Evolve
+id: "17-full-lifecycle"
+category: progressive-deployment
+description: |
+  The keystone progressive scenario. Tests the COMPLETE developer workflow:
+  write config → extract OpenAPI spec → scaffold React UI → build → deploy →
+  evolve config → re-extract → re-scaffold → verify data persists.
+
+    Phase 1 (v1-contacts.yaml):
+      Simple contacts app: name, email, phone, company.
+      CRUD: create, list, get, update, delete contacts.
+
+    Phase 2 (v2-notes.yaml):
+      Adds notes per contact, tags, and search by tag.
+      New tables: contact_notes, contact_tags.
+      Phase 1 contacts persist unchanged.
+
+  Two test scripts:
+    test/run.sh           — Multi-phase API tests (verifies data persistence)
+    test/lifecycle-test.sh — Full local toolchain test (wfctl extract + scaffold + build)
+
+  The lifecycle test gracefully SKIPs if wfctl subcommands are not available.
+
+components:
+  - workflow (engine)
+  - wfctl (api extract, ui scaffold, build-ui, diff)
+  - SQLite (contact storage)
+tags:
+  - progressive-deployment
+  - full-lifecycle
+  - state-persistence
+  - crud
+  - ui-generation
+  - wfctl
+  - multi-phase
+status: pending
+notes: |
+  API tests (test/run.sh) require the k8s pod to be deployed.
+  Lifecycle tests (test/lifecycle-test.sh) run locally with wfctl.
+
+  Port-forward uses 18017.
+
+  generated/ directory receives wfctl output artifacts during lifecycle tests.

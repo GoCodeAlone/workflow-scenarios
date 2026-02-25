@@ -1,0 +1,508 @@
+# ============================================================
+# Scenario 15 — Phase 3: Add Auth
+#
+# Extends Phase 2 by adding JWT authentication. All task and
+# category endpoints require a Bearer token. A user_id column
+# is added to tasks via ALTER TABLE (suppressed if exists).
+# Tasks created in Phase 1/2 have user_id=NULL and remain
+# accessible to any authenticated user. New tasks are tied to
+# the authenticated user.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: db
+    type: storage.sqlite
+    config:
+      dbPath: "/data/tasks.db"
+      maxConnections: 5
+      walMode: true
+
+  - name: jwt
+    type: auth.jwt
+    config:
+      secret: "${JWT_SECRET}"
+      issuer: "scenario-15-tasks"
+      tokenExpiry: "24h"
+    dependsOn: [router]
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  # ----------------------------------------------------------------
+  # Health
+  # ----------------------------------------------------------------
+  health:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "15-progressive-tasks"
+            phase: "v3-auth"
+
+  # ----------------------------------------------------------------
+  # Internal — idempotent schema init (v3)
+  # Preserves tasks + categories tables, adds user_id to tasks
+  # ----------------------------------------------------------------
+  init-db:
+    trigger:
+      type: http
+      config:
+        path: /internal/init-db
+        method: POST
+    steps:
+      - name: create-tasks-table
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            CREATE TABLE IF NOT EXISTS tasks (
+              id          INTEGER PRIMARY KEY AUTOINCREMENT,
+              title       TEXT    NOT NULL,
+              description TEXT    DEFAULT '',
+              status      TEXT    NOT NULL DEFAULT 'open',
+              created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+              updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+            )
+      - name: create-categories-table
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            CREATE TABLE IF NOT EXISTS categories (
+              id         INTEGER PRIMARY KEY AUTOINCREMENT,
+              name       TEXT    NOT NULL UNIQUE,
+              color      TEXT    DEFAULT '#6366f1',
+              created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+            )
+      - name: add-category-id-column
+        type: step.db_exec
+        config:
+          database: db
+          query: "ALTER TABLE tasks ADD COLUMN category_id INTEGER"
+          ignore_error: true
+      - name: add-user-id-column
+        type: step.db_exec
+        config:
+          database: db
+          # NULL means "legacy task from pre-auth era" — still accessible
+          query: "ALTER TABLE tasks ADD COLUMN user_id INTEGER"
+          ignore_error: true
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            message: "v3 schema initialised"
+
+  # ----------------------------------------------------------------
+  # Auth endpoints (public)
+  # ----------------------------------------------------------------
+  auth-register:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/auth/register
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: validate
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [email, password, name]
+          source: "steps.parse-body.body"
+      - name: register
+        type: step.user_register
+        config:
+          auth: jwt
+          email_field: "steps.parse-body.body.email"
+          password_field: "steps.parse-body.body.password"
+          name_field: "steps.parse-body.body.name"
+
+  auth-login:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/auth/login
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: validate
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [email, password]
+          source: "steps.parse-body.body"
+      - name: login
+        type: step.user_login
+        config:
+          auth: jwt
+          email_field: "steps.parse-body.body.email"
+          password_field: "steps.parse-body.body.password"
+
+  auth-profile:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/auth/profile
+        method: GET
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: profile
+        type: step.user_profile
+        config:
+          auth: jwt
+
+  # ----------------------------------------------------------------
+  # Tasks CRUD (auth-gated, user_id-aware)
+  # Legacy tasks (user_id IS NULL) are visible to all authenticated users
+  # ----------------------------------------------------------------
+  task-create:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tasks
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: validate
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [title]
+          source: "steps.parse-body.body"
+      - name: insert
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            INSERT INTO tasks (title, description, status, category_id, user_id)
+            VALUES (?, ?, 'open', ?, ?)
+          params:
+            - "{{ .body.title }}"
+            - "{{ .body.description }}"
+            - "{{ .body.category_id }}"
+            - "{{ .user.id }}"
+      - name: fetch-created
+        type: step.db_query
+        config:
+          database: db
+          query: |
+            SELECT t.id, t.title, t.description, t.status, t.category_id,
+                   c.name AS category_name, t.user_id, t.created_at
+            FROM tasks t
+            LEFT JOIN categories c ON c.id = t.category_id
+            WHERE t.id = last_insert_rowid()
+          mode: single
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body_from: "steps.fetch-created.row"
+
+  task-list:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tasks
+        method: GET
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: get-tasks
+        type: step.db_query
+        config:
+          database: db
+          # Return tasks owned by this user OR legacy tasks (user_id IS NULL)
+          query: |
+            SELECT t.id, t.title, t.description, t.status, t.category_id,
+                   c.name AS category_name, t.user_id, t.created_at, t.updated_at
+            FROM tasks t
+            LEFT JOIN categories c ON c.id = t.category_id
+            WHERE t.user_id = ? OR t.user_id IS NULL
+            ORDER BY t.created_at DESC LIMIT 100
+          params:
+            - "{{ .user.id }}"
+          mode: list
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.get-tasks.rows"
+
+  task-get:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tasks/{id}
+        method: GET
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: fetch
+        type: step.db_query
+        config:
+          database: db
+          query: |
+            SELECT t.id, t.title, t.description, t.status, t.category_id,
+                   c.name AS category_name, t.user_id, t.created_at, t.updated_at
+            FROM tasks t
+            LEFT JOIN categories c ON c.id = t.category_id
+            WHERE t.id = ? AND (t.user_id = ? OR t.user_id IS NULL)
+          params:
+            - "{{ .id }}"
+            - "{{ .user.id }}"
+          mode: single
+      - name: check-exists
+        type: step.conditional
+        config:
+          field: steps.fetch.row.id
+          routes:
+            "": not-found
+          default: respond-task
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: task not found
+      - name: respond-task
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.fetch.row"
+
+  task-update:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tasks/{id}
+        method: PUT
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: update
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            UPDATE tasks
+            SET title       = COALESCE(?, title),
+                description = COALESCE(?, description),
+                status      = COALESCE(?, status),
+                updated_at  = datetime('now')
+            WHERE id = ? AND (user_id = ? OR user_id IS NULL)
+          params:
+            - "{{ .body.title }}"
+            - "{{ .body.description }}"
+            - "{{ .body.status }}"
+            - "{{ .id }}"
+            - "{{ .user.id }}"
+      - name: fetch-updated
+        type: step.db_query
+        config:
+          database: db
+          query: |
+            SELECT t.id, t.title, t.description, t.status, t.category_id,
+                   c.name AS category_name, t.user_id, t.updated_at
+            FROM tasks t
+            LEFT JOIN categories c ON c.id = t.category_id
+            WHERE t.id = ?
+          params:
+            - "{{ .id }}"
+          mode: single
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.fetch-updated.row"
+
+  task-delete:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tasks/{id}
+        method: DELETE
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: delete
+        type: step.db_exec
+        config:
+          database: db
+          query: "DELETE FROM tasks WHERE id = ? AND (user_id = ? OR user_id IS NULL)"
+          params:
+            - "{{ .id }}"
+            - "{{ .user.id }}"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            message: task deleted
+
+  task-set-category:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tasks/{id}/category
+        method: PUT
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: validate
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [category_id]
+          source: "steps.parse-body.body"
+      - name: update
+        type: step.db_exec
+        config:
+          database: db
+          query: "UPDATE tasks SET category_id = ?, updated_at = datetime('now') WHERE id = ? AND (user_id = ? OR user_id IS NULL)"
+          params:
+            - "{{ .body.category_id }}"
+            - "{{ .id }}"
+            - "{{ .user.id }}"
+      - name: fetch-updated
+        type: step.db_query
+        config:
+          database: db
+          query: |
+            SELECT t.id, t.title, t.category_id, c.name AS category_name, t.user_id, t.updated_at
+            FROM tasks t
+            LEFT JOIN categories c ON c.id = t.category_id
+            WHERE t.id = ?
+          params:
+            - "{{ .id }}"
+          mode: single
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.fetch-updated.row"
+
+  # ----------------------------------------------------------------
+  # Categories (auth-gated)
+  # ----------------------------------------------------------------
+  category-create:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/categories
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: validate
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [name]
+          source: "steps.parse-body.body"
+      - name: insert
+        type: step.db_exec
+        config:
+          database: db
+          query: "INSERT INTO categories (name, color) VALUES (?, ?)"
+          params:
+            - "{{ .body.name }}"
+            - "{{ .body.color }}"
+      - name: fetch-created
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, name, color, created_at FROM categories WHERE id = last_insert_rowid()"
+          mode: single
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body_from: "steps.fetch-created.row"
+
+  category-list:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/categories
+        method: GET
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: get-categories
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, name, color, created_at FROM categories ORDER BY name ASC"
+          mode: list
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.get-categories.rows"

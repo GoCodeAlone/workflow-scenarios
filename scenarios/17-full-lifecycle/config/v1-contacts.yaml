@@ -1,0 +1,248 @@
+# ============================================================
+# Scenario 17 — Phase 1: Contacts CRUD
+#
+# Simple contacts application with full CRUD. This is the
+# initial config a developer writes. Data created here must
+# survive the Phase 2 upgrade.
+#
+# This config is also input to:
+#   wfctl api extract v1-contacts.yaml → openapi-v1.json
+#   wfctl ui scaffold -spec openapi-v1.json -output generated/ui-v1/
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: db
+    type: storage.sqlite
+    config:
+      dbPath: "/data/contacts.db"
+      maxConnections: 5
+      walMode: true
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  # ----------------------------------------------------------------
+  # Health
+  # ----------------------------------------------------------------
+  health:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "17-full-lifecycle"
+            phase: "v1-contacts"
+
+  # ----------------------------------------------------------------
+  # Internal — idempotent schema init
+  # ----------------------------------------------------------------
+  init-db:
+    trigger:
+      type: http
+      config:
+        path: /internal/init-db
+        method: POST
+    steps:
+      - name: create-contacts-table
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            CREATE TABLE IF NOT EXISTS contacts (
+              id         INTEGER PRIMARY KEY AUTOINCREMENT,
+              name       TEXT    NOT NULL,
+              email      TEXT    NOT NULL UNIQUE,
+              phone      TEXT    DEFAULT '',
+              company    TEXT    DEFAULT '',
+              created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+              updated_at TEXT    NOT NULL DEFAULT (datetime('now'))
+            )
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            message: "v1 schema initialised"
+
+  # ----------------------------------------------------------------
+  # Contacts CRUD
+  # ----------------------------------------------------------------
+  contact-create:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/contacts
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: validate
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [name, email]
+          source: "steps.parse-body.body"
+      - name: insert
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            INSERT INTO contacts (name, email, phone, company)
+            VALUES (?, ?, ?, ?)
+          params:
+            - "{{ .body.name }}"
+            - "{{ .body.email }}"
+            - "{{ .body.phone }}"
+            - "{{ .body.company }}"
+      - name: fetch-created
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, name, email, phone, company, created_at FROM contacts WHERE id = last_insert_rowid()"
+          mode: single
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body_from: "steps.fetch-created.row"
+
+  contact-list:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/contacts
+        method: GET
+    steps:
+      - name: get-contacts
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, name, email, phone, company, created_at, updated_at FROM contacts ORDER BY name ASC LIMIT 100"
+          mode: list
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.get-contacts.rows"
+
+  contact-get:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/contacts/{id}
+        method: GET
+    steps:
+      - name: fetch
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, name, email, phone, company, created_at, updated_at FROM contacts WHERE id = ?"
+          params:
+            - "{{ .id }}"
+          mode: single
+      - name: check-exists
+        type: step.conditional
+        config:
+          field: steps.fetch.row.id
+          routes:
+            "": not-found
+          default: respond-contact
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: contact not found
+      - name: respond-contact
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.fetch.row"
+
+  contact-update:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/contacts/{id}
+        method: PUT
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: update
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            UPDATE contacts
+            SET name    = COALESCE(?, name),
+                email   = COALESCE(?, email),
+                phone   = COALESCE(?, phone),
+                company = COALESCE(?, company),
+                updated_at = datetime('now')
+            WHERE id = ?
+          params:
+            - "{{ .body.name }}"
+            - "{{ .body.email }}"
+            - "{{ .body.phone }}"
+            - "{{ .body.company }}"
+            - "{{ .id }}"
+      - name: fetch-updated
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, name, email, phone, company, updated_at FROM contacts WHERE id = ?"
+          params:
+            - "{{ .id }}"
+          mode: single
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.fetch-updated.row"
+
+  contact-delete:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/contacts/{id}
+        method: DELETE
+    steps:
+      - name: delete
+        type: step.db_exec
+        config:
+          database: db
+          query: "DELETE FROM contacts WHERE id = ?"
+          params:
+            - "{{ .id }}"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            message: contact deleted

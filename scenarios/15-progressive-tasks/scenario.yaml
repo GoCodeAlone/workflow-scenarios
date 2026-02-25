@@ -1,0 +1,38 @@
+name: Progressive Task Manager
+id: "15-progressive-tasks"
+category: progressive-deployment
+description: |
+  Simulates an agent/user iteratively building a task management application
+  across three deployment phases, verifying that data persists across each
+  redeployment:
+
+    Phase 1 (v1-basic.yaml):
+      Basic task CRUD — create, list, get, update, delete tasks.
+
+    Phase 2 (v2-categories.yaml):
+      Adds a categories table and category assignment to tasks. All data from
+      Phase 1 must still be present and accessible after the config upgrade.
+
+    Phase 3 (v3-auth.yaml):
+      Adds JWT auth, per-user tasks, and ALTER TABLE to attach user_id to
+      existing rows. Phase 1 tasks (user_id=NULL) and Phase 2 categories must
+      remain fully accessible.
+
+  The critical invariant: deploying a new config version NEVER destroys data
+  created by a previous version. All CREATE TABLE statements use IF NOT EXISTS;
+  column additions use ALTER TABLE with error suppression.
+
+components:
+  - workflow (engine)
+  - SQLite (task storage)
+tags:
+  - progressive-deployment
+  - state-persistence
+  - crud
+  - auth
+  - multi-phase
+status: pending
+notes: |
+  Run test/run.sh to execute all three phases sequentially.
+  The test script handles ConfigMap swaps and rollout restarts between phases.
+  Port-forward uses 18015.
