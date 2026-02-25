@@ -73,7 +73,7 @@
       "blockers": ["partial — manual API calls only"]
     },
     "07-no-code-workflow": {
-      "status": "blocked",
+      "status": "not_tested",
       "namespace": "wf-scenario-07",
       "deployed": false,
       "lastTested": "",
@@ -81,7 +81,7 @@
       "testCount": 0,
       "passCount": 0,
       "failCount": 0,
-      "blockers": ["cloud UI required"]
+      "blockers": []
     },
     "08-data-pipeline": {
       "status": "blocked",

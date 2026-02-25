@@ -1,18 +1,20 @@
 name: Automated Workflow (No-Code)
 id: "07-no-code-workflow"
-category: B
+category: A
 description: |
-  A no-code workflow automation created entirely through the workflow-cloud UI.
-  End users define pipelines visually without writing code. Validates the
-  drag-and-drop pipeline builder, trigger configuration, and step library.
+  A no-code workflow automation created using the admin plugin's visual
+  drag-and-drop builder. Non-developers connect integrations (webhooks,
+  cron schedules), define trigger conditions, and chain processing steps
+  — all via the visual builder, no code required. The admin plugin provides
+  the builder; workflow-cloud provides management at scale.
 components:
-  - workflow-cloud
-  - workflow-cloud-ui (plugin)
-status: blocked
-blockers:
-  - "workflow-cloud UI plugin required for no-code pipeline builder"
-  - "Visual pipeline builder not yet implemented"
+  - workflow (engine)
+  - workflow-plugin-admin (visual builder)
+  - PostgreSQL
+status: testable
 notes: |
-  This scenario depends entirely on the workflow-cloud-ui plugin.
-  Cannot be tested via API — the UX of no-code creation is the core feature.
-  Unblocks after scenario 05 is resolved.
+  The visual pipeline builder already exists in the admin plugin. This
+  scenario validates that a non-developer can create and run automated
+  workflows entirely through the UI. The admin plugin is the open-source
+  "Workflow Studio" — the builder and local execution tool. workflow-cloud
+  adds multi-tenant management, not the builder itself.
