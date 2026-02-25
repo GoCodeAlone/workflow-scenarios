@@ -1,0 +1,194 @@
+# ============================================================
+# Scenario 35 — Multi-Cloud Accounts (AWS, GCP, Azure)
+#
+# Demonstrates cloud.account with three providers:
+#   aws-prod     — mock AWS account (us-east-1)
+#   gcp-prod     — GCP service_account_key (us-central1)
+#   azure-prod   — Azure client_credentials (eastus)
+#
+# Endpoints:
+#   POST /api/v1/cloud/validate             — validate account credentials
+#   GET  /api/v1/cloud/accounts             — list all accounts
+#   GET  /api/v1/cloud/accounts/aws-prod    — AWS account details
+#   GET  /api/v1/cloud/accounts/gcp-prod    — GCP account details
+#   GET  /api/v1/cloud/accounts/azure-prod  — Azure account details
+#   GET  /healthz                           — health check
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # AWS mock account
+  - name: aws-prod
+    type: cloud.account
+    config:
+      provider: mock
+      region: us-east-1
+      credentials:
+        type: static
+        accessKey: "aws-mock-access-key"
+        secretKey: "aws-mock-secret-key"
+
+  # GCP account with inline service account key
+  - name: gcp-prod
+    type: cloud.account
+    config:
+      provider: gcp
+      region: us-central1
+      project_id: my-gcp-project
+      credentials:
+        type: service_account_key
+        key: '{"type":"service_account","project_id":"my-gcp-project","private_key_id":"key-001","client_email":"svc@my-gcp-project.iam.gserviceaccount.com"}'
+
+  # Azure account with client credentials (service principal)
+  - name: azure-prod
+    type: cloud.account
+    config:
+      provider: azure
+      region: eastus
+      subscription_id: "00000000-0000-0000-0000-000000000001"
+      credentials:
+        type: client_credentials
+        tenant_id: "11111111-1111-1111-1111-111111111111"
+        client_id: "22222222-2222-2222-2222-222222222222"
+        client_secret: "fake-azure-secret-for-demo"
+
+pipelines:
+  health:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "35-multi-cloud-accounts"
+
+  # POST /api/v1/cloud/validate
+  # Body: {"account":"aws-prod"}
+  validate-cloud:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/cloud/validate
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: validate-aws
+        type: step.cloud_validate
+        config:
+          account: "aws-prod"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # GET /api/v1/cloud/accounts
+  list-accounts:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/cloud/accounts
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            accounts:
+              - name: aws-prod
+                provider: mock
+                region: us-east-1
+              - name: gcp-prod
+                provider: gcp
+                region: us-central1
+                project_id: my-gcp-project
+              - name: azure-prod
+                provider: azure
+                region: eastus
+                subscription_id: "00000000-0000-0000-0000-000000000001"
+
+  # GET /api/v1/cloud/accounts/aws-prod
+  get-account-aws-prod:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/cloud/accounts/aws-prod
+        method: GET
+    steps:
+      - name: validate
+        type: step.cloud_validate
+        config:
+          account: "aws-prod"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            name: aws-prod
+            provider: mock
+            region: us-east-1
+            valid: "{{.valid}}"
+
+  # GET /api/v1/cloud/accounts/gcp-prod
+  get-account-gcp-prod:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/cloud/accounts/gcp-prod
+        method: GET
+    steps:
+      - name: validate
+        type: step.cloud_validate
+        config:
+          account: "gcp-prod"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            name: gcp-prod
+            provider: gcp
+            region: us-central1
+            project_id: my-gcp-project
+            valid: "{{.valid}}"
+
+  # GET /api/v1/cloud/accounts/azure-prod
+  get-account-azure-prod:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/cloud/accounts/azure-prod
+        method: GET
+    steps:
+      - name: validate
+        type: step.cloud_validate
+        config:
+          account: "azure-prod"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            name: azure-prod
+            provider: azure
+            region: eastus
+            subscription_id: "00000000-0000-0000-0000-000000000001"
+            valid: "{{.valid}}"

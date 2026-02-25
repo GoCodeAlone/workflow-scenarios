@@ -1,0 +1,35 @@
+name: Multi-Cloud Accounts — GCP and Azure Credentials
+id: "35-multi-cloud-accounts"
+category: infrastructure
+description: |
+  Demonstrates cloud.account with AWS (mock), GCP (service_account_key), and Azure
+  (client_credentials) providers. Validates credentials for each provider via
+  step.cloud_validate. No real cloud credentials required — all use mock/inline values.
+
+  Endpoints:
+    POST /api/v1/cloud/validate            — validate a named account's credentials
+    GET  /api/v1/cloud/accounts           — list all configured accounts
+    GET  /api/v1/cloud/accounts/{name}    — get account details + validation result
+    GET  /healthz                         — health check
+
+components:
+  - workflow (engine)
+  - cloud.account module (aws mock, gcp service_account_key, azure client_credentials)
+  - step.cloud_validate pipeline step
+
+tags:
+  - cloud
+  - infrastructure
+  - credentials
+  - gcp
+  - azure
+  - multi-cloud
+  - iac
+
+status: pending
+notes: |
+  Port-forward uses 18035.
+  AWS uses the mock provider.
+  GCP uses an inline service_account_key (fake JSON key).
+  Azure uses client_credentials with static values.
+  No real cloud connectivity is attempted.
