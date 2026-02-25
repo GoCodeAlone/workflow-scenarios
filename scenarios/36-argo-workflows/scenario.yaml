@@ -1,0 +1,30 @@
+name: Argo Workflows Integration
+id: "36-argo-workflows"
+category: C
+description: |
+  Demonstrates the argo.workflows module — an Argo Workflows integration that
+  connects to a Kubernetes cluster, translates pipeline configs into Argo
+  Workflow CRD specs (DAG templates), and manages the full workflow lifecycle.
+
+  The module provides:
+  - Install/status/destroy lifecycle for Argo Workflows (plan → apply → destroy)
+  - Pipeline-to-Argo DAG translation: each pipeline step becomes a DAG task
+    with sequential dependencies, mapping to individual container templates
+  - step.argo_submit — translates pipeline steps into an ArgoWorkflowSpec and
+    submits it to the Argo server; returns the workflow run name
+  - step.argo_status — polls the execution status of a workflow run
+    (Pending → Running → Succeeded/Failed); can read workflow_run from context
+  - step.argo_logs — retrieves log lines from a completed or running workflow
+  - step.argo_delete — removes a completed or failed workflow run
+  - step.argo_list — lists workflow runs with optional label selector filtering
+
+  All operations use a mock backend for testing — no real Kubernetes cluster or
+  Argo Workflows installation is required. State is tracked in-memory.
+
+  The argo.workflows module optionally references a platform.kubernetes module
+  via the cluster config key for integration in full-stack scenarios.
+
+components:
+  - workflow (engine)
+  - platform plugin (argo.workflows module, argo pipeline steps)
+status: testable
