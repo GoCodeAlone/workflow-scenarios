@@ -1,0 +1,37 @@
+name: Payment Service — Payment Processing with Webhooks
+id: "21-payment-service"
+category: microservices
+description: |
+  A standalone payment processing microservice that handles payment lifecycle
+  (pending → captured → refunded) and sends webhook notifications via
+  step.http_call when payments are captured or refunded.
+
+  Endpoints:
+    POST /api/v1/payments              — Create payment (amount, currency, order_id, callback_url)
+    GET  /api/v1/payments/{id}         — Get payment status
+    POST /api/v1/payments/{id}/capture — Capture payment → sends webhook to callback_url
+    POST /api/v1/payments/{id}/refund  — Refund payment
+    GET  /healthz                      — Health check
+    POST /internal/init-db             — Create payments table (idempotent)
+
+  Other services reach this at:
+    http://workflow-server.wf-scenario-21.svc.cluster.local:8080
+
+  Webhook payload on capture:
+    { payment_id, status, amount, order_id }
+
+components:
+  - workflow (engine)
+  - SQLite (payment storage)
+  - step.http_call (webhook delivery)
+tags:
+  - microservices
+  - payments
+  - webhooks
+  - sqlite
+  - cross-namespace
+status: pending
+notes: |
+  Port-forward uses 18021.
+  Webhook is fire-and-forget: payment status updates even if callback_url is unreachable.
+  Payment statuses: pending → captured → refunded (or pending → failed).

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: scenario-22-data
+  namespace: wf-scenario-22
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    app: workflow-server
+    scenario: "22"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

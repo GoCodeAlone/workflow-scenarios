@@ -1,0 +1,296 @@
+# ============================================================
+# Scenario 21 — Payment Service
+#
+# Payment processing microservice with webhook notifications.
+# When a payment is captured, it POSTs to the payment's
+# callback_url with the payment status update.
+#
+# Payment statuses: pending → captured → refunded
+#
+# Cross-namespace DNS:
+#   http://workflow-server.wf-scenario-21.svc.cluster.local:8080
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: db
+    type: storage.sqlite
+    config:
+      dbPath: "/data/payments.db"
+      maxConnections: 5
+      walMode: true
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  # ----------------------------------------------------------------
+  # Health
+  # ----------------------------------------------------------------
+  health:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "21-payment-service"
+
+  # ----------------------------------------------------------------
+  # Internal — idempotent schema init
+  # ----------------------------------------------------------------
+  init-db:
+    trigger:
+      type: http
+      config:
+        path: /internal/init-db
+        method: POST
+    steps:
+      - name: create-payments-table
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            CREATE TABLE IF NOT EXISTS payments (
+              id           TEXT    PRIMARY KEY,
+              order_id     TEXT    NOT NULL,
+              amount       REAL    NOT NULL,
+              currency     TEXT    NOT NULL DEFAULT 'USD',
+              status       TEXT    NOT NULL DEFAULT 'pending',
+              callback_url TEXT    NOT NULL DEFAULT '',
+              created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+              updated_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+            )
+          ignore_error: true
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            message: "schema initialised"
+
+  # ----------------------------------------------------------------
+  # Create Payment
+  # POST /api/v1/payments
+  # Body: { amount, currency, order_id, callback_url }
+  # Returns: payment record with status=pending
+  # ----------------------------------------------------------------
+  payment-create:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/payments
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: gen-id
+        type: step.set
+        config:
+          values:
+            new_payment_id: "{{ uuidv4 }}"
+      - name: insert-payment
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            INSERT INTO payments (id, order_id, amount, currency, status, callback_url)
+            VALUES (?, ?, ?, ?, 'pending', ?)
+          params:
+            - "{{ .new_payment_id }}"
+            - "{{ .body.order_id }}"
+            - "{{ .body.amount }}"
+            - "{{ default \"USD\" .body.currency }}"
+            - "{{ default \"\" .body.callback_url }}"
+      - name: fetch-payment
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, order_id, amount, currency, status, callback_url, created_at FROM payments WHERE id = ?"
+          params:
+            - "{{ .new_payment_id }}"
+          mode: single
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body_from: "steps.fetch-payment.row"
+
+  # ----------------------------------------------------------------
+  # Get Payment
+  # GET /api/v1/payments/{id}
+  # Returns: payment record or 404
+  # ----------------------------------------------------------------
+  payment-get:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/payments/{id}
+        method: GET
+    steps:
+      - name: fetch
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, order_id, amount, currency, status, callback_url, created_at, updated_at FROM payments WHERE id = ?"
+          params:
+            - "{{ .id }}"
+          mode: single
+      - name: check-found
+        type: step.conditional
+        config:
+          field: steps.fetch.found
+          routes:
+            "false": not-found
+          default: respond-payment
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: payment not found
+      - name: respond-payment
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.fetch.row"
+
+  # ----------------------------------------------------------------
+  # Capture Payment
+  # POST /api/v1/payments/{id}/capture
+  # Updates status to captured, sends webhook to callback_url
+  # ----------------------------------------------------------------
+  payment-capture:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/payments/{id}/capture
+        method: POST
+    steps:
+      - name: fetch
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, order_id, amount, currency, status, callback_url FROM payments WHERE id = ?"
+          params:
+            - "{{ .id }}"
+          mode: single
+      - name: check-found
+        type: step.conditional
+        config:
+          field: steps.fetch.found
+          routes:
+            "false": not-found
+          default: update-status
+      - name: update-status
+        type: step.db_exec
+        config:
+          database: db
+          query: "UPDATE payments SET status = 'captured', updated_at = datetime('now') WHERE id = ?"
+          params:
+            - "{{ .id }}"
+      - name: send-webhook
+        type: step.http_call
+        config:
+          url: "{{ index .steps \"fetch\" \"row\" \"callback_url\" }}"
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            payment_id: "{{ .id }}"
+            status: "captured"
+            amount: "{{ index .steps \"fetch\" \"row\" \"amount\" }}"
+            order_id: "{{ index .steps \"fetch\" \"row\" \"order_id\" }}"
+      - name: fetch-updated
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, order_id, amount, currency, status, callback_url, created_at, updated_at FROM payments WHERE id = ?"
+          params:
+            - "{{ .id }}"
+          mode: single
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.fetch-updated.row"
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: payment not found
+
+  # ----------------------------------------------------------------
+  # Refund Payment
+  # POST /api/v1/payments/{id}/refund
+  # Updates status to refunded
+  # ----------------------------------------------------------------
+  payment-refund:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/payments/{id}/refund
+        method: POST
+    steps:
+      - name: fetch
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, order_id, amount, currency, status, callback_url FROM payments WHERE id = ?"
+          params:
+            - "{{ .id }}"
+          mode: single
+      - name: check-found
+        type: step.conditional
+        config:
+          field: steps.fetch.found
+          routes:
+            "false": not-found
+          default: update-refund
+      - name: update-refund
+        type: step.db_exec
+        config:
+          database: db
+          query: "UPDATE payments SET status = 'refunded', updated_at = datetime('now') WHERE id = ?"
+          params:
+            - "{{ .id }}"
+      - name: fetch-updated
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, order_id, amount, currency, status, callback_url, created_at, updated_at FROM payments WHERE id = ?"
+          params:
+            - "{{ .id }}"
+          mode: single
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.fetch-updated.row"
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: payment not found

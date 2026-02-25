@@ -1,0 +1,15 @@
+name: E-Commerce App
+id: "22-ecommerce-app"
+category: C
+description: |
+  E-commerce product catalog and order management with external service integration.
+  Integrates with Auth Service (wf-scenario-20) for user authentication and
+  Payment Service (wf-scenario-21) for payment processing. Orders trigger real
+  payment calls; payment webhooks update order status. Validates step.http_call,
+  cross-namespace service routing, and webhook-driven state updates.
+components:
+  - workflow (engine)
+  - SQLite (storage)
+  - Auth Service (wf-scenario-20, external)
+  - Payment Service (wf-scenario-21, external)
+status: testable

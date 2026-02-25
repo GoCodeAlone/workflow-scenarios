@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app
+  namespace: wf-scenario-20
+data:
+  app.yaml: |
+    # ============================================================
+    # Scenario 20 — Auth Service
+    #
+    # JWT authentication microservice. Uses auth.jwt module's
+    # native handlers for register/login/validate(profile).
+    #
+    # The jwt module's in-memory user store handles auth natively.
+    # Register: POST /api/v1/auth/register (first user only via self-reg)
+    # Login:    POST /api/v1/auth/login
+    # Validate: GET  /api/v1/auth/profile  (Bearer token -> user claims)
+    # Admin create users: POST /api/v1/auth/users (requires admin token)
+    #
+    # Cross-namespace DNS:
+    #   http://workflow-server.wf-scenario-20.svc.cluster.local:8080
+    # ============================================================
+
+    modules:
+      - name: server
+        type: http.server
+        config:
+          address: ":8080"
+
+      - name: router
+        type: http.router
+        dependsOn: [server]
+
+      - name: jwt
+        type: auth.jwt
+        config:
+          secret: "scenario-20-auth-secret-key-minimum-32-bytes"
+          issuer: "scenario-20-auth"
+          tokenExpiry: "24h"
+        dependsOn: [router]
+
+    workflows:
+      http:
+        router: router
+        server: server
+        routes:
+          - method: POST
+            path: /api/v1/auth/register
+            handler: jwt
+
+          - method: POST
+            path: /api/v1/auth/login
+            handler: jwt
+
+          - method: GET
+            path: /api/v1/auth/profile
+            handler: jwt
+
+          - method: POST
+            path: /api/v1/auth/users
+            handler: jwt
+
+    pipelines:
+      health:
+        trigger:
+          type: http
+          config:
+            path: /healthz
+            method: GET
+        steps:
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body:
+                status: ok
+                scenario: "20-auth-service"
+
+      init-db:
+        trigger:
+          type: http
+          config:
+            path: /internal/init-db
+            method: POST
+        steps:
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body:
+                status: ok
+                message: "auth service ready (jwt in-memory store)"

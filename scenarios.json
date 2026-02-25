@@ -1,7 +1,7 @@
 {
-  "lastUpdated": "2026-02-25T08:30:00.000000Z",
+  "lastUpdated": "2026-02-25T09:15:00.000000Z",
   "componentVersions": {
-    "workflow": "v0.2.9",
+    "workflow": "v0.2.11",
     "workflow-cloud": "v0.1.0",
     "ratchet": ""
   },
@@ -231,6 +231,51 @@
       "skipCount": 12,
       "localOnly": true,
       "notes": "Skips: wfctl contract --help exits 1 so cmd_available returns false; contract/compare tests skipped. Note: contract compare subcommand does not exist (use contract test -baseline instead). Phase 5 OpenAPI comparison fully passes.",
+      "blockers": []
+    },
+    "20-auth-service": {
+      "status": "passed",
+      "namespace": "wf-scenario-20",
+      "deployed": true,
+      "lastTested": "2026-02-25T09:15:00.000000Z",
+      "lastResult": "pass",
+      "testCount": 13,
+      "passCount": 13,
+      "failCount": 0,
+      "microservice": true,
+      "integrationGroup": "ecommerce-platform",
+      "provides": ["auth/register", "auth/login", "auth/profile"],
+      "notes": "Uses auth.jwt native handlers with allowRegistration: true for open self-registration. v0.2.11 adds allowRegistration config. Validate endpoint is /api/v1/auth/profile which accepts Bearer token.",
+      "blockers": []
+    },
+    "21-payment-service": {
+      "status": "passed",
+      "namespace": "wf-scenario-21",
+      "deployed": true,
+      "lastTested": "2026-02-25T09:00:00.000000Z",
+      "lastResult": "pass",
+      "testCount": 14,
+      "passCount": 14,
+      "failCount": 0,
+      "microservice": true,
+      "integrationGroup": "ecommerce-platform",
+      "provides": ["payments/create", "payments/capture", "payments/refund", "webhooks"],
+      "notes": "Payment lifecycle: pending→captured→refunded. Webhook via step.http_call on capture. Note: step.http_call has no ignore_error support — DB status is updated before webhook so payment is always captured in DB even if webhook fails. Test 14 verifies DB state via GET after capture.",
+      "blockers": []
+    },
+    "22-ecommerce-app": {
+      "status": "passed",
+      "namespace": "wf-scenario-22",
+      "deployed": true,
+      "lastTested": "2026-02-25T09:15:00.000000Z",
+      "lastResult": "pass",
+      "testCount": 14,
+      "passCount": 14,
+      "failCount": 0,
+      "integrationGroup": "ecommerce-platform",
+      "consumes": ["20-auth-service", "21-payment-service"],
+      "provides": ["products", "orders", "webhooks/payment"],
+      "notes": "Full cross-service integration passing. Flow: register user (auth-service) → create order (calls payment-service) → capture payment → webhook updates order status to paid. Fixed: payment_id template (body.id not body.payment_id), total calc via SQL subquery, step.http_call body as YAML map.",
       "blockers": []
     }
   }

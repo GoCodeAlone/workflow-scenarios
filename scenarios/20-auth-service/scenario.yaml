@@ -1,0 +1,33 @@
+name: Auth Service — JWT Authentication Microservice
+id: "20-auth-service"
+category: microservices
+description: |
+  A standalone JWT authentication microservice that other services integrate
+  with via cross-namespace DNS. Demonstrates multi-service architecture on
+  minikube with persistent SQLite user storage.
+
+  Endpoints:
+    POST /api/v1/auth/register  — Register user (email, password, name) → user_id
+    POST /api/v1/auth/login     — Login → JWT token
+    GET  /api/v1/auth/validate  — Validate token (Authorization header) → user claims
+    GET  /healthz               — Health check
+    POST /internal/init-db      — Create users table (idempotent)
+
+  Other services reach this at:
+    http://workflow-server.wf-scenario-20.svc.cluster.local:8080
+
+components:
+  - workflow (engine)
+  - auth.jwt module
+  - SQLite (user storage)
+tags:
+  - microservices
+  - auth
+  - jwt
+  - cross-namespace
+  - sqlite
+status: pending
+notes: |
+  Port-forward uses 18020.
+  JWT secret is hardcoded for demo purposes (scenario-20-auth-secret).
+  Passwords stored with "hashed:" prefix (demo only, not production).
