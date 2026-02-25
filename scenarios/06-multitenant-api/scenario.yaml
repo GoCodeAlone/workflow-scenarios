@@ -8,11 +8,15 @@ description: |
 components:
   - workflow-cloud
   - PostgreSQL
-status: blocked
-blockers:
-  - "Partial — manual API calls only, no automated end-to-end test"
-  - "Tenant provisioning via cloud API needs auth token flow to be automated"
+status: testable
 notes: |
-  workflow-cloud's /api/orgs and /api/tenants endpoints can be tested manually.
-  Automated testing blocked on: (1) OIDC login flow, (2) tenant provisioning
-  pipeline in cloud.yaml. Track with scenario 05 unblocking.
+  workflow-cloud runs in the default namespace. Tests run against the live
+  service via port-forward (port 8082). No k8s deploy needed — the service
+  is already deployed as part of the platform.
+
+  Tests cover: user registration and login, JWT auth, org create/list/invite,
+  tenant provisioning, API key create/list/revoke, plugin search, and error
+  handling (401, 409).
+
+  Fix applied: cloud.yaml apikey-revoke path changed from {key_id} to {id}
+  to match the step implementation.

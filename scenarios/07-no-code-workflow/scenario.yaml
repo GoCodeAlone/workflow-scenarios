@@ -10,11 +10,21 @@ description: |
 components:
   - workflow (engine)
   - workflow-plugin-admin (visual builder)
-  - PostgreSQL
 status: testable
 notes: |
-  The visual pipeline builder already exists in the admin plugin. This
-  scenario validates that a non-developer can create and run automated
-  workflows entirely through the UI. The admin plugin is the open-source
-  "Workflow Studio" — the builder and local execution tool. workflow-cloud
-  adds multi-tenant management, not the builder itself.
+  Deploys workflow-server-admin:local (workflow server + workflow-plugin-admin
+  external plugin) to namespace wf-scenario-07. The admin plugin serves the
+  visual pipeline builder on port 8081 (admin UI) while the main engine runs
+  on port 8080.
+
+  Image structure: /server (engine binary), /app/data/plugins/admin/admin
+  (external plugin binary), /app/data/plugins/admin/plugin.json.
+  Using -data-dir /app/data so the admin plugin's SQLite DBs are written to
+  /app/data/*.db (image filesystem, writable by nonroot).
+
+  Tests cover: primary healthz, admin setup-status, UI HTML, setup/login,
+  profile auth, engine status, modules list, 401 enforcement, engine config,
+  and admin plugin module count (confirms external plugin is active).
+
+  Build: GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build workflow-plugin-admin,
+  then docker build with admin binary at /app/data/plugins/admin/admin.

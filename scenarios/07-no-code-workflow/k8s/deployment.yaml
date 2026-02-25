@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow-server
+  namespace: wf-scenario-07
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: workflow-server
+  template:
+    metadata:
+      labels:
+        app: workflow-server
+    spec:
+      containers:
+        - name: workflow-server
+          image: workflow-server-admin:local
+          imagePullPolicy: Never
+          args: ["-config", "/app/app.yaml", "-data-dir", "/app/data"]
+          env:
+            - name: JWT_SECRET
+              value: "scenario-07-jwt-secret-for-testing"
+            - name: WORKFLOW_DATA_DIR
+              value: "/app/data"
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: admin
+              containerPort: 8081
+          volumeMounts:
+            - name: config
+              mountPath: /app/app.yaml
+              subPath: app.yaml
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+      volumes:
+        - name: config
+          configMap:
+            name: app

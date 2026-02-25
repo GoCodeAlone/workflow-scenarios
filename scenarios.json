@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-02-25T04:18:53.469254Z",
+  "lastUpdated": "2026-02-25T04:45:00.000000Z",
   "componentVersions": {
     "workflow": "",
     "workflow-cloud": "",
@@ -73,13 +73,13 @@
       "blockers": []
     },
     "07-no-code-workflow": {
-      "status": "not_tested",
+      "status": "passed",
       "namespace": "wf-scenario-07",
-      "deployed": false,
-      "lastTested": "",
-      "lastResult": "",
-      "testCount": 0,
-      "passCount": 0,
+      "deployed": true,
+      "lastTested": "2026-02-25T04:45:00.000000Z",
+      "lastResult": "pass",
+      "testCount": 10,
+      "passCount": 10,
       "failCount": 0,
       "blockers": []
     },
