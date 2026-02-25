@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-02-25T04:45:00.000000Z",
+  "lastUpdated": "2026-02-25T04:56:30.000000Z",
   "componentVersions": {
     "workflow": "",
     "workflow-cloud": "",
@@ -84,17 +84,15 @@
       "blockers": []
     },
     "08-data-pipeline": {
-      "status": "blocked",
+      "status": "passed",
       "namespace": "wf-scenario-08",
-      "deployed": false,
-      "lastTested": "",
-      "lastResult": "",
-      "testCount": 0,
-      "passCount": 0,
+      "deployed": true,
+      "lastTested": "2026-02-25T04:56:30.000000Z",
+      "lastResult": "pass",
+      "testCount": 12,
+      "passCount": 12,
       "failCount": 0,
-      "blockers": [
-        "bento plugin manual install required"
-      ]
+      "blockers": []
     }
   }
 }

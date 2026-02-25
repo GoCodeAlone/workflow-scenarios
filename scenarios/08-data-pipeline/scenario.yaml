@@ -3,17 +3,23 @@ id: "08-data-pipeline"
 category: A
 description: |
   A data processing pipeline using the workflow engine with the bento
-  stream processing plugin. Consumes from Kafka/NATS, transforms data
-  via bento processors, and outputs to PostgreSQL or S3.
+  stream processing plugin. Ingests data via HTTP, processes it through
+  Bento's Bloblang transform engine, stores results in SQLite, and
+  publishes events to the internal messaging broker.
 components:
   - workflow (engine)
   - workflow-plugin-bento
-  - Kafka or NATS (external)
-status: blocked
-blockers:
-  - "workflow-plugin-bento requires manual install — not yet in plugin registry"
-  - "Kafka/NATS not deployed on minikube cluster"
+  - SQLite (storage)
+  - InMemory broker (messaging)
+status: testable
 notes: |
-  Once bento plugin is published to the GoCodeAlone plugin registry and
-  auto-sync is enabled (via scenario 02 work), this scenario becomes
-  deployable. Kafka can be replaced with NATS for lighter-weight testing.
+  Uses workflow-server-bento:local image which bundles the bento plugin
+  binary. The bento plugin provides step.bento for Bloblang transforms.
+  Trigger support (bento trigger type) is disabled pending a fix in the
+  external plugin adapter's TriggerFactory implementation.
+
+  Key fixes applied during scenario development:
+  - plugin.json must use flat arrays (not object) for moduleTypes/stepTypes
+  - Binary must import components/pure to register mapping/bloblang processors
+  - TriggerTypes() returns empty to avoid broken TriggerFactory registration
+  - -data-dir /data flag baked into Dockerfile CMD to find plugin at startup

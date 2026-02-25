@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow-server
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: workflow-server
+  template:
+    metadata:
+      labels:
+        app: workflow-server
+    spec:
+      containers:
+        - name: workflow-server
+          image: workflow-server-bento:local
+          imagePullPolicy: Never
+          env:
+            - name: WORKFLOW_DATA_DIR
+              value: "/data"
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+      volumes:
+        - name: data
+          emptyDir: {}
