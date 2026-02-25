@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow-server
+  namespace: wf-scenario-23
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: workflow-server
+  template:
+    metadata:
+      labels:
+        app: workflow-server
+    spec:
+      containers:
+        - name: workflow-server
+          image: workflow-server:local
+          imagePullPolicy: Never
+          args: ["-config", "/config/app.yaml"]
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          resources:
+            limits:
+              cpu: 200m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 32Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 10
+      volumes:
+        - name: config
+          configMap:
+            name: app
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: workflow-server
+  namespace: wf-scenario-23
+spec:
+  selector:
+    app: workflow-server
+  ports:
+    - port: 8080
+      targetPort: 8080

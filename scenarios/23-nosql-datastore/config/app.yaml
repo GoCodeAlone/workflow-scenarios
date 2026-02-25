@@ -1,0 +1,132 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: items
+    type: nosql.memory
+    config:
+      collection: items
+
+pipelines:
+  health:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "23-nosql-datastore"
+
+  # POST /api/items  — create item by ID
+  create-item:
+    trigger:
+      type: http
+      config:
+        path: /api/items
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          body: true
+      - name: store
+        type: step.nosql_put
+        config:
+          store: items
+          key: "item:{{.id}}"
+          item: body
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body:
+            stored: true
+            key: "{{.key}}"
+
+  # GET /api/items/:id  — get item by ID
+  get-item:
+    trigger:
+      type: http
+      config:
+        path: /api/items/:id
+        method: GET
+    steps:
+      - name: validate-id
+        type: step.validate_path_param
+        config:
+          param: id
+          required: true
+      - name: fetch
+        type: step.nosql_get
+        config:
+          store: items
+          key: "item:{{.id}}"
+          output: item
+          miss_ok: true
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            found: "{{.found}}"
+            item: "{{.item}}"
+
+  # GET /api/items  — list all items (optional prefix filter via ?prefix=)
+  list-items:
+    trigger:
+      type: http
+      config:
+        path: /api/items
+        method: GET
+    steps:
+      - name: query
+        type: step.nosql_query
+        config:
+          store: items
+          prefix: "item:"
+          output: items
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            items: "{{.items}}"
+            count: "{{.count}}"
+
+  # DELETE /api/items/:id  — delete item by ID
+  delete-item:
+    trigger:
+      type: http
+      config:
+        path: /api/items/:id
+        method: DELETE
+    steps:
+      - name: validate-id
+        type: step.validate_path_param
+        config:
+          param: id
+          required: true
+      - name: remove
+        type: step.nosql_delete
+        config:
+          store: items
+          key: "item:{{.id}}"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            deleted: true
+            key: "{{.key}}"

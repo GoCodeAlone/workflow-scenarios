@@ -1,0 +1,13 @@
+name: NoSQL Data Store
+id: "23-nosql-datastore"
+category: C
+description: |
+  Demonstrates the nosql.memory module and NoSQL pipeline steps.
+  Exposes a CRUD API (create, get, list, delete) backed by an in-memory
+  NoSQL store using step.nosql_put, step.nosql_get, step.nosql_query,
+  and step.nosql_delete. Tests the full item lifecycle: create → list →
+  get by key → delete → verify deleted.
+components:
+  - workflow (engine)
+  - nosql.memory (in-memory NoSQL store)
+status: testable
