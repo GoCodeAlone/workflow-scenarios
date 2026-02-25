@@ -1,0 +1,31 @@
+name: Artifact Store — Filesystem-backed CI/CD Artifact Management
+id: "24-artifact-store"
+category: cicd
+description: |
+  Demonstrates the storage.artifact module (filesystem backend) and the
+  step.artifact_upload / step.artifact_download / step.artifact_list /
+  step.artifact_delete pipeline steps.
+
+  Endpoints:
+    POST   /api/v1/artifacts/upload        — upload artifact (multipart or JSON+base64)
+    GET    /api/v1/artifacts/{key}         — download artifact (key in query param)
+    GET    /api/v1/artifacts               — list artifacts (optional ?prefix=)
+    DELETE /api/v1/artifacts/{key}         — delete artifact (key in query param)
+    GET    /healthz                        — health check
+
+components:
+  - workflow (engine)
+  - storage.artifact module (filesystem backend)
+  - PVC for artifact data
+
+tags:
+  - cicd
+  - artifacts
+  - storage
+  - filesystem
+
+status: pending
+notes: |
+  Port-forward uses 18024.
+  Artifacts stored at /data/artifacts inside the container (PVC-mounted).
+  Key is passed as query param ?key=<path> due to pipeline path-param constraints.
