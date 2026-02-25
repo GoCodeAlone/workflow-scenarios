@@ -21,12 +21,6 @@ modules:
       maxQueueSize: 1000
       deliveryTimeout: "30s"
 
-  - name: cache
-    type: cache.memory
-    config:
-      defaultTTL: "300s"
-      maxEntries: 1000
-
 workflows:
   http:
     router: router
@@ -109,29 +103,29 @@ pipelines:
           required_fields: [subject, description]
           source: "steps.parse-body.body"
       - name: gen-id
-        type: step.set_variable
+        type: step.set
         config:
-          name: ticket_id
-          value: "ticket-{{ randHex 8 }}"
+          values:
+            ticket_id: "ticket-{{ uuidv4 }}"
       - name: set-priority
-        type: step.set_variable
+        type: step.set
         config:
-          name: priority
-          value: "{{ .body.priority | default \"medium\" }}"
+          values:
+            priority: "{{ .body.priority | default \"medium\" }}"
       - name: insert-ticket
         type: step.db_exec
         config:
           database: db
           query: "INSERT INTO tickets (id, subject, description, priority, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'open', datetime('now'), datetime('now'))"
           params:
-            - "{{ .vars.ticket_id }}"
+            - "{{ .ticket_id }}"
             - "{{ .body.subject }}"
             - "{{ .body.description }}"
-            - "{{ .vars.priority }}"
+            - "{{ .priority }}"
       - name: check-priority-escalate
         type: step.conditional
         config:
-          field: vars.priority
+          field: priority
           routes:
             critical: log-escalation
             high: log-escalation
@@ -151,9 +145,9 @@ pipelines:
         config:
           status: 201
           body:
-            id: "{{ .vars.ticket_id }}"
+            id: "{{ .ticket_id }}"
             status: open
-            priority: "{{ .vars.priority }}"
+            priority: "{{ .priority }}"
             message: ticket created
 
   list-tickets:
@@ -182,25 +176,13 @@ pipelines:
         path: /api/v1/tickets/{id}
         method: GET
     steps:
-      - name: check-cache
-        type: step.cache_get
-        config:
-          cache: cache
-          key: "ticket:{{ .path.id }}"
-      - name: cache-hit-check
-        type: step.conditional
-        config:
-          field: steps.check-cache.hit
-          routes:
-            "true": respond-cached
-          default: fetch-db
       - name: fetch-db
         type: step.db_query
         config:
           database: db
           query: "SELECT id, subject, description, priority, status, assigned_to, created_at, updated_at FROM tickets WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-exists
         type: step.conditional
@@ -208,30 +190,18 @@ pipelines:
           field: steps.fetch-db.row.id
           routes:
             "": not-found
-          default: cache-and-respond
+          default: respond-db
       - name: not-found
         type: step.json_response
         config:
           status: 404
           body:
             error: ticket not found
-      - name: cache-and-respond
-        type: step.cache_set
-        config:
-          cache: cache
-          key: "ticket:{{ .path.id }}"
-          value_from: "steps.fetch-db.row"
-          ttl: "60s"
       - name: respond-db
         type: step.json_response
         config:
           status: 200
           body_from: "steps.fetch-db.row"
-      - name: respond-cached
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.check-cache.value"
 
   assign-ticket:
     trigger:
@@ -256,7 +226,7 @@ pipelines:
           database: db
           query: "SELECT id, status FROM tickets WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-assignable
         type: step.conditional
@@ -287,18 +257,13 @@ pipelines:
           query: "UPDATE tickets SET status = 'assigned', assigned_to = ?, updated_at = datetime('now') WHERE id = ?"
           params:
             - "{{ .body.agent }}"
-            - "{{ .path.id }}"
-      - name: invalidate-cache
-        type: step.cache_delete
-        config:
-          cache: cache
-          key: "ticket:{{ .path.id }}"
+            - "{{ .id }}"
       - name: respond
         type: step.json_response
         config:
           status: 200
           body:
-            id: "{{ .path.id }}"
+            id: "{{ .id }}"
             status: assigned
             assigned_to: "{{ .body.agent }}"
             message: ticket assigned
@@ -316,7 +281,7 @@ pipelines:
           database: db
           query: "SELECT id, status, priority FROM tickets WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-exists
         type: step.conditional
@@ -337,12 +302,7 @@ pipelines:
           database: db
           query: "UPDATE tickets SET priority = 'critical', updated_at = datetime('now') WHERE id = ? AND priority != 'critical'"
           params:
-            - "{{ .path.id }}"
-      - name: invalidate-cache
-        type: step.cache_delete
-        config:
-          cache: cache
-          key: "ticket:{{ .path.id }}"
+            - "{{ .id }}"
       - name: publish-escalated
         type: step.publish
         config:
@@ -353,7 +313,7 @@ pipelines:
         config:
           status: 200
           body:
-            id: "{{ .path.id }}"
+            id: "{{ .id }}"
             priority: critical
             message: ticket escalated to critical priority
 
@@ -380,7 +340,7 @@ pipelines:
           database: db
           query: "SELECT id FROM tickets WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-exists
         type: step.conditional
@@ -401,7 +361,7 @@ pipelines:
           database: db
           query: "INSERT INTO ticket_comments (ticket_id, author, body, created_at) VALUES (?, ?, ?, datetime('now'))"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
             - "{{ .body.author }}"
             - "{{ .body.body }}"
       - name: respond
@@ -409,7 +369,7 @@ pipelines:
         config:
           status: 201
           body:
-            ticket_id: "{{ .path.id }}"
+            ticket_id: "{{ .id }}"
             message: comment added
 
   resolve-ticket:
@@ -425,7 +385,7 @@ pipelines:
           database: db
           query: "SELECT id, status FROM tickets WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-state
         type: step.conditional
@@ -461,18 +421,13 @@ pipelines:
           database: db
           query: "UPDATE tickets SET status = 'resolved', updated_at = datetime('now') WHERE id = ?"
           params:
-            - "{{ .path.id }}"
-      - name: invalidate-cache
-        type: step.cache_delete
-        config:
-          cache: cache
-          key: "ticket:{{ .path.id }}"
+            - "{{ .id }}"
       - name: respond
         type: step.json_response
         config:
           status: 200
           body:
-            id: "{{ .path.id }}"
+            id: "{{ .id }}"
             status: resolved
             message: ticket resolved
 
@@ -489,7 +444,7 @@ pipelines:
           database: db
           query: "SELECT id, status FROM tickets WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-state
         type: step.conditional
@@ -519,18 +474,13 @@ pipelines:
           database: db
           query: "UPDATE tickets SET status = 'open', updated_at = datetime('now') WHERE id = ?"
           params:
-            - "{{ .path.id }}"
-      - name: invalidate-cache
-        type: step.cache_delete
-        config:
-          cache: cache
-          key: "ticket:{{ .path.id }}"
+            - "{{ .id }}"
       - name: respond
         type: step.json_response
         config:
           status: 200
           body:
-            id: "{{ .path.id }}"
+            id: "{{ .id }}"
             status: open
             message: ticket reopened
 

@@ -1,7 +1,7 @@
 {
-  "lastUpdated": "2026-02-25T06:29:00.000000Z",
+  "lastUpdated": "2026-02-25T07:08:21.000000Z",
   "componentVersions": {
-    "workflow": "v0.2.6",
+    "workflow": "v0.2.8",
     "workflow-cloud": "v0.1.0",
     "ratchet": ""
   },
@@ -98,35 +98,35 @@
       "blockers": []
     },
     "09-order-management": {
-      "status": "testable",
+      "status": "passed",
       "namespace": "wf-scenario-09",
-      "deployed": false,
-      "lastTested": null,
-      "lastResult": null,
+      "deployed": true,
+      "lastTested": "2026-02-25T07:08:21.000000Z",
+      "lastResult": "pass",
       "testCount": 15,
-      "passCount": 0,
+      "passCount": 15,
       "failCount": 0,
       "blockers": []
     },
     "10-content-moderation": {
-      "status": "testable",
+      "status": "passed",
       "namespace": "wf-scenario-10",
-      "deployed": false,
-      "lastTested": null,
-      "lastResult": null,
+      "deployed": true,
+      "lastTested": "2026-02-25T07:08:21.000000Z",
+      "lastResult": "pass",
       "testCount": 14,
-      "passCount": 0,
+      "passCount": 14,
       "failCount": 0,
       "blockers": []
     },
     "11-support-ticketing": {
-      "status": "testable",
+      "status": "passed",
       "namespace": "wf-scenario-11",
-      "deployed": false,
-      "lastTested": null,
-      "lastResult": null,
+      "deployed": true,
+      "lastTested": "2026-02-25T07:08:21.000000Z",
+      "lastResult": "pass",
       "testCount": 14,
-      "passCount": 0,
+      "passCount": 14,
       "failCount": 0,
       "blockers": []
     },

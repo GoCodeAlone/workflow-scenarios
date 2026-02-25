@@ -104,17 +104,17 @@ pipelines:
           required_fields: [items, shipping_address, customer_email]
           source: "steps.parse-body.body"
       - name: gen-id
-        type: step.set_variable
+        type: step.set
         config:
-          name: order_id
-          value: "order-{{ randHex 8 }}"
+          values:
+            order_id: "order-{{ uuidv4 }}"
       - name: insert-order
         type: step.db_exec
         config:
           database: db
           query: "INSERT INTO orders (id, customer_email, items, shipping_address, state, total, created_at, updated_at) VALUES (?, ?, ?, ?, 'pending', ?, datetime('now'), datetime('now'))"
           params:
-            - "{{ .vars.order_id }}"
+            - "{{ .order_id }}"
             - "{{ .body.customer_email }}"
             - "{{ json .body.items }}"
             - "{{ .body.shipping_address }}"
@@ -125,7 +125,7 @@ pipelines:
           database: db
           query: "INSERT INTO order_state_log (order_id, from_state, to_state, reason) VALUES (?, NULL, 'pending', 'Order created')"
           params:
-            - "{{ .vars.order_id }}"
+            - "{{ .order_id }}"
       - name: publish-created
         type: step.publish
         config:
@@ -136,7 +136,7 @@ pipelines:
         config:
           status: 201
           body:
-            id: "{{ .vars.order_id }}"
+            id: "{{ .order_id }}"
             state: pending
             message: order created
 
@@ -172,7 +172,7 @@ pipelines:
           database: db
           query: "SELECT id, customer_email, items, shipping_address, state, total, created_at, updated_at FROM orders WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-exists
         type: step.conditional
@@ -206,7 +206,7 @@ pipelines:
           database: db
           query: "SELECT id, state FROM orders WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-state
         type: step.conditional
@@ -243,20 +243,20 @@ pipelines:
           database: db
           query: "UPDATE orders SET state = 'paid', updated_at = datetime('now') WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
       - name: log-pay
         type: step.db_exec
         config:
           database: db
           query: "INSERT INTO order_state_log (order_id, from_state, to_state, reason) VALUES (?, 'pending', 'paid', 'Payment received')"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
       - name: respond
         type: step.json_response
         config:
           status: 200
           body:
-            id: "{{ .path.id }}"
+            id: "{{ .id }}"
             state: paid
             message: order paid
 
@@ -273,7 +273,7 @@ pipelines:
           database: db
           query: "SELECT id, state FROM orders WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-state
         type: step.conditional
@@ -316,20 +316,20 @@ pipelines:
           database: db
           query: "UPDATE orders SET state = 'shipped', updated_at = datetime('now') WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
       - name: log-ship
         type: step.db_exec
         config:
           database: db
           query: "INSERT INTO order_state_log (order_id, from_state, to_state, reason) VALUES (?, 'paid', 'shipped', 'Shipment dispatched')"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
       - name: respond
         type: step.json_response
         config:
           status: 200
           body:
-            id: "{{ .path.id }}"
+            id: "{{ .id }}"
             state: shipped
             message: order shipped
 
@@ -346,7 +346,7 @@ pipelines:
           database: db
           query: "SELECT id, state FROM orders WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-state
         type: step.conditional
@@ -383,20 +383,20 @@ pipelines:
           database: db
           query: "UPDATE orders SET state = 'delivered', updated_at = datetime('now') WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
       - name: log-deliver
         type: step.db_exec
         config:
           database: db
           query: "INSERT INTO order_state_log (order_id, from_state, to_state, reason) VALUES (?, 'shipped', 'delivered', 'Delivered to customer')"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
       - name: respond
         type: step.json_response
         config:
           status: 200
           body:
-            id: "{{ .path.id }}"
+            id: "{{ .id }}"
             state: delivered
             message: order delivered
 
@@ -413,7 +413,7 @@ pipelines:
           database: db
           query: "SELECT id, state FROM orders WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-state
         type: step.conditional
@@ -450,21 +450,21 @@ pipelines:
           database: db
           query: "UPDATE orders SET state = 'cancelled', updated_at = datetime('now') WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
       - name: log-cancel
         type: step.db_exec
         config:
           database: db
           query: "INSERT INTO order_state_log (order_id, from_state, to_state, reason) VALUES (?, ?, 'cancelled', 'Customer cancelled')"
           params:
-            - "{{ .path.id }}"
-            - "{{ .steps.fetch-order.row.state }}"
+            - "{{ .id }}"
+            - "{{ index (index (index .steps \"fetch-order\") \"row\") \"state\" }}"
       - name: respond
         type: step.json_response
         config:
           status: 200
           body:
-            id: "{{ .path.id }}"
+            id: "{{ .id }}"
             state: cancelled
             message: order cancelled
 
@@ -481,7 +481,7 @@ pipelines:
           database: db
           query: "SELECT id, state FROM orders WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-state
         type: step.conditional
@@ -512,20 +512,20 @@ pipelines:
           database: db
           query: "UPDATE orders SET state = 'refunded', updated_at = datetime('now') WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
       - name: log-refund
         type: step.db_exec
         config:
           database: db
           query: "INSERT INTO order_state_log (order_id, from_state, to_state, reason) VALUES (?, 'delivered', 'refunded', 'Customer refund')"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
       - name: respond
         type: step.json_response
         config:
           status: 200
           body:
-            id: "{{ .path.id }}"
+            id: "{{ .id }}"
             state: refunded
             message: order refunded
 

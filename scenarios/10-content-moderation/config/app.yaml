@@ -92,29 +92,24 @@ pipelines:
           required_fields: [author, content_type, body]
           source: "steps.parse-body.body"
       - name: gen-id
-        type: step.set_variable
+        type: step.set
         config:
-          name: content_id
-          value: "content-{{ randHex 8 }}"
+          values:
+            content_id: "content-{{ uuidv4 }}"
       - name: check-auto-reject
         type: step.conditional
         config:
-          field: steps.parse-body.body.content_type
+          field: body.content_type
           routes:
             spam: do-auto-reject
-          default: check-length
-      - name: check-length
-        type: step.set_variable
-        config:
-          name: body_len
-          value: "{{ len .body.body }}"
+          default: store-submitted
       - name: store-submitted
         type: step.db_exec
         config:
           database: db
           query: "INSERT INTO content_items (id, author, content_type, body, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'submitted', datetime('now'), datetime('now'))"
           params:
-            - "{{ .vars.content_id }}"
+            - "{{ .content_id }}"
             - "{{ .body.author }}"
             - "{{ .body.content_type }}"
             - "{{ .body.body }}"
@@ -128,7 +123,7 @@ pipelines:
         config:
           status: 201
           body:
-            id: "{{ .vars.content_id }}"
+            id: "{{ .content_id }}"
             status: submitted
             message: content submitted for review
       - name: do-auto-reject
@@ -137,10 +132,18 @@ pipelines:
           database: db
           query: "INSERT INTO content_items (id, author, content_type, body, status, rejection_reason, created_at, updated_at) VALUES (?, ?, ?, ?, 'rejected', 'Auto-rejected: spam content type', datetime('now'), datetime('now'))"
           params:
-            - "{{ .vars.content_id }}"
+            - "{{ .content_id }}"
             - "{{ .body.author }}"
             - "{{ .body.content_type }}"
             - "{{ .body.body }}"
+      - name: respond-auto-rejected
+        type: step.json_response
+        config:
+          status: 201
+          body:
+            id: "{{ .content_id }}"
+            status: rejected
+            message: content auto-rejected as spam
 
   get-queue:
     trigger:
@@ -174,7 +177,7 @@ pipelines:
           database: db
           query: "SELECT id, author, content_type, status, rejection_reason, reviewer, created_at, updated_at FROM content_items WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-exists
         type: step.conditional
@@ -212,7 +215,7 @@ pipelines:
           database: db
           query: "SELECT id, status FROM content_items WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-state
         type: step.conditional
@@ -243,7 +246,7 @@ pipelines:
           query: "UPDATE content_items SET status = 'approved', reviewer = ?, updated_at = datetime('now') WHERE id = ?"
           params:
             - "{{ .body.reviewer | default \"system\" }}"
-            - "{{ .path.id }}"
+            - "{{ .id }}"
       - name: publish-approved
         type: step.publish
         config:
@@ -254,7 +257,7 @@ pipelines:
         config:
           status: 200
           body:
-            id: "{{ .path.id }}"
+            id: "{{ .id }}"
             status: approved
             message: content approved
 
@@ -281,7 +284,7 @@ pipelines:
           database: db
           query: "SELECT id, status FROM content_items WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-state
         type: step.conditional
@@ -313,7 +316,7 @@ pipelines:
           params:
             - "{{ .body.reason }}"
             - "{{ .body.reviewer | default \"system\" }}"
-            - "{{ .path.id }}"
+            - "{{ .id }}"
       - name: publish-rejected
         type: step.publish
         config:
@@ -324,7 +327,7 @@ pipelines:
         config:
           status: 200
           body:
-            id: "{{ .path.id }}"
+            id: "{{ .id }}"
             status: rejected
             reason: "{{ .body.reason }}"
             message: content rejected
@@ -339,9 +342,9 @@ pipelines:
       - name: verify-webhook
         type: step.webhook_verify
         config:
+          provider: generic
           secret: "webhook-secret-scenario-10"
           header: "X-Webhook-Signature"
-          algorithm: sha256
       - name: parse-body
         type: step.request_parse
         config:

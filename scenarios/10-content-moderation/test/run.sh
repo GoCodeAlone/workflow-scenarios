@@ -154,7 +154,7 @@ WEBHOOK_SIG=$(echo -n "$WEBHOOK_BODY" | openssl dgst -sha256 -hmac "webhook-secr
 if [ -n "$WEBHOOK_SIG" ]; then
     WEBHOOK_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/webhooks/content" \
         -H "Content-Type: application/json" \
-        -H "X-Webhook-Signature: sha256=$WEBHOOK_SIG" \
+        -H "X-Webhook-Signature: $WEBHOOK_SIG" \
         -d "$WEBHOOK_BODY" 2>/dev/null || echo "000")
     if [ "$WEBHOOK_CODE" = "200" ]; then
         pass "Webhook with valid signature returns 200"
