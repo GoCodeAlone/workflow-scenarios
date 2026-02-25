@@ -1,0 +1,141 @@
+openapi: 3.0.3
+info:
+  title: Auth Service
+  version: 1.0.0
+paths:
+  /api/v1/auth/login:
+    post:
+      summary: POST /api/v1/auth/login
+      operationId: postApiV1AuthLogin
+      tags:
+        - jwt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /api/v1/auth/profile:
+    get:
+      summary: GET /api/v1/auth/profile
+      operationId: getApiV1AuthProfile
+      tags:
+        - jwt
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /api/v1/auth/register:
+    post:
+      summary: POST /api/v1/auth/register
+      operationId: postApiV1AuthRegister
+      tags:
+        - jwt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /api/v1/auth/users:
+    post:
+      summary: POST /api/v1/auth/users
+      operationId: postApiV1AuthUsers
+      tags:
+        - jwt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /healthz:
+    get:
+      summary: 'GET /healthz (pipeline: health)'
+      operationId: getHealthz
+      tags:
+        - pipelines
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scenario:
+                    type: string
+                  status:
+                    type: string
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /internal/init-db:
+    post:
+      summary: 'POST /internal/init-db (pipeline: init-db)'
+      operationId: postInternalInitDb
+      tags:
+        - pipelines
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error

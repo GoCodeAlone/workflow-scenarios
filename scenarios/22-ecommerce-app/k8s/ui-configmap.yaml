@@ -1,0 +1,931 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ui
+  namespace: wf-scenario-22
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ecommerce App — Scenario 22</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    
+      :root {
+        --bg:        #0d0f14;
+        --surface:   #161922;
+        --border:    #2a2f3d;
+        --accent:    #4f9eff;
+        --accent2:   #7c3aed;
+        --success:   #22c55e;
+        --warning:   #f59e0b;
+        --danger:    #ef4444;
+        --text:      #e2e8f0;
+        --muted:     #64748b;
+        --mono:      'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+      }
+    
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: 1.6;
+        min-height: 100vh;
+      }
+    
+      header {
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        padding: 12px 24px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+    
+      header h1 {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--accent);
+        letter-spacing: 0.05em;
+      }
+    
+      header .tag {
+        font-size: 11px;
+        background: rgba(79,158,255,0.1);
+        color: var(--accent);
+        border: 1px solid rgba(79,158,255,0.3);
+        border-radius: 4px;
+        padding: 2px 8px;
+      }
+    
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0;
+        height: calc(100vh - 49px);
+      }
+    
+      .panel {
+        border-right: 1px solid var(--border);
+        overflow-y: auto;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+    
+      .panel:last-child { border-right: none; }
+    
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+    
+      .card-header {
+        background: rgba(255,255,255,0.03);
+        border-bottom: 1px solid var(--border);
+        padding: 10px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+    
+      .card-header h2 {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+    
+      .card-body { padding: 16px; }
+    
+      label {
+        display: block;
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+    
+      input, select, textarea {
+        width: 100%;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 13px;
+        padding: 7px 10px;
+        margin-bottom: 12px;
+        outline: none;
+        transition: border-color 0.15s;
+      }
+    
+      input:focus, select:focus { border-color: var(--accent); }
+    
+      select option { background: var(--surface); }
+    
+      .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    
+      btn, button, .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        padding: 7px 14px;
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.15s;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+    
+      button:hover { opacity: 0.85; }
+      button:disabled { opacity: 0.4; cursor: not-allowed; }
+    
+      .btn-sm { padding: 4px 10px; font-size: 11px; }
+      .btn-danger { background: var(--danger); }
+      .btn-success { background: var(--success); color: #000; }
+      .btn-warning { background: var(--warning); color: #000; }
+      .btn-ghost {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--muted);
+      }
+      .btn-ghost:hover { border-color: var(--accent); color: var(--accent); opacity: 1; }
+    
+      .product-list, .order-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+    
+      .product-item, .order-item {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 10px 14px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        cursor: pointer;
+        transition: border-color 0.15s;
+      }
+    
+      .product-item:hover { border-color: var(--accent); }
+      .order-item:hover { border-color: var(--accent2); }
+      .order-item.selected { border-color: var(--accent2); background: rgba(124,58,237,0.05); }
+    
+      .product-item .product-name { flex: 1; font-weight: 600; }
+      .product-item .product-price { color: var(--success); font-weight: 700; }
+      .product-item .product-stock { color: var(--muted); font-size: 11px; }
+    
+      .order-item .order-id { color: var(--muted); font-size: 11px; min-width: 40px; }
+      .order-item .order-info { flex: 1; }
+      .order-item .order-total { font-weight: 700; color: var(--success); }
+    
+      .status-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+    
+      .status-pending_payment { background: rgba(245,158,11,0.15); color: var(--warning); border: 1px solid rgba(245,158,11,0.3); }
+      .status-paid            { background: rgba(34,197,94,0.15);  color: var(--success); border: 1px solid rgba(34,197,94,0.3); }
+      .status-payment_failed  { background: rgba(239,68,68,0.15);  color: var(--danger);  border: 1px solid rgba(239,68,68,0.3); }
+    
+      .detail-box {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 14px;
+      }
+    
+      .detail-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+      }
+    
+      .detail-row:last-child { border-bottom: none; }
+      .detail-key { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+      .detail-val { font-weight: 600; max-width: 60%; word-break: break-all; text-align: right; }
+    
+      .flow-diagram {
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.8;
+      }
+    
+      .flow-step {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 0;
+      }
+    
+      .flow-arrow { color: var(--border); }
+      .flow-label {
+        background: rgba(79,158,255,0.08);
+        border: 1px solid rgba(79,158,255,0.2);
+        border-radius: 4px;
+        padding: 3px 8px;
+        color: var(--accent);
+        font-size: 11px;
+      }
+      .flow-label.svc {
+        background: rgba(124,58,237,0.08);
+        border-color: rgba(124,58,237,0.3);
+        color: #a78bfa;
+      }
+      .flow-label.db {
+        background: rgba(34,197,94,0.08);
+        border-color: rgba(34,197,94,0.3);
+        color: var(--success);
+      }
+      .flow-label.webhook {
+        background: rgba(245,158,11,0.08);
+        border-color: rgba(245,158,11,0.3);
+        color: var(--warning);
+      }
+    
+      /* Test runner */
+      .test-runner { display: flex; flex-direction: column; gap: 0; }
+    
+      .test-case {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 8px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        font-size: 12px;
+      }
+    
+      .test-case:last-child { border-bottom: none; }
+    
+      .test-icon { font-size: 13px; min-width: 18px; margin-top: 1px; }
+      .test-name { flex: 1; }
+      .test-detail { color: var(--muted); font-size: 11px; margin-top: 2px; word-break: break-all; }
+      .test-pass .test-name { color: var(--success); }
+      .test-fail .test-name { color: var(--danger); }
+      .test-pending .test-name { color: var(--muted); }
+      .test-running .test-name { color: var(--warning); }
+    
+      .run-btn {
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        font-size: 12px;
+        padding: 9px 18px;
+        border-radius: 6px;
+      }
+    
+      .empty-state {
+        text-align: center;
+        color: var(--muted);
+        padding: 24px;
+        font-size: 12px;
+      }
+    
+      .response-box {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 12px;
+        font-size: 11px;
+        color: #a5d6ff;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 200px;
+        overflow-y: auto;
+        display: none;
+      }
+    
+      .response-box.visible { display: block; }
+      .response-box.error { color: #fca5a5; border-color: rgba(239,68,68,0.3); }
+    
+      .spinner {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border: 2px solid rgba(255,255,255,0.2);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+      }
+    
+      @keyframes spin { to { transform: rotate(360deg); } }
+    
+      .refresh-btn {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        padding: 3px 8px;
+        font-size: 11px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+    
+      .refresh-btn:hover { border-color: var(--accent); color: var(--accent); opacity: 1; }
+    
+      .notification {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        padding: 10px 16px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        z-index: 1000;
+        transform: translateX(120%);
+        transition: transform 0.2s ease;
+      }
+    
+      .notification.show { transform: translateX(0); }
+      .notification.success { background: var(--success); color: #000; }
+      .notification.error { background: var(--danger); color: #fff; }
+    
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: var(--bg); }
+      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+    </style>
+    </head>
+    <body>
+    
+    <header>
+      <h1>// ECOMMERCE APP</h1>
+      <span class="tag">scenario-22</span>
+      <span class="tag">workflow-engine</span>
+      <span style="flex:1"></span>
+      <button class="run-btn" id="runAllBtn" onclick="runAllTests()">
+        <span id="runBtnSpinner" style="display:none" class="spinner"></span>
+        RUN ALL TESTS
+      </button>
+    </header>
+    
+    <div class="layout">
+    
+      <!-- LEFT PANEL -->
+      <div class="panel">
+    
+        <!-- Product Catalog -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Product Catalog</h2>
+            <button class="refresh-btn" onclick="loadProducts()">refresh</button>
+          </div>
+          <div class="card-body">
+            <div id="productList" class="product-list">
+              <div class="empty-state">Loading products...</div>
+            </div>
+          </div>
+        </div>
+    
+        <!-- Add Product -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Add Product</h2>
+          </div>
+          <div class="card-body">
+            <label>Name</label>
+            <input type="text" id="pName" placeholder="Widget Pro 3000">
+            <label>Description</label>
+            <input type="text" id="pDesc" placeholder="Optional description">
+            <div class="form-row">
+              <div>
+                <label>Price (USD)</label>
+                <input type="number" id="pPrice" placeholder="29.99" step="0.01" min="0">
+              </div>
+              <div>
+                <label>Stock</label>
+                <input type="number" id="pStock" placeholder="100" min="0">
+              </div>
+            </div>
+            <button onclick="createProduct()">+ Add Product</button>
+            <div id="productResponse" class="response-box"></div>
+          </div>
+        </div>
+    
+        <!-- Create Order -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Create Order</h2>
+          </div>
+          <div class="card-body">
+            <label>Product</label>
+            <select id="orderProduct">
+              <option value="">-- select a product --</option>
+            </select>
+            <label>Quantity</label>
+            <input type="number" id="orderQty" placeholder="1" min="1" value="1">
+            <button onclick="createOrder()">Place Order</button>
+            <div id="orderResponse" class="response-box"></div>
+          </div>
+        </div>
+    
+        <!-- Cross-service Flow -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Cross-Service Flow</h2>
+          </div>
+          <div class="card-body">
+            <div class="flow-diagram">
+              <div class="flow-step">
+                <span class="flow-label">POST /api/v1/orders</span>
+                <span class="flow-arrow">→ ecommerce-svc (scenario-22)</span>
+              </div>
+              <div class="flow-step" style="padding-left:24px">
+                <span class="flow-arrow">↓</span>
+                <span style="color:var(--muted)">insert order (status: pending_payment)</span>
+              </div>
+              <div class="flow-step" style="padding-left:24px">
+                <span class="flow-label svc">POST /api/v1/payments</span>
+                <span class="flow-arrow">→ payment-svc (scenario-21)</span>
+              </div>
+              <div class="flow-step" style="padding-left:24px">
+                <span class="flow-arrow">↓</span>
+                <span style="color:var(--muted)">store payment_id on order</span>
+              </div>
+              <div class="flow-step" style="padding-left:24px">
+                <span class="flow-label db">order returned with payment_id</span>
+              </div>
+              <div style="margin: 8px 0 4px; border-top: 1px solid var(--border); padding-top: 8px; color: var(--muted); font-size: 11px;">
+                — async: payment captured —
+              </div>
+              <div class="flow-step" style="padding-left:24px">
+                <span class="flow-label webhook">POST /webhooks/payment</span>
+                <span class="flow-arrow">← payment-svc callback</span>
+              </div>
+              <div class="flow-step" style="padding-left:24px">
+                <span class="flow-arrow">↓</span>
+                <span style="color:var(--muted)">update order status → paid</span>
+              </div>
+              <div class="flow-step" style="padding-left:24px">
+                <span class="flow-label db">record payment_captured event</span>
+              </div>
+            </div>
+          </div>
+        </div>
+    
+      </div>
+    
+      <!-- RIGHT PANEL -->
+      <div class="panel">
+    
+        <!-- Test Runner -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Integration Tests</h2>
+            <span id="testSummary" style="font-size:11px; color:var(--muted)">not run</span>
+          </div>
+          <div class="card-body">
+            <div id="testRunner" class="test-runner">
+              <div id="t-init-db"       class="test-case test-pending"><span class="test-icon">○</span><div><div class="test-name">Init DB</div></div></div>
+              <div id="t-create-prod"   class="test-case test-pending"><span class="test-icon">○</span><div><div class="test-name">Create product</div></div></div>
+              <div id="t-list-prods"    class="test-case test-pending"><span class="test-icon">○</span><div><div class="test-name">List products (verify product exists)</div></div></div>
+              <div id="t-create-order"  class="test-case test-pending"><span class="test-icon">○</span><div><div class="test-name">Create order (cross-service payment call)</div></div></div>
+              <div id="t-get-order"     class="test-case test-pending"><span class="test-icon">○</span><div><div class="test-name">Get order (verify pending_payment + payment_id)</div></div></div>
+              <div id="t-list-orders"   class="test-case test-pending"><span class="test-icon">○</span><div><div class="test-name">List orders (order appears)</div></div></div>
+              <div id="t-404-product"   class="test-case test-pending"><span class="test-icon">○</span><div><div class="test-name">Edge: order nonexistent product → 404</div></div></div>
+              <div id="t-get-404-order" class="test-case test-pending"><span class="test-icon">○</span><div><div class="test-name">Edge: get nonexistent order → 404</div></div></div>
+              <div id="t-get-product"   class="test-case test-pending"><span class="test-icon">○</span><div><div class="test-name">Get product by ID</div></div></div>
+            </div>
+          </div>
+        </div>
+    
+        <!-- Orders List -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Orders</h2>
+            <button class="refresh-btn" onclick="loadOrders()">refresh</button>
+          </div>
+          <div class="card-body">
+            <div id="orderList" class="order-list">
+              <div class="empty-state">Loading orders...</div>
+            </div>
+          </div>
+        </div>
+    
+        <!-- Order Detail -->
+        <div class="card" id="orderDetailCard" style="display:none">
+          <div class="card-header">
+            <h2>Order Detail</h2>
+            <button class="btn-ghost btn-sm" onclick="closeOrderDetail()">✕ close</button>
+          </div>
+          <div class="card-body">
+            <div id="orderDetail" class="detail-box"></div>
+          </div>
+        </div>
+    
+      </div>
+    </div>
+    
+    <div id="notification" class="notification"></div>
+    
+    <script>
+    // ── API helpers ──────────────────────────────────────────────────────────────
+    
+    async function api(method, path, body) {
+      const opts = {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+      };
+      if (body !== undefined) opts.body = JSON.stringify(body);
+      const res = await fetch(path, opts);
+      let data;
+      try { data = await res.json(); } catch { data = null; }
+      return { status: res.status, ok: res.ok, data };
+    }
+    
+    // ── Notification ─────────────────────────────────────────────────────────────
+    
+    function notify(msg, type = 'success') {
+      const el = document.getElementById('notification');
+      el.textContent = msg;
+      el.className = 'notification ' + type;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 2800);
+    }
+    
+    // ── Products ──────────────────────────────────────────────────────────────────
+    
+    let products = [];
+    
+    async function loadProducts() {
+      const el = document.getElementById('productList');
+      el.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
+      const { ok, data } = await api('GET', '/api/v1/products');
+      if (!ok || !data) {
+        el.innerHTML = '<div class="empty-state" style="color:var(--danger)">Failed to load products</div>';
+        return;
+      }
+      products = Array.isArray(data) ? data : [];
+      refreshProductList();
+      refreshProductSelect();
+    }
+    
+    function refreshProductList() {
+      const el = document.getElementById('productList');
+      if (products.length === 0) {
+        el.innerHTML = '<div class="empty-state">No products yet. Add one below.</div>';
+        return;
+      }
+      el.innerHTML = products.map(p => `
+        <div class="product-item">
+          <div>
+            <div class="product-name">${esc(p.name)}</div>
+            <div class="product-stock">id: ${p.id} &nbsp;·&nbsp; stock: ${p.stock}</div>
+            ${p.description ? `<div style="color:var(--muted);font-size:11px">${esc(p.description)}</div>` : ''}
+          </div>
+          <div class="product-price">$${Number(p.price).toFixed(2)}</div>
+        </div>
+      `).join('');
+    }
+    
+    function refreshProductSelect() {
+      const sel = document.getElementById('orderProduct');
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">-- select a product --</option>' +
+        products.map(p => `<option value="${p.id}" ${p.id == cur ? 'selected' : ''}>${esc(p.name)} — $${Number(p.price).toFixed(2)}</option>`).join('');
+    }
+    
+    async function createProduct() {
+      const name  = document.getElementById('pName').value.trim();
+      const desc  = document.getElementById('pDesc').value.trim();
+      const price = parseFloat(document.getElementById('pPrice').value);
+      const stock = parseInt(document.getElementById('pStock').value || '0', 10);
+      const box   = document.getElementById('productResponse');
+    
+      if (!name || isNaN(price)) {
+        showResponse(box, { error: 'Name and price are required' }, false);
+        return;
+      }
+    
+      const { ok, data } = await api('POST', '/api/v1/products', { name, description: desc, price, stock });
+      showResponse(box, data, ok);
+      if (ok) {
+        notify('Product created: ' + name);
+        document.getElementById('pName').value = '';
+        document.getElementById('pDesc').value = '';
+        document.getElementById('pPrice').value = '';
+        document.getElementById('pStock').value = '';
+        await loadProducts();
+      }
+    }
+    
+    // ── Orders ────────────────────────────────────────────────────────────────────
+    
+    let orders = [];
+    
+    async function loadOrders() {
+      const el = document.getElementById('orderList');
+      el.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
+      const { ok, data } = await api('GET', '/api/v1/orders');
+      if (!ok || !data) {
+        el.innerHTML = '<div class="empty-state" style="color:var(--danger)">Failed to load orders</div>';
+        return;
+      }
+      orders = Array.isArray(data) ? data : [];
+      renderOrderList();
+    }
+    
+    function renderOrderList() {
+      const el = document.getElementById('orderList');
+      if (orders.length === 0) {
+        el.innerHTML = '<div class="empty-state">No orders yet.</div>';
+        return;
+      }
+      el.innerHTML = orders.map(o => `
+        <div class="order-item" id="oi-${o.id}" onclick="showOrderDetail(${o.id})">
+          <span class="order-id">#${o.id}</span>
+          <div class="order-info">
+            <div>product: ${o.product_id} &nbsp;·&nbsp; qty: ${o.quantity}</div>
+            <div style="font-size:11px;color:var(--muted)">
+              ${o.payment_id ? 'pay: ' + esc(String(o.payment_id)) : 'no payment id'}
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div class="order-total">$${Number(o.total).toFixed(2)}</div>
+            <span class="status-badge status-${o.status}">${esc(o.status)}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+    
+    async function createOrder() {
+      const productId = parseInt(document.getElementById('orderProduct').value, 10);
+      const quantity  = parseInt(document.getElementById('orderQty').value, 10);
+      const box       = document.getElementById('orderResponse');
+    
+      if (!productId || !quantity || quantity < 1) {
+        showResponse(box, { error: 'Select a product and enter a valid quantity' }, false);
+        return;
+      }
+    
+      const { ok, data } = await api('POST', '/api/v1/orders', { product_id: productId, quantity });
+      showResponse(box, data, ok);
+      if (ok) {
+        notify('Order created #' + (data && data.id));
+        document.getElementById('orderQty').value = '1';
+        await loadOrders();
+      }
+    }
+    
+    async function showOrderDetail(id) {
+      document.querySelectorAll('.order-item').forEach(el => el.classList.remove('selected'));
+      const el = document.getElementById('oi-' + id);
+      if (el) el.classList.add('selected');
+    
+      const card   = document.getElementById('orderDetailCard');
+      const detail = document.getElementById('orderDetail');
+      card.style.display = 'block';
+      detail.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
+    
+      const { ok, data } = await api('GET', '/api/v1/orders/' + id);
+      if (!ok || !data) {
+        detail.innerHTML = '<div class="empty-state" style="color:var(--danger)">Failed to load order</div>';
+        return;
+      }
+    
+      const fields = [
+        ['ID',          data.id],
+        ['Product ID',  data.product_id],
+        ['Quantity',    data.quantity],
+        ['Total',       '$' + Number(data.total).toFixed(2)],
+        ['Status',      `<span class="status-badge status-${data.status}">${esc(data.status)}</span>`],
+        ['Payment ID',  data.payment_id || '—'],
+        ['Created',     data.created_at],
+      ];
+    
+      detail.innerHTML = fields.map(([k, v]) => `
+        <div class="detail-row">
+          <span class="detail-key">${k}</span>
+          <span class="detail-val">${v}</span>
+        </div>
+      `).join('');
+    }
+    
+    function closeOrderDetail() {
+      document.getElementById('orderDetailCard').style.display = 'none';
+      document.querySelectorAll('.order-item').forEach(el => el.classList.remove('selected'));
+    }
+    
+    // ── Test Runner ───────────────────────────────────────────────────────────────
+    
+    function setTest(id, state, detail) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.className = 'test-case test-' + state;
+      const icons = { pass: '✓', fail: '✗', running: '●', pending: '○' };
+      el.querySelector('.test-icon').textContent = icons[state] || '○';
+      const nameEl = el.querySelector('.test-name');
+      let detailEl = el.querySelector('.test-detail');
+      if (detail) {
+        if (!detailEl) {
+          detailEl = document.createElement('div');
+          detailEl.className = 'test-detail';
+          nameEl.parentNode.appendChild(detailEl);
+        }
+        detailEl.textContent = detail;
+      } else if (detailEl) {
+        detailEl.textContent = '';
+      }
+    }
+    
+    function updateTestSummary(passed, failed, total) {
+      document.getElementById('testSummary').textContent =
+        `${passed}/${total} passed` + (failed > 0 ? ` · ${failed} failed` : '');
+      document.getElementById('testSummary').style.color =
+        failed > 0 ? 'var(--danger)' : (passed === total ? 'var(--success)' : 'var(--muted)');
+    }
+    
+    async function runAllTests() {
+      const btn = document.getElementById('runAllBtn');
+      const spinner = document.getElementById('runBtnSpinner');
+      btn.disabled = true;
+      spinner.style.display = 'inline-block';
+    
+      const ids = ['t-init-db','t-create-prod','t-list-prods','t-create-order','t-get-order','t-list-orders','t-404-product','t-get-404-order','t-get-product'];
+      ids.forEach(id => setTest(id, 'pending', null));
+      document.getElementById('testSummary').textContent = 'running...';
+      document.getElementById('testSummary').style.color = 'var(--warning)';
+    
+      let passed = 0, failed = 0;
+      const total = ids.length;
+    
+      function pass(id, detail) { setTest(id, 'pass', detail); passed++; updateTestSummary(passed, failed, total); }
+      function fail(id, detail) { setTest(id, 'fail', detail); failed++; updateTestSummary(passed, failed, total); }
+      function run(id) { setTest(id, 'running', null); }
+    
+      // ── 1. Init DB
+      run('t-init-db');
+      {
+        const { ok, data, status } = await api('POST', '/internal/init-db');
+        if (ok && data && data.status === 'ok') pass('t-init-db', 'status: ok');
+        else fail('t-init-db', `HTTP ${status}: ${JSON.stringify(data)}`);
+      }
+    
+      // ── 2. Create product
+      run('t-create-prod');
+      let testProductId = null;
+      const testProduct = { name: 'Test Widget', description: 'Integration test product', price: 49.99, stock: 50 };
+      {
+        const { ok, data, status } = await api('POST', '/api/v1/products', testProduct);
+        if (ok && data && data.id) {
+          testProductId = data.id;
+          pass('t-create-prod', `id: ${data.id}, name: ${data.name}, price: $${data.price}`);
+        } else {
+          fail('t-create-prod', `HTTP ${status}: ${JSON.stringify(data)}`);
+        }
+      }
+    
+      // ── 3. List products — verify product exists
+      run('t-list-prods');
+      {
+        const { ok, data, status } = await api('GET', '/api/v1/products');
+        if (!ok) { fail('t-list-prods', `HTTP ${status}: ${JSON.stringify(data)}`); }
+        else if (!Array.isArray(data)) { fail('t-list-prods', 'response is not an array'); }
+        else {
+          const found = testProductId ? data.find(p => p.id === testProductId) : null;
+          if (testProductId && !found) {
+            fail('t-list-prods', `product id ${testProductId} not found in list of ${data.length}`);
+          } else {
+            pass('t-list-prods', `${data.length} product(s)${found ? `, found id ${testProductId}` : ''}`);
+          }
+        }
+      }
+    
+      // ── 4. Create order
+      run('t-create-order');
+      let testOrderId = null;
+      if (testProductId) {
+        const { ok, data, status } = await api('POST', '/api/v1/orders', { product_id: testProductId, quantity: 2 });
+        if (ok && data && data.id) {
+          testOrderId = data.id;
+          const hasPaymentId = data.payment_id !== null && data.payment_id !== undefined && data.payment_id !== '';
+          pass('t-create-order', `id: ${data.id}, status: ${data.status}, payment_id: ${hasPaymentId ? data.payment_id : '(none — payment svc may be down)'}`);
+        } else {
+          fail('t-create-order', `HTTP ${status}: ${JSON.stringify(data)}`);
+        }
+      } else {
+        fail('t-create-order', 'skipped — no test product id');
+      }
+    
+      // ── 5. Get order — verify pending_payment + payment_id
+      run('t-get-order');
+      if (testOrderId) {
+        const { ok, data, status } = await api('GET', '/api/v1/orders/' + testOrderId);
+        if (!ok) { fail('t-get-order', `HTTP ${status}: ${JSON.stringify(data)}`); }
+        else {
+          const statusOk = data.status === 'pending_payment' || data.status === 'paid';
+          const hasPayId = data.payment_id !== null && data.payment_id !== undefined && data.payment_id !== '';
+          if (statusOk) {
+            pass('t-get-order', `status: ${data.status}, payment_id: ${hasPayId ? data.payment_id : '(no payment svc)'}`);
+          } else {
+            fail('t-get-order', `unexpected status: ${data.status}`);
+          }
+        }
+      } else {
+        fail('t-get-order', 'skipped — no test order id');
+      }
+    
+      // ── 6. List orders
+      run('t-list-orders');
+      {
+        const { ok, data, status } = await api('GET', '/api/v1/orders');
+        if (!ok) { fail('t-list-orders', `HTTP ${status}: ${JSON.stringify(data)}`); }
+        else if (!Array.isArray(data)) { fail('t-list-orders', 'response is not an array'); }
+        else {
+          const found = testOrderId ? data.find(o => o.id === testOrderId) : null;
+          if (testOrderId && !found) {
+            fail('t-list-orders', `order id ${testOrderId} not in list of ${data.length}`);
+          } else {
+            pass('t-list-orders', `${data.length} order(s)${found ? `, found id ${testOrderId}` : ''}`);
+          }
+        }
+      }
+    
+      // ── 7. Edge: order nonexistent product → 404
+      run('t-404-product');
+      {
+        const { ok, data, status } = await api('POST', '/api/v1/orders', { product_id: 999999, quantity: 1 });
+        if (status === 404) {
+          pass('t-404-product', `HTTP 404 — ${data && data.error ? data.error : 'product not found'}`);
+        } else {
+          fail('t-404-product', `expected 404, got HTTP ${status}: ${JSON.stringify(data)}`);
+        }
+      }
+    
+      // ── 8. Edge: get nonexistent order → 404
+      run('t-get-404-order');
+      {
+        const { ok, data, status } = await api('GET', '/api/v1/orders/999999');
+        if (status === 404) {
+          pass('t-get-404-order', `HTTP 404 — ${data && data.error ? data.error : 'order not found'}`);
+        } else {
+          fail('t-get-404-order', `expected 404, got HTTP ${status}: ${JSON.stringify(data)}`);
+        }
+      }
+    
+      // ── 9. Get product by ID
+      run('t-get-product');
+      if (testProductId) {
+        const { ok, data, status } = await api('GET', '/api/v1/products/' + testProductId);
+        if (ok && data && data.id === testProductId) {
+          pass('t-get-product', `id: ${data.id}, name: ${data.name}`);
+        } else {
+          fail('t-get-product', `HTTP ${status}: ${JSON.stringify(data)}`);
+        }
+      } else {
+        fail('t-get-product', 'skipped — no test product id');
+      }
+    
+      // Done
+      btn.disabled = false;
+      spinner.style.display = 'none';
+      updateTestSummary(passed, failed, total);
+      if (failed === 0) notify(`All ${total} tests passed`, 'success');
+      else notify(`${failed} test(s) failed`, 'error');
+    
+      await loadProducts();
+      await loadOrders();
+    }
+    
+    // ── Helpers ───────────────────────────────────────────────────────────────────
+    
+    function esc(s) {
+      if (s == null) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    
+    function showResponse(box, data, ok) {
+      box.className = 'response-box visible' + (ok ? '' : ' error');
+      box.textContent = JSON.stringify(data, null, 2);
+    }
+    
+    // ── Init ──────────────────────────────────────────────────────────────────────
+    
+    loadProducts();
+    loadOrders();
+    </script>
+    </body>
+    </html>
+    

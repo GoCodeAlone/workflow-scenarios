@@ -1,0 +1,704 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ui
+  namespace: wf-scenario-20
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Auth Service — Scenario 20</title>
+      <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    
+        :root {
+          --bg:      #0d1117;
+          --surface: #161b22;
+          --border:  #30363d;
+          --text:    #c9d1d9;
+          --muted:   #8b949e;
+          --accent:  #58a6ff;
+          --green:   #3fb950;
+          --red:     #f85149;
+          --yellow:  #d29922;
+          --radius:  6px;
+          --font:    'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+        }
+    
+        body {
+          background: var(--bg);
+          color: var(--text);
+          font-family: var(--font);
+          font-size: 13px;
+          line-height: 1.6;
+          min-height: 100vh;
+          padding: 24px 16px;
+        }
+    
+        h1 {
+          font-size: 18px;
+          font-weight: 600;
+          color: var(--accent);
+          letter-spacing: 0.03em;
+          margin-bottom: 4px;
+        }
+    
+        .subtitle {
+          color: var(--muted);
+          font-size: 12px;
+          margin-bottom: 28px;
+        }
+    
+        .grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+          gap: 16px;
+          max-width: 1100px;
+        }
+    
+        .card {
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          padding: 20px;
+        }
+    
+        .card h2 {
+          font-size: 13px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: var(--muted);
+          margin-bottom: 16px;
+          padding-bottom: 10px;
+          border-bottom: 1px solid var(--border);
+        }
+    
+        label {
+          display: block;
+          font-size: 11px;
+          color: var(--muted);
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          margin-bottom: 4px;
+          margin-top: 12px;
+        }
+    
+        label:first-of-type { margin-top: 0; }
+    
+        input[type="text"],
+        input[type="email"],
+        input[type="password"] {
+          width: 100%;
+          background: var(--bg);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          color: var(--text);
+          font-family: var(--font);
+          font-size: 13px;
+          padding: 8px 10px;
+          outline: none;
+          transition: border-color 0.15s;
+        }
+    
+        input:focus {
+          border-color: var(--accent);
+        }
+    
+        button {
+          margin-top: 14px;
+          width: 100%;
+          background: var(--accent);
+          color: #0d1117;
+          border: none;
+          border-radius: var(--radius);
+          font-family: var(--font);
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          padding: 9px 16px;
+          cursor: pointer;
+          transition: opacity 0.15s;
+        }
+    
+        button:hover { opacity: 0.85; }
+        button:active { opacity: 0.7; }
+    
+        button.secondary {
+          background: transparent;
+          color: var(--accent);
+          border: 1px solid var(--accent);
+        }
+    
+        button.danger {
+          background: var(--red);
+        }
+    
+        button.run-all {
+          background: var(--green);
+          font-size: 13px;
+          padding: 11px 16px;
+        }
+    
+        .status {
+          margin-top: 12px;
+          padding: 10px 12px;
+          border-radius: var(--radius);
+          font-size: 12px;
+          display: none;
+          word-break: break-all;
+          white-space: pre-wrap;
+        }
+    
+        .status.success {
+          display: block;
+          background: rgba(63, 185, 80, 0.1);
+          border: 1px solid rgba(63, 185, 80, 0.3);
+          color: var(--green);
+        }
+    
+        .status.error {
+          display: block;
+          background: rgba(248, 81, 73, 0.1);
+          border: 1px solid rgba(248, 81, 73, 0.3);
+          color: var(--red);
+        }
+    
+        .status.info {
+          display: block;
+          background: rgba(88, 166, 255, 0.08);
+          border: 1px solid rgba(88, 166, 255, 0.25);
+          color: var(--accent);
+        }
+    
+        .token-box {
+          background: var(--bg);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          padding: 10px 12px;
+          font-size: 11px;
+          color: var(--yellow);
+          word-break: break-all;
+          white-space: pre-wrap;
+          max-height: 100px;
+          overflow-y: auto;
+          display: none;
+          margin-top: 8px;
+        }
+    
+        .token-box.visible { display: block; }
+    
+        .profile-grid {
+          display: grid;
+          grid-template-columns: 1fr 2fr;
+          gap: 4px 12px;
+          font-size: 12px;
+          margin-top: 8px;
+        }
+    
+        .profile-grid .key { color: var(--muted); }
+        .profile-grid .val { color: var(--text); word-break: break-all; }
+    
+        /* Test runner */
+        .test-card {
+          grid-column: 1 / -1;
+        }
+    
+        .test-log {
+          background: var(--bg);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          padding: 14px;
+          max-height: 420px;
+          overflow-y: auto;
+          margin-top: 12px;
+          font-size: 12px;
+          line-height: 1.8;
+          display: none;
+        }
+    
+        .test-log.visible { display: block; }
+    
+        .test-log .pass  { color: var(--green); }
+        .test-log .fail  { color: var(--red); }
+        .test-log .info  { color: var(--muted); }
+        .test-log .head  { color: var(--accent); font-weight: 700; }
+        .test-log .warn  { color: var(--yellow); }
+    
+        .test-summary {
+          margin-top: 10px;
+          font-size: 13px;
+          font-weight: 600;
+          display: none;
+        }
+    
+        .test-summary.visible { display: block; }
+        .test-summary.all-pass { color: var(--green); }
+        .test-summary.has-fail { color: var(--red); }
+    
+        .spinner {
+          display: inline-block;
+          width: 10px;
+          height: 10px;
+          border: 2px solid var(--border);
+          border-top-color: var(--accent);
+          border-radius: 50%;
+          animation: spin 0.6s linear infinite;
+          margin-right: 6px;
+          vertical-align: middle;
+        }
+    
+        @keyframes spin { to { transform: rotate(360deg); } }
+    
+        .divider {
+          border: none;
+          border-top: 1px solid var(--border);
+          margin: 20px 0;
+        }
+    
+        .current-token-label {
+          font-size: 11px;
+          color: var(--muted);
+          margin-bottom: 4px;
+        }
+    
+        .token-clear {
+          margin-top: 6px;
+          font-size: 11px;
+          width: auto;
+          padding: 4px 10px;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>Auth Service</h1>
+      <p class="subtitle">Scenario 20 — JWT authentication via workflow engine</p>
+    
+      <div class="grid">
+    
+        <!-- Register -->
+        <div class="card">
+          <h2>Register</h2>
+          <label>Name</label>
+          <input type="text" id="reg-name" placeholder="Alice Example" autocomplete="off">
+          <label>Email</label>
+          <input type="email" id="reg-email" placeholder="alice@example.com" autocomplete="off">
+          <label>Password</label>
+          <input type="password" id="reg-password" placeholder="••••••••">
+          <button onclick="doRegister()">Register</button>
+          <div class="status" id="reg-status"></div>
+        </div>
+    
+        <!-- Login -->
+        <div class="card">
+          <h2>Login</h2>
+          <label>Email</label>
+          <input type="email" id="login-email" placeholder="alice@example.com" autocomplete="off">
+          <label>Password</label>
+          <input type="password" id="login-password" placeholder="••••••••">
+          <button onclick="doLogin()">Login</button>
+          <div class="status" id="login-status"></div>
+          <div class="current-token-label" id="token-label" style="display:none; margin-top:12px;">JWT Token</div>
+          <div class="token-box" id="token-display"></div>
+          <button class="secondary token-clear" id="token-clear-btn" style="display:none;" onclick="clearToken()">Clear Token</button>
+        </div>
+    
+        <!-- Profile -->
+        <div class="card">
+          <h2>Profile</h2>
+          <p style="color:var(--muted); font-size:12px; margin-bottom:12px;">Uses the stored JWT token from login. Login first to populate it.</p>
+          <button onclick="doProfile()">Fetch Profile</button>
+          <button class="secondary" style="margin-top:8px;" onclick="doProfileCustom()">Fetch with Custom Token</button>
+          <label id="custom-token-label" style="display:none;">Custom Bearer Token</label>
+          <input type="text" id="custom-token" placeholder="eyJ..." style="display:none;" autocomplete="off">
+          <div class="status" id="profile-status"></div>
+          <div id="profile-data" style="display:none;">
+            <hr class="divider">
+            <div class="profile-grid" id="profile-grid"></div>
+          </div>
+        </div>
+    
+        <!-- Test Runner -->
+        <div class="card test-card">
+          <h2>Test Runner</h2>
+          <p style="color:var(--muted); font-size:12px; margin-bottom:4px;">
+            Automatically exercises: register, login, profile, duplicate registration, wrong password, unauthenticated profile, invalid token.
+          </p>
+          <button class="run-all" onclick="runAllTests()">Run All Tests</button>
+          <div class="test-summary" id="test-summary"></div>
+          <div class="test-log" id="test-log"></div>
+        </div>
+    
+      </div>
+    
+      <script>
+        // ----------------------------------------------------------------
+        // State
+        // ----------------------------------------------------------------
+        let currentToken = null;
+    
+        function getToken() { return currentToken; }
+    
+        function setToken(t) {
+          currentToken = t;
+          const display = document.getElementById('token-display');
+          const label   = document.getElementById('token-label');
+          const btn     = document.getElementById('token-clear-btn');
+          display.textContent = t;
+          display.classList.add('visible');
+          label.style.display = 'block';
+          btn.style.display   = 'block';
+        }
+    
+        function clearToken() {
+          currentToken = null;
+          const display = document.getElementById('token-display');
+          const label   = document.getElementById('token-label');
+          const btn     = document.getElementById('token-clear-btn');
+          display.textContent = '';
+          display.classList.remove('visible');
+          label.style.display = 'none';
+          btn.style.display   = 'none';
+        }
+    
+        // ----------------------------------------------------------------
+        // Status helpers
+        // ----------------------------------------------------------------
+        function showStatus(id, type, msg) {
+          const el = document.getElementById(id);
+          el.className = 'status ' + type;
+          el.textContent = msg;
+        }
+    
+        function hideStatus(id) {
+          const el = document.getElementById(id);
+          el.className = 'status';
+          el.textContent = '';
+        }
+    
+        // ----------------------------------------------------------------
+        // API helpers
+        // ----------------------------------------------------------------
+        async function apiFetch(method, path, body, token) {
+          const opts = {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+          };
+          if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+          if (body)  opts.body = JSON.stringify(body);
+    
+          let resp, data;
+          try {
+            resp = await fetch(path, opts);
+          } catch (e) {
+            return { ok: false, status: 0, data: null, err: e.message };
+          }
+    
+          try {
+            data = await resp.json();
+          } catch (_) {
+            data = null;
+          }
+    
+          return { ok: resp.ok, status: resp.status, data, err: null };
+        }
+    
+        // ----------------------------------------------------------------
+        // Register
+        // ----------------------------------------------------------------
+        async function doRegister() {
+          const name     = document.getElementById('reg-name').value.trim();
+          const email    = document.getElementById('reg-email').value.trim();
+          const password = document.getElementById('reg-password').value;
+    
+          if (!email || !password) {
+            showStatus('reg-status', 'error', 'Email and password are required.');
+            return;
+          }
+    
+          showStatus('reg-status', 'info', 'Registering...');
+          const body = { email, password };
+          if (name) body.name = name;
+    
+          const r = await apiFetch('POST', '/api/v1/auth/register', body);
+    
+          if (r.err) {
+            showStatus('reg-status', 'error', 'Network error: ' + r.err);
+            return;
+          }
+    
+          if (r.ok) {
+            showStatus('reg-status', 'success', 'Registered! Status ' + r.status + '\n' + JSON.stringify(r.data, null, 2));
+            document.getElementById('login-email').value    = email;
+            document.getElementById('login-password').value = password;
+          } else {
+            showStatus('reg-status', 'error', 'HTTP ' + r.status + '\n' + JSON.stringify(r.data, null, 2));
+          }
+        }
+    
+        // ----------------------------------------------------------------
+        // Login
+        // ----------------------------------------------------------------
+        async function doLogin() {
+          const email    = document.getElementById('login-email').value.trim();
+          const password = document.getElementById('login-password').value;
+    
+          if (!email || !password) {
+            showStatus('login-status', 'error', 'Email and password are required.');
+            return;
+          }
+    
+          showStatus('login-status', 'info', 'Logging in...');
+          const r = await apiFetch('POST', '/api/v1/auth/login', { email, password });
+    
+          if (r.err) {
+            showStatus('login-status', 'error', 'Network error: ' + r.err);
+            return;
+          }
+    
+          if (r.ok && r.data && r.data.token) {
+            setToken(r.data.token);
+            showStatus('login-status', 'success', 'Login successful! Token stored.');
+          } else if (r.ok) {
+            showStatus('login-status', 'success', 'HTTP ' + r.status + '\n' + JSON.stringify(r.data, null, 2));
+          } else {
+            showStatus('login-status', 'error', 'HTTP ' + r.status + '\n' + JSON.stringify(r.data, null, 2));
+          }
+        }
+    
+        // ----------------------------------------------------------------
+        // Profile
+        // ----------------------------------------------------------------
+        function toggleCustomToken() {
+          const lbl   = document.getElementById('custom-token-label');
+          const input = document.getElementById('custom-token');
+          const show  = input.style.display === 'none';
+          lbl.style.display   = show ? 'block' : 'none';
+          input.style.display = show ? 'block' : 'none';
+        }
+    
+        async function doProfileCustom() {
+          toggleCustomToken();
+        }
+    
+        async function doProfile() {
+          const customInput = document.getElementById('custom-token');
+          const customToken = customInput.style.display !== 'none' ? customInput.value.trim() : null;
+          const token       = customToken || getToken();
+    
+          if (!token) {
+            showStatus('profile-status', 'error', 'No token available. Login first or enter a custom token.');
+            return;
+          }
+    
+          showStatus('profile-status', 'info', 'Fetching profile...');
+          const r = await apiFetch('GET', '/api/v1/auth/profile', null, token);
+    
+          if (r.err) {
+            showStatus('profile-status', 'error', 'Network error: ' + r.err);
+            return;
+          }
+    
+          const profileData = document.getElementById('profile-data');
+          const profileGrid = document.getElementById('profile-grid');
+    
+          if (r.ok && r.data) {
+            showStatus('profile-status', 'success', 'Profile loaded (HTTP ' + r.status + ')');
+            profileData.style.display = 'block';
+            profileGrid.innerHTML = '';
+    
+            const flat = flattenObj(r.data);
+            for (const [k, v] of Object.entries(flat)) {
+              profileGrid.innerHTML += `<span class="key">${esc(k)}</span><span class="val">${esc(String(v))}</span>`;
+            }
+          } else {
+            profileData.style.display = 'none';
+            showStatus('profile-status', 'error', 'HTTP ' + r.status + '\n' + JSON.stringify(r.data, null, 2));
+          }
+        }
+    
+        function flattenObj(obj, prefix) {
+          prefix = prefix || '';
+          const out = {};
+          for (const [k, v] of Object.entries(obj)) {
+            const key = prefix ? prefix + '.' + k : k;
+            if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+              Object.assign(out, flattenObj(v, key));
+            } else {
+              out[key] = Array.isArray(v) ? JSON.stringify(v) : v;
+            }
+          }
+          return out;
+        }
+    
+        function esc(s) {
+          return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+    
+        // ----------------------------------------------------------------
+        // Test Runner
+        // ----------------------------------------------------------------
+        async function runAllTests() {
+          const log     = document.getElementById('test-log');
+          const summary = document.getElementById('test-summary');
+    
+          log.innerHTML = '';
+          log.classList.add('visible');
+          summary.classList.remove('visible', 'all-pass', 'has-fail');
+          summary.style.display = 'none';
+    
+          let passed = 0;
+          let failed = 0;
+    
+          function write(cls, msg) {
+            log.innerHTML += `<div class="${cls}">${esc(msg)}</div>`;
+            log.scrollTop = log.scrollHeight;
+          }
+    
+          function pass(msg) { passed++; write('pass', '  PASS  ' + msg); }
+          function fail(msg) { failed++; write('fail', '  FAIL  ' + msg); }
+          function info(msg) { write('info', '         ' + msg); }
+          function head(msg) { write('head', '\n-- ' + msg + ' --'); }
+    
+          const uid   = Date.now();
+          const email = `test-${uid}@example.com`;
+          const pass1 = 'hunter2-correct';
+          const name  = 'Test User ' + uid;
+    
+          // ---- 1. Register ----
+          head('Register new user');
+          info(`email: ${email}`);
+          {
+            const r = await apiFetch('POST', '/api/v1/auth/register', { email, password: pass1, name });
+            if (r.err) {
+              fail('Network error: ' + r.err);
+            } else if (r.ok) {
+              pass(`Register returned ${r.status}`);
+            } else {
+              fail(`Expected 2xx, got ${r.status}: ${JSON.stringify(r.data)}`);
+            }
+          }
+    
+          // ---- 2. Duplicate registration ----
+          head('Duplicate registration (expect 4xx)');
+          {
+            const r = await apiFetch('POST', '/api/v1/auth/register', { email, password: pass1, name });
+            if (r.err) {
+              fail('Network error: ' + r.err);
+            } else if (!r.ok) {
+              pass(`Duplicate registration correctly rejected with ${r.status}`);
+            } else {
+              fail(`Expected 4xx for duplicate, got ${r.status}`);
+            }
+          }
+    
+          // ---- 3. Login with correct credentials ----
+          head('Login with correct credentials');
+          let token = null;
+          {
+            const r = await apiFetch('POST', '/api/v1/auth/login', { email, password: pass1 });
+            if (r.err) {
+              fail('Network error: ' + r.err);
+            } else if (r.ok && r.data && r.data.token) {
+              token = r.data.token;
+              pass(`Login returned ${r.status} with token`);
+              info('token prefix: ' + token.substring(0, 20) + '...');
+            } else if (r.ok) {
+              fail(`Login returned ${r.status} but no token in response: ${JSON.stringify(r.data)}`);
+            } else {
+              fail(`Login failed with ${r.status}: ${JSON.stringify(r.data)}`);
+            }
+          }
+    
+          // ---- 4. Login with wrong password ----
+          head('Login with wrong password (expect 4xx)');
+          {
+            const r = await apiFetch('POST', '/api/v1/auth/login', { email, password: 'wrong-password-xyz' });
+            if (r.err) {
+              fail('Network error: ' + r.err);
+            } else if (!r.ok) {
+              pass(`Wrong password correctly rejected with ${r.status}`);
+            } else {
+              fail(`Expected 4xx for wrong password, got ${r.status}`);
+            }
+          }
+    
+          // ---- 5. Profile with valid token ----
+          head('Get profile with valid token');
+          if (token) {
+            const r = await apiFetch('GET', '/api/v1/auth/profile', null, token);
+            if (r.err) {
+              fail('Network error: ' + r.err);
+            } else if (r.ok) {
+              pass(`Profile returned ${r.status}`);
+              const keys = Object.keys(r.data || {}).join(', ');
+              info(`response fields: ${keys}`);
+            } else {
+              fail(`Profile failed with ${r.status}: ${JSON.stringify(r.data)}`);
+            }
+          } else {
+            fail('Skipped — no token available from login step');
+          }
+    
+          // ---- 6. Profile without token ----
+          head('Get profile without token (expect 401)');
+          {
+            const r = await apiFetch('GET', '/api/v1/auth/profile', null, null);
+            if (r.err) {
+              fail('Network error: ' + r.err);
+            } else if (r.status === 401) {
+              pass(`Unauthenticated request correctly returned 401`);
+            } else if (!r.ok) {
+              pass(`Unauthenticated request rejected with ${r.status} (acceptable)`);
+            } else {
+              fail(`Expected 401, got ${r.status} — profile should require auth`);
+            }
+          }
+    
+          // ---- 7. Profile with invalid/garbage token ----
+          head('Get profile with invalid token (expect 401)');
+          {
+            const r = await apiFetch('GET', '/api/v1/auth/profile', null, 'not-a-real-jwt-token');
+            if (r.err) {
+              fail('Network error: ' + r.err);
+            } else if (r.status === 401) {
+              pass(`Invalid token correctly returned 401`);
+            } else if (!r.ok) {
+              pass(`Invalid token rejected with ${r.status} (acceptable)`);
+            } else {
+              fail(`Expected 401 for invalid token, got ${r.status}`);
+            }
+          }
+    
+          // ---- 8. Login with missing fields ----
+          head('Login with empty body (expect 4xx)');
+          {
+            const r = await apiFetch('POST', '/api/v1/auth/login', {});
+            if (r.err) {
+              fail('Network error: ' + r.err);
+            } else if (!r.ok) {
+              pass(`Empty login body correctly rejected with ${r.status}`);
+            } else {
+              fail(`Expected 4xx for empty body, got ${r.status}`);
+            }
+          }
+    
+          // ---- Summary ----
+          write('info', '');
+          const total = passed + failed;
+          const summaryText = `${passed}/${total} passed, ${failed} failed`;
+    
+          summary.textContent = failed === 0
+            ? `All tests passed: ${summaryText}`
+            : `Tests completed with failures: ${summaryText}`;
+          summary.className  = 'test-summary visible ' + (failed === 0 ? 'all-pass' : 'has-fail');
+          summary.style.display = 'block';
+        }
+      </script>
+    </body>
+    </html>
+    

@@ -37,6 +37,15 @@ data:
           secret: "scenario-20-auth-secret-key-minimum-32-bytes"
           issuer: "scenario-20-auth"
           tokenExpiry: "24h"
+          allowRegistration: true
+        dependsOn: [router]
+
+      - name: ui
+        type: static.fileserver
+        config:
+          root: "/ui-dist"
+          prefix: "/ui"
+          spaFallback: true
         dependsOn: [router]
 
     workflows:

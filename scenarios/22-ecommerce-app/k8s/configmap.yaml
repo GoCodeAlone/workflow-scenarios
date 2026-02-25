@@ -1,0 +1,480 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app
+  namespace: wf-scenario-22
+data:
+  app.yaml: |
+    modules:
+      - name: server
+        type: http.server
+        config:
+          address: ":8080"
+    
+      - name: router
+        type: http.router
+        dependsOn: [server]
+    
+      - name: db
+        type: storage.sqlite
+        config:
+          dbPath: "/data/scenario.db"
+          maxConnections: 5
+          walMode: true
+    
+      - name: ui
+        type: static.fileserver
+        config:
+          root: "/ui-dist"
+          prefix: "/ui"
+          spaFallback: true
+        dependsOn: [router]
+    
+    workflows:
+      http:
+        router: router
+        server: server
+        routes: []
+    
+    pipelines:
+      health:
+        trigger:
+          type: http
+          config:
+            path: /healthz
+            method: GET
+        steps:
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body:
+                status: ok
+                scenario: "22-ecommerce-app"
+    
+      init-db:
+        trigger:
+          type: http
+          config:
+            path: /internal/init-db
+            method: POST
+        steps:
+          - name: create-products-table
+            type: step.db_exec
+            config:
+              database: db
+              ignore_error: true
+              query: |
+                CREATE TABLE IF NOT EXISTS products (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  name TEXT NOT NULL,
+                  description TEXT,
+                  price REAL NOT NULL,
+                  stock INTEGER DEFAULT 0,
+                  created_at TEXT DEFAULT (datetime('now'))
+                )
+          - name: create-orders-table
+            type: step.db_exec
+            config:
+              database: db
+              ignore_error: true
+              query: |
+                CREATE TABLE IF NOT EXISTS orders (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  product_id INTEGER,
+                  quantity INTEGER,
+                  total REAL,
+                  status TEXT DEFAULT 'pending_payment',
+                  payment_id TEXT,
+                  created_at TEXT DEFAULT (datetime('now'))
+                )
+          - name: create-order-events-table
+            type: step.db_exec
+            config:
+              database: db
+              ignore_error: true
+              query: |
+                CREATE TABLE IF NOT EXISTS order_events (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  order_id INTEGER,
+                  event_type TEXT,
+                  details TEXT,
+                  created_at TEXT DEFAULT (datetime('now'))
+                )
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body:
+                status: ok
+                message: database initialized
+    
+      create-product:
+        trigger:
+          type: http
+          config:
+            path: /api/v1/products
+            method: POST
+        steps:
+          - name: parse-body
+            type: step.request_parse
+            config:
+              parse_body: true
+          - name: insert-product
+            type: step.db_exec
+            config:
+              database: db
+              query: "INSERT INTO products (name, description, price, stock) VALUES (?, ?, ?, ?)"
+              params:
+                - "{{ .body.name }}"
+                - "{{ .body.description | default \"\" }}"
+                - "{{ .body.price }}"
+                - "{{ .body.stock | default 0 }}"
+          - name: fetch-new
+            type: step.db_query
+            config:
+              database: db
+              query: "SELECT id, name, description, price, stock, created_at FROM products ORDER BY id DESC LIMIT 1"
+              mode: single
+          - name: respond
+            type: step.json_response
+            config:
+              status: 201
+              body_from: "steps.fetch-new.row"
+    
+      list-products:
+        trigger:
+          type: http
+          config:
+            path: /api/v1/products
+            method: GET
+        steps:
+          - name: get-products
+            type: step.db_query
+            config:
+              database: db
+              query: "SELECT id, name, description, price, stock, created_at FROM products ORDER BY id ASC"
+              mode: list
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body_from: "steps.get-products.rows"
+    
+      get-product:
+        trigger:
+          type: http
+          config:
+            path: /api/v1/products/{id}
+            method: GET
+        steps:
+          - name: fetch-product
+            type: step.db_query
+            config:
+              database: db
+              query: "SELECT id, name, description, price, stock, created_at FROM products WHERE id = ?"
+              params:
+                - "{{ .id }}"
+              mode: single
+          - name: check-exists
+            type: step.conditional
+            config:
+              field: steps.fetch-product.found
+              routes:
+                "false": not-found
+              default: respond-product
+          - name: not-found
+            type: step.json_response
+            config:
+              status: 404
+              body:
+                error: product not found
+          - name: respond-product
+            type: step.json_response
+            config:
+              status: 200
+              body_from: "steps.fetch-product.row"
+    
+      update-product:
+        trigger:
+          type: http
+          config:
+            path: /api/v1/products/{id}
+            method: PUT
+        steps:
+          - name: parse-body
+            type: step.request_parse
+            config:
+              parse_body: true
+          - name: fetch-product
+            type: step.db_query
+            config:
+              database: db
+              query: "SELECT id FROM products WHERE id = ?"
+              params:
+                - "{{ .id }}"
+              mode: single
+          - name: check-exists
+            type: step.conditional
+            config:
+              field: steps.fetch-product.found
+              routes:
+                "false": not-found
+              default: do-update
+          - name: not-found
+            type: step.json_response
+            config:
+              status: 404
+              body:
+                error: product not found
+          - name: do-update
+            type: step.db_exec
+            config:
+              database: db
+              query: "UPDATE products SET price = COALESCE(NULLIF(?, ''), price), stock = COALESCE(NULLIF(?, ''), stock) WHERE id = ?"
+              params:
+                - "{{ .body.price | default \"\" }}"
+                - "{{ .body.stock | default \"\" }}"
+                - "{{ .id }}"
+          - name: fetch-updated
+            type: step.db_query
+            config:
+              database: db
+              query: "SELECT id, name, description, price, stock, created_at FROM products WHERE id = ?"
+              params:
+                - "{{ .id }}"
+              mode: single
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body_from: "steps.fetch-updated.row"
+    
+      create-order:
+        trigger:
+          type: http
+          config:
+            path: /api/v1/orders
+            method: POST
+        steps:
+          - name: parse-body
+            type: step.request_parse
+            config:
+              parse_body: true
+          - name: fetch-product
+            type: step.db_query
+            config:
+              database: db
+              query: "SELECT id, name, price, stock FROM products WHERE id = ?"
+              params:
+                - "{{ .body.product_id }}"
+              mode: single
+          - name: check-product
+            type: step.conditional
+            config:
+              field: steps.fetch-product.found
+              routes:
+                "false": product-not-found
+              default: do-create-order
+          - name: product-not-found
+            type: step.json_response
+            config:
+              status: 404
+              body:
+                error: product not found
+          - name: do-create-order
+            type: step.db_exec
+            config:
+              database: db
+              query: "INSERT INTO orders (product_id, quantity, total, status) VALUES (?, ?, (SELECT price * ? FROM products WHERE id = ?), 'pending_payment')"
+              params:
+                - "{{ .body.product_id }}"
+                - "{{ .body.quantity }}"
+                - "{{ .body.quantity }}"
+                - "{{ .body.product_id }}"
+          - name: fetch-order
+            type: step.db_query
+            config:
+              database: db
+              query: "SELECT id, product_id, quantity, total, status, payment_id, created_at FROM orders ORDER BY id DESC LIMIT 1"
+              mode: single
+          - name: call-payment
+            type: step.http_call
+            config:
+              url: "http://workflow-server.wf-scenario-21.svc.cluster.local:8080/api/v1/payments"
+              method: POST
+              headers:
+                Content-Type: "application/json"
+              body:
+                amount: '{{ index .steps "fetch-order" "row" "total" }}'
+                currency: "USD"
+                order_id: '{{ index .steps "fetch-order" "row" "id" }}'
+                callback_url: "http://workflow-server.wf-scenario-22.svc.cluster.local:8080/webhooks/payment"
+              timeout: "10s"
+          - name: store-payment-id
+            type: step.db_exec
+            config:
+              database: db
+              query: "UPDATE orders SET payment_id = ? WHERE id = ?"
+              params:
+                - "{{ index .steps \"call-payment\" \"body\" \"id\" }}"
+                - "{{ index .steps \"fetch-order\" \"row\" \"id\" }}"
+          - name: fetch-final
+            type: step.db_query
+            config:
+              database: db
+              query: "SELECT id, product_id, quantity, total, status, payment_id, created_at FROM orders WHERE id = ?"
+              params:
+                - "{{ index .steps \"fetch-order\" \"row\" \"id\" }}"
+              mode: single
+          - name: respond
+            type: step.json_response
+            config:
+              status: 201
+              body_from: "steps.fetch-final.row"
+    
+      list-orders:
+        trigger:
+          type: http
+          config:
+            path: /api/v1/orders
+            method: GET
+        steps:
+          - name: get-orders
+            type: step.db_query
+            config:
+              database: db
+              query: "SELECT id, product_id, quantity, total, status, payment_id, created_at FROM orders ORDER BY id DESC"
+              mode: list
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body_from: "steps.get-orders.rows"
+    
+      get-order:
+        trigger:
+          type: http
+          config:
+            path: /api/v1/orders/{id}
+            method: GET
+        steps:
+          - name: fetch-order
+            type: step.db_query
+            config:
+              database: db
+              query: "SELECT id, product_id, quantity, total, status, payment_id, created_at FROM orders WHERE id = ?"
+              params:
+                - "{{ .id }}"
+              mode: single
+          - name: check-exists
+            type: step.conditional
+            config:
+              field: steps.fetch-order.found
+              routes:
+                "false": not-found
+              default: respond-order
+          - name: not-found
+            type: step.json_response
+            config:
+              status: 404
+              body:
+                error: order not found
+          - name: respond-order
+            type: step.json_response
+            config:
+              status: 200
+              body_from: "steps.fetch-order.row"
+    
+      payment-webhook:
+        trigger:
+          type: http
+          config:
+            path: /webhooks/payment
+            method: POST
+        steps:
+          - name: parse-body
+            type: step.request_parse
+            config:
+              parse_body: true
+          - name: fetch-order
+            type: step.db_query
+            config:
+              database: db
+              query: "SELECT id, status FROM orders WHERE id = ?"
+              params:
+                - "{{ .body.order_id }}"
+              mode: single
+          - name: check-order-exists
+            type: step.conditional
+            config:
+              field: steps.fetch-order.found
+              routes:
+                "false": order-not-found
+              default: check-payment-status
+          - name: order-not-found
+            type: step.json_response
+            config:
+              status: 404
+              body:
+                error: order not found
+          - name: check-payment-status
+            type: step.conditional
+            config:
+              field: body.status
+              routes:
+                "captured": mark-paid
+                "failed": mark-failed
+              default: unknown-status
+          - name: unknown-status
+            type: step.json_response
+            config:
+              status: 200
+              body:
+                received: true
+                action: none
+          - name: mark-paid
+            type: step.db_exec
+            config:
+              database: db
+              query: "UPDATE orders SET status = 'paid' WHERE id = ?"
+              params:
+                - "{{ .body.order_id }}"
+          - name: record-paid-event
+            type: step.db_exec
+            config:
+              database: db
+              query: "INSERT INTO order_events (order_id, event_type, details) VALUES (?, 'payment_captured', ?)"
+              params:
+                - "{{ .body.order_id }}"
+                - '{"payment_id":"{{ .body.payment_id }}","amount":{{ .body.amount }}}'
+          - name: respond-paid
+            type: step.json_response
+            config:
+              status: 200
+              body:
+                received: true
+                order_status: paid
+          - name: mark-failed
+            type: step.db_exec
+            config:
+              database: db
+              query: "UPDATE orders SET status = 'payment_failed' WHERE id = ?"
+              params:
+                - "{{ .body.order_id }}"
+          - name: record-failed-event
+            type: step.db_exec
+            config:
+              database: db
+              query: "INSERT INTO order_events (order_id, event_type, details) VALUES (?, 'payment_failed', ?)"
+              params:
+                - "{{ .body.order_id }}"
+                - '{"payment_id":"{{ .body.payment_id }}"}'
+          - name: respond-failed
+            type: step.json_response
+            config:
+              status: 200
+              body:
+                received: true
+                order_status: payment_failed
+    

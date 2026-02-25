@@ -1,1 +1,4 @@
 scenarios/*/test/artifacts/
+scenarios/*/ui/node_modules/
+scenarios/*/ui/dist/
+.playwright-cli/

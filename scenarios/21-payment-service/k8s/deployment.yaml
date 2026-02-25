@@ -41,6 +41,8 @@ spec:
               mountPath: /config
             - name: data
               mountPath: /data
+            - name: ui
+              mountPath: /ui-dist
       volumes:
         - name: config
           configMap:
@@ -48,6 +50,9 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: scenario-21-data
+        - name: ui
+          configMap:
+            name: ui
 ---
 apiVersion: v1
 kind: Service

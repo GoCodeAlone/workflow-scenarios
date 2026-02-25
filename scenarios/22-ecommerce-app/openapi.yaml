@@ -1,0 +1,245 @@
+openapi: 3.0.3
+info:
+  title: Ecommerce App
+  version: 1.0.0
+paths:
+  /api/v1/orders:
+    get:
+      summary: 'GET /api/v1/orders (pipeline: list-orders)'
+      operationId: getApiV1Orders
+      tags:
+        - pipelines
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+    post:
+      summary: 'POST /api/v1/orders (pipeline: create-order)'
+      operationId: postApiV1Orders
+      tags:
+        - pipelines
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /api/v1/orders/{id}:
+    get:
+      summary: 'GET /api/v1/orders/{id} (pipeline: get-order)'
+      operationId: getApiV1OrdersById
+      tags:
+        - pipelines
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /api/v1/products:
+    get:
+      summary: 'GET /api/v1/products (pipeline: list-products)'
+      operationId: getApiV1Products
+      tags:
+        - pipelines
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+    post:
+      summary: 'POST /api/v1/products (pipeline: create-product)'
+      operationId: postApiV1Products
+      tags:
+        - pipelines
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /api/v1/products/{id}:
+    get:
+      summary: 'GET /api/v1/products/{id} (pipeline: get-product)'
+      operationId: getApiV1ProductsById
+      tags:
+        - pipelines
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+    put:
+      summary: 'PUT /api/v1/products/{id} (pipeline: update-product)'
+      operationId: putApiV1ProductsById
+      tags:
+        - pipelines
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /healthz:
+    get:
+      summary: 'GET /healthz (pipeline: health)'
+      operationId: getHealthz
+      tags:
+        - pipelines
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scenario:
+                    type: string
+                  status:
+                    type: string
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /internal/init-db:
+    post:
+      summary: 'POST /internal/init-db (pipeline: init-db)'
+      operationId: postInternalInitDb
+      tags:
+        - pipelines
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /webhooks/payment:
+    post:
+      summary: 'POST /webhooks/payment (pipeline: payment-webhook)'
+      operationId: postWebhooksPayment
+      tags:
+        - pipelines
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error

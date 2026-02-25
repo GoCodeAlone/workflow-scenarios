@@ -27,6 +27,8 @@ spec:
               mountPath: /config
             - name: data
               mountPath: /data
+            - name: ui
+              mountPath: /ui-dist
           resources:
             limits:
               cpu: 200m
@@ -48,3 +50,6 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: scenario-22-data
+        - name: ui
+          configMap:
+            name: ui

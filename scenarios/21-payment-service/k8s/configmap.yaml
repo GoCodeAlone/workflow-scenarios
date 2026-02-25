@@ -35,6 +35,14 @@ data:
           maxConnections: 5
           walMode: true
 
+      - name: ui
+        type: static.fileserver
+        config:
+          root: "/ui-dist"
+          prefix: "/ui"
+          spaFallback: true
+        dependsOn: [router]
+
     workflows:
       http:
         router: router

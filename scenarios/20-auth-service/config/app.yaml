@@ -33,6 +33,14 @@ modules:
       allowRegistration: true
     dependsOn: [router]
 
+  - name: ui
+    type: static.fileserver
+    config:
+      root: "/ui-dist"
+      prefix: "/ui"
+      spaFallback: true
+    dependsOn: [router]
+
 workflows:
   http:
     router: router

@@ -1,0 +1,965 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ui
+  namespace: wf-scenario-21
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Payment Service — Scenario 21</title>
+      <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    
+        :root {
+          --bg: #0d0d0f;
+          --surface: #16181c;
+          --surface2: #1e2128;
+          --border: #2a2d36;
+          --text: #d4d8e2;
+          --muted: #6b7280;
+          --accent: #3b82f6;
+          --accent-dim: #1d3a6e;
+          --green: #22c55e;
+          --green-dim: #14532d;
+          --yellow: #eab308;
+          --yellow-dim: #713f12;
+          --red: #ef4444;
+          --red-dim: #7f1d1d;
+          --purple: #a855f7;
+          --purple-dim: #581c87;
+          --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Courier New', monospace;
+        }
+    
+        html, body {
+          height: 100%;
+          background: var(--bg);
+          color: var(--text);
+          font-family: var(--mono);
+          font-size: 13px;
+          line-height: 1.6;
+        }
+    
+        header {
+          background: var(--surface);
+          border-bottom: 1px solid var(--border);
+          padding: 12px 24px;
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+    
+        header .badge {
+          background: var(--accent-dim);
+          color: var(--accent);
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 11px;
+          letter-spacing: 0.05em;
+        }
+    
+        header h1 { font-size: 15px; font-weight: 600; color: var(--text); }
+        header .sub { font-size: 11px; color: var(--muted); margin-left: auto; }
+    
+        .layout {
+          display: grid;
+          grid-template-columns: 380px 1fr;
+          height: calc(100vh - 49px);
+        }
+    
+        .sidebar {
+          background: var(--surface);
+          border-right: 1px solid var(--border);
+          overflow-y: auto;
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+    
+        .main {
+          overflow-y: auto;
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+    
+        .card {
+          background: var(--surface2);
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          overflow: hidden;
+        }
+    
+        .card-header {
+          padding: 10px 14px;
+          border-bottom: 1px solid var(--border);
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--muted);
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+    
+        .card-header .dot {
+          width: 6px; height: 6px;
+          border-radius: 50%;
+          background: var(--accent);
+          flex-shrink: 0;
+        }
+    
+        .card-body { padding: 14px; }
+    
+        label {
+          display: block;
+          font-size: 11px;
+          color: var(--muted);
+          margin-bottom: 4px;
+          letter-spacing: 0.04em;
+        }
+    
+        input, select, textarea {
+          width: 100%;
+          background: var(--bg);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: var(--text);
+          font-family: var(--mono);
+          font-size: 12px;
+          padding: 7px 10px;
+          outline: none;
+          transition: border-color 0.15s;
+          margin-bottom: 10px;
+        }
+    
+        input:focus, select:focus, textarea:focus {
+          border-color: var(--accent);
+        }
+    
+        select option { background: var(--surface2); }
+    
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .row > * { margin-bottom: 0; }
+        .row label { display: block; }
+    
+        btn, button, .btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 7px 14px;
+          border: 1px solid transparent;
+          border-radius: 4px;
+          font-family: var(--mono);
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: opacity 0.15s;
+          text-decoration: none;
+        }
+    
+        .btn-primary {
+          background: var(--accent);
+          color: #fff;
+          border-color: var(--accent);
+        }
+    
+        .btn-secondary {
+          background: var(--surface);
+          color: var(--text);
+          border-color: var(--border);
+        }
+    
+        .btn-success {
+          background: var(--green-dim);
+          color: var(--green);
+          border-color: var(--green);
+        }
+    
+        .btn-danger {
+          background: var(--red-dim);
+          color: var(--red);
+          border-color: var(--red);
+        }
+    
+        .btn-test {
+          background: var(--purple-dim);
+          color: var(--purple);
+          border-color: var(--purple);
+          width: 100%;
+          justify-content: center;
+          padding: 10px;
+          font-size: 13px;
+        }
+    
+        button:hover, .btn:hover { opacity: 0.85; }
+        button:disabled, .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    
+        .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+    
+        .status-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 2px 8px;
+          border-radius: 10px;
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.04em;
+        }
+    
+        .status-pending  { background: var(--yellow-dim); color: var(--yellow); }
+        .status-captured { background: var(--green-dim);  color: var(--green); }
+        .status-refunded { background: var(--purple-dim); color: var(--purple); }
+        .status-unknown  { background: var(--surface);    color: var(--muted); }
+    
+        .lifecycle {
+          display: flex;
+          align-items: center;
+          gap: 0;
+          margin: 4px 0;
+        }
+    
+        .lc-step {
+          flex: 1;
+          text-align: center;
+          padding: 6px 4px;
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.05em;
+          border: 1px solid var(--border);
+          color: var(--muted);
+          background: var(--bg);
+          position: relative;
+        }
+    
+        .lc-step:first-child { border-radius: 4px 0 0 4px; }
+        .lc-step:last-child  { border-radius: 0 4px 4px 0; }
+    
+        .lc-step.active-pending  { background: var(--yellow-dim); color: var(--yellow); border-color: var(--yellow); }
+        .lc-step.active-captured { background: var(--green-dim);  color: var(--green);  border-color: var(--green); }
+        .lc-step.active-refunded { background: var(--purple-dim); color: var(--purple); border-color: var(--purple); }
+    
+        .lc-arrow {
+          font-size: 10px;
+          color: var(--border);
+          padding: 0 2px;
+          z-index: 1;
+          margin: 0 -1px;
+        }
+    
+        .kv-grid {
+          display: grid;
+          grid-template-columns: 110px 1fr;
+          gap: 2px 8px;
+          font-size: 12px;
+        }
+    
+        .kv-grid .k { color: var(--muted); }
+        .kv-grid .v { color: var(--text); word-break: break-all; }
+    
+        .payment-card {
+          background: var(--bg);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          padding: 10px 12px;
+          margin-bottom: 8px;
+          cursor: pointer;
+          transition: border-color 0.15s;
+        }
+    
+        .payment-card:hover { border-color: var(--accent); }
+        .payment-card:last-child { margin-bottom: 0; }
+    
+        .payment-card-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 4px;
+        }
+    
+        .payment-card-id {
+          font-size: 11px;
+          color: var(--accent);
+        }
+    
+        .payment-card-meta {
+          font-size: 11px;
+          color: var(--muted);
+        }
+    
+        .log {
+          background: var(--bg);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          padding: 10px;
+          font-size: 11px;
+          max-height: 260px;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+        }
+    
+        .log-entry {
+          display: flex;
+          gap: 8px;
+          align-items: flex-start;
+        }
+    
+        .log-time { color: var(--muted); flex-shrink: 0; }
+        .log-pass { color: var(--green); flex-shrink: 0; font-weight: 700; }
+        .log-fail { color: var(--red);   flex-shrink: 0; font-weight: 700; }
+        .log-info { color: var(--accent); flex-shrink: 0; }
+        .log-msg  { color: var(--text); }
+    
+        .test-summary {
+          display: flex;
+          gap: 16px;
+          padding: 10px 14px;
+          border-top: 1px solid var(--border);
+          font-size: 12px;
+        }
+    
+        .test-summary .pass { color: var(--green); }
+        .test-summary .fail { color: var(--red); }
+        .test-summary .total { color: var(--muted); }
+    
+        .response-block {
+          background: var(--bg);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          padding: 10px;
+          font-size: 11px;
+          white-space: pre-wrap;
+          word-break: break-all;
+          color: var(--text);
+          max-height: 200px;
+          overflow-y: auto;
+        }
+    
+        .empty-state {
+          color: var(--muted);
+          font-size: 12px;
+          text-align: center;
+          padding: 20px;
+        }
+    
+        .error-msg {
+          background: var(--red-dim);
+          color: var(--red);
+          border: 1px solid var(--red);
+          border-radius: 4px;
+          padding: 8px 12px;
+          font-size: 12px;
+          margin-top: 6px;
+        }
+    
+        .success-msg {
+          background: var(--green-dim);
+          color: var(--green);
+          border: 1px solid var(--green);
+          border-radius: 4px;
+          padding: 8px 12px;
+          font-size: 12px;
+          margin-top: 6px;
+        }
+    
+        .spinner {
+          display: inline-block;
+          width: 12px; height: 12px;
+          border: 2px solid var(--border);
+          border-top-color: var(--accent);
+          border-radius: 50%;
+          animation: spin 0.6s linear infinite;
+        }
+    
+        @keyframes spin { to { transform: rotate(360deg); } }
+    
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+    
+        .section-divider {
+          border: none;
+          border-top: 1px solid var(--border);
+          margin: 4px 0;
+        }
+    
+        .amount-display {
+          font-size: 20px;
+          font-weight: 700;
+          color: var(--text);
+        }
+    
+        .currency-symbol { color: var(--muted); font-size: 14px; }
+      </style>
+    </head>
+    <body>
+    
+    <header>
+      <span class="badge">scenario 21</span>
+      <h1>Payment Service</h1>
+      <span class="sub">workflow engine · static.fileserver demo</span>
+    </header>
+    
+    <div class="layout">
+      <!-- SIDEBAR: forms and actions -->
+      <div class="sidebar">
+    
+        <!-- Create Payment -->
+        <div class="card">
+          <div class="card-header"><span class="dot"></span>Create Payment</div>
+          <div class="card-body">
+            <div class="row">
+              <div>
+                <label>Amount</label>
+                <input type="number" id="create-amount" placeholder="100.00" min="0.01" step="0.01" value="99.99">
+              </div>
+              <div>
+                <label>Currency</label>
+                <select id="create-currency">
+                  <option value="USD" selected>USD</option>
+                  <option value="EUR">EUR</option>
+                  <option value="GBP">GBP</option>
+                </select>
+              </div>
+            </div>
+            <label>Order ID</label>
+            <input type="text" id="create-order-id" placeholder="ORD-001">
+            <label>Callback URL (optional)</label>
+            <input type="text" id="create-callback" placeholder="https://example.com/webhook">
+            <button class="btn btn-primary" onclick="createPayment()">
+              <span id="create-spinner" style="display:none" class="spinner"></span>
+              POST /api/v1/payments
+            </button>
+            <div id="create-result"></div>
+          </div>
+        </div>
+    
+        <!-- Payment Lookup -->
+        <div class="card">
+          <div class="card-header"><span class="dot" style="background:var(--yellow)"></span>Lookup Payment</div>
+          <div class="card-body">
+            <label>Payment ID</label>
+            <input type="text" id="lookup-id" placeholder="uuid...">
+            <button class="btn btn-secondary" onclick="lookupPayment()">
+              GET /api/v1/payments/{id}
+            </button>
+            <div id="lookup-result"></div>
+          </div>
+        </div>
+    
+        <!-- Payment Actions -->
+        <div class="card">
+          <div class="card-header"><span class="dot" style="background:var(--green)"></span>Payment Actions</div>
+          <div class="card-body">
+            <label>Payment ID</label>
+            <input type="text" id="action-id" placeholder="uuid...">
+            <div class="btn-group">
+              <button class="btn btn-success" onclick="capturePayment()">
+                Capture
+              </button>
+              <button class="btn btn-danger" onclick="refundPayment()">
+                Refund
+              </button>
+            </div>
+            <div id="action-result"></div>
+          </div>
+        </div>
+    
+        <!-- Run All Tests -->
+        <div class="card">
+          <div class="card-header"><span class="dot" style="background:var(--purple)"></span>Automated Tests</div>
+          <div class="card-body">
+            <button class="btn btn-test" id="run-tests-btn" onclick="runAllTests()">
+              <span id="test-spinner" style="display:none" class="spinner"></span>
+              Run All Tests
+            </button>
+            <div id="test-summary" style="display:none" class="test-summary">
+              <span class="pass" id="test-pass-count">0 passed</span>
+              <span class="fail" id="test-fail-count">0 failed</span>
+              <span class="total" id="test-total-count">0 total</span>
+            </div>
+            <div id="test-log" class="log" style="display:none; margin-top:10px;"></div>
+          </div>
+        </div>
+    
+      </div>
+    
+      <!-- MAIN: detail view and history -->
+      <div class="main">
+    
+        <!-- Selected Payment Detail -->
+        <div class="card" id="detail-card">
+          <div class="card-header"><span class="dot" style="background:var(--yellow)"></span>Payment Detail</div>
+          <div class="card-body" id="detail-body">
+            <div class="empty-state">Select a payment or perform a lookup to see details here.</div>
+          </div>
+        </div>
+    
+        <!-- Status Lifecycle -->
+        <div class="card">
+          <div class="card-header"><span class="dot" style="background:var(--green)"></span>Status Lifecycle</div>
+          <div class="card-body">
+            <div class="lifecycle" id="lifecycle-bar">
+              <div class="lc-step" id="lc-pending">PENDING</div>
+              <div class="lc-arrow">→</div>
+              <div class="lc-step" id="lc-captured">CAPTURED</div>
+              <div class="lc-arrow">→</div>
+              <div class="lc-step" id="lc-refunded">REFUNDED</div>
+            </div>
+            <div style="margin-top:8px; font-size:11px; color:var(--muted)">
+              Lifecycle reflects the currently selected payment's status.
+            </div>
+          </div>
+        </div>
+    
+        <!-- Recent Payments -->
+        <div class="card">
+          <div class="card-header">
+            <span class="dot" style="background:var(--accent)"></span>
+            Recent Payments
+            <span style="margin-left:auto">
+              <button class="btn btn-secondary" style="padding:3px 10px;font-size:11px" onclick="refreshHistory()">Refresh</button>
+            </span>
+          </div>
+          <div class="card-body" id="history-body">
+            <div class="empty-state">Payments created in this session will appear here.</div>
+          </div>
+        </div>
+    
+      </div>
+    </div>
+    
+    <script>
+      // ─── State ────────────────────────────────────────────────────────────────
+      const sessionPayments = [];   // IDs created this session
+      let selectedPayment = null;
+    
+      // ─── Utils ────────────────────────────────────────────────────────────────
+      function ts() {
+        return new Date().toTimeString().slice(0, 8);
+      }
+    
+      function currencySymbol(c) {
+        return { USD: '$', EUR: '€', GBP: '£' }[c] || c;
+      }
+    
+      function formatAmount(amount, currency) {
+        const sym = currencySymbol(currency);
+        return `${sym}${parseFloat(amount).toFixed(2)}`;
+      }
+    
+      function statusBadge(status) {
+        return `<span class="status-badge status-${status || 'unknown'}">${(status || 'unknown').toUpperCase()}</span>`;
+      }
+    
+      function updateLifecycle(status) {
+        ['pending', 'captured', 'refunded'].forEach(s => {
+          const el = document.getElementById(`lc-${s}`);
+          el.className = 'lc-step' + (s === status ? ` active-${s}` : '');
+        });
+      }
+    
+      function showPaymentDetail(p) {
+        selectedPayment = p;
+        updateLifecycle(p.status);
+        // Populate action field for convenience
+        document.getElementById('action-id').value = p.id;
+        document.getElementById('lookup-id').value = p.id;
+    
+        const body = document.getElementById('detail-body');
+        body.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div>
+              <div class="amount-display">
+                <span class="currency-symbol">${currencySymbol(p.currency)}</span>${parseFloat(p.amount).toFixed(2)}
+              </div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">${p.currency}</div>
+            </div>
+            ${statusBadge(p.status)}
+          </div>
+          <hr class="section-divider" style="margin-bottom:12px">
+          <div class="kv-grid">
+            <span class="k">id</span>           <span class="v">${p.id}</span>
+            <span class="k">order_id</span>     <span class="v">${p.order_id || '—'}</span>
+            <span class="k">status</span>       <span class="v">${p.status}</span>
+            <span class="k">currency</span>     <span class="v">${p.currency}</span>
+            <span class="k">amount</span>       <span class="v">${p.amount}</span>
+            <span class="k">callback_url</span> <span class="v">${p.callback_url || '—'}</span>
+            <span class="k">created_at</span>   <span class="v">${p.created_at || '—'}</span>
+            <span class="k">updated_at</span>   <span class="v">${p.updated_at || '—'}</span>
+          </div>
+        `;
+      }
+    
+      function clearResult(id) {
+        document.getElementById(id).innerHTML = '';
+      }
+    
+      function showResult(id, ok, msg) {
+        document.getElementById(id).innerHTML =
+          `<div class="${ok ? 'success-msg' : 'error-msg'}">${msg}</div>`;
+      }
+    
+      // ─── API helpers ──────────────────────────────────────────────────────────
+      async function apiCall(method, path, body) {
+        const opts = {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+        };
+        if (body) opts.body = JSON.stringify(body);
+        const res = await fetch(path, opts);
+        const text = await res.text();
+        let data;
+        try { data = JSON.parse(text); } catch { data = text; }
+        return { ok: res.ok, status: res.status, data };
+      }
+    
+      // ─── Create Payment ───────────────────────────────────────────────────────
+      async function createPayment() {
+        const amount = parseFloat(document.getElementById('create-amount').value);
+        const currency = document.getElementById('create-currency').value;
+        const orderId = document.getElementById('create-order-id').value.trim();
+        const callback = document.getElementById('create-callback').value.trim();
+    
+        if (!amount || !orderId) {
+          showResult('create-result', false, 'Amount and Order ID are required.');
+          return;
+        }
+    
+        const sp = document.getElementById('create-spinner');
+        sp.style.display = 'inline-block';
+        clearResult('create-result');
+    
+        const body = { amount, currency, order_id: orderId };
+        if (callback) body.callback_url = callback;
+    
+        const res = await apiCall('POST', '/api/v1/payments', body);
+        sp.style.display = 'none';
+    
+        if (res.ok && res.data && res.data.id) {
+          sessionPayments.unshift(res.data);
+          showPaymentDetail(res.data);
+          renderHistory();
+          showResult('create-result', true, `Created: ${res.data.id}`);
+        } else {
+          showResult('create-result', false, `Error ${res.status}: ${JSON.stringify(res.data)}`);
+        }
+      }
+    
+      // ─── Lookup Payment ───────────────────────────────────────────────────────
+      async function lookupPayment() {
+        const id = document.getElementById('lookup-id').value.trim();
+        if (!id) { showResult('lookup-result', false, 'Enter a payment ID.'); return; }
+        clearResult('lookup-result');
+    
+        const res = await apiCall('GET', `/api/v1/payments/${id}`);
+        if (res.ok && res.data) {
+          showPaymentDetail(res.data);
+          updateSessionPayment(res.data);
+          renderHistory();
+          showResult('lookup-result', true, `Found: ${res.data.status}`);
+        } else {
+          showResult('lookup-result', false, `${res.status}: ${JSON.stringify(res.data)}`);
+        }
+      }
+    
+      // ─── Capture Payment ──────────────────────────────────────────────────────
+      async function capturePayment() {
+        const id = document.getElementById('action-id').value.trim();
+        if (!id) { showResult('action-result', false, 'Enter a payment ID.'); return; }
+        clearResult('action-result');
+    
+        const res = await apiCall('POST', `/api/v1/payments/${id}/capture`);
+        if (res.ok && res.data) {
+          showPaymentDetail(res.data);
+          updateSessionPayment(res.data);
+          renderHistory();
+          showResult('action-result', true, `Captured: ${res.data.id}`);
+        } else {
+          showResult('action-result', false, `${res.status}: ${JSON.stringify(res.data)}`);
+        }
+      }
+    
+      // ─── Refund Payment ───────────────────────────────────────────────────────
+      async function refundPayment() {
+        const id = document.getElementById('action-id').value.trim();
+        if (!id) { showResult('action-result', false, 'Enter a payment ID.'); return; }
+        clearResult('action-result');
+    
+        const res = await apiCall('POST', `/api/v1/payments/${id}/refund`);
+        if (res.ok && res.data) {
+          showPaymentDetail(res.data);
+          updateSessionPayment(res.data);
+          renderHistory();
+          showResult('action-result', true, `Refunded: ${res.data.id}`);
+        } else {
+          showResult('action-result', false, `${res.status}: ${JSON.stringify(res.data)}`);
+        }
+      }
+    
+      // ─── Session history ──────────────────────────────────────────────────────
+      function updateSessionPayment(p) {
+        const idx = sessionPayments.findIndex(x => x.id === p.id);
+        if (idx >= 0) sessionPayments[idx] = p;
+        else sessionPayments.unshift(p);
+      }
+    
+      async function refreshHistory() {
+        // Re-fetch all session payments to get updated statuses
+        for (let i = 0; i < sessionPayments.length; i++) {
+          const res = await apiCall('GET', `/api/v1/payments/${sessionPayments[i].id}`);
+          if (res.ok && res.data) sessionPayments[i] = res.data;
+        }
+        renderHistory();
+      }
+    
+      function renderHistory() {
+        const body = document.getElementById('history-body');
+        if (sessionPayments.length === 0) {
+          body.innerHTML = '<div class="empty-state">No payments created this session.</div>';
+          return;
+        }
+    
+        body.innerHTML = sessionPayments.map(p => `
+          <div class="payment-card" onclick="selectHistoryPayment('${p.id}')">
+            <div class="payment-card-top">
+              <span class="payment-card-id">${p.id.slice(0, 18)}…</span>
+              ${statusBadge(p.status)}
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:13px;font-weight:600">${formatAmount(p.amount, p.currency)}</span>
+              <span class="payment-card-meta">${p.order_id}</span>
+            </div>
+          </div>
+        `).join('');
+      }
+    
+      async function selectHistoryPayment(id) {
+        const res = await apiCall('GET', `/api/v1/payments/${id}`);
+        if (res.ok && res.data) {
+          updateSessionPayment(res.data);
+          showPaymentDetail(res.data);
+          renderHistory();
+        }
+      }
+    
+      // ─── Automated Tests ──────────────────────────────────────────────────────
+      let testPass = 0, testFail = 0;
+      const testLogEl = () => document.getElementById('test-log');
+    
+      function logTest(type, msg) {
+        const el = testLogEl();
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        const typeClass = { PASS: 'log-pass', FAIL: 'log-fail', INFO: 'log-info' }[type] || 'log-info';
+        entry.innerHTML = `
+          <span class="log-time">${ts()}</span>
+          <span class="${typeClass}">[${type}]</span>
+          <span class="log-msg">${msg}</span>
+        `;
+        el.appendChild(entry);
+        el.scrollTop = el.scrollHeight;
+      }
+    
+      function assert(condition, name, detail) {
+        if (condition) {
+          testPass++;
+          logTest('PASS', name);
+        } else {
+          testFail++;
+          logTest('FAIL', `${name} — ${detail || ''}`);
+        }
+        updateTestSummary();
+      }
+    
+      function updateTestSummary() {
+        const total = testPass + testFail;
+        document.getElementById('test-pass-count').textContent = `${testPass} passed`;
+        document.getElementById('test-fail-count').textContent = `${testFail} failed`;
+        document.getElementById('test-total-count').textContent = `${total} total`;
+      }
+    
+      async function runAllTests() {
+        const btn = document.getElementById('run-tests-btn');
+        const spinner = document.getElementById('test-spinner');
+        btn.disabled = true;
+        spinner.style.display = 'inline-block';
+        testPass = 0;
+        testFail = 0;
+    
+        const logEl = testLogEl();
+        logEl.innerHTML = '';
+        logEl.style.display = 'flex';
+        document.getElementById('test-summary').style.display = 'flex';
+        updateTestSummary();
+    
+        try {
+          await runTests();
+        } catch (e) {
+          logTest('FAIL', `Unexpected error: ${e.message}`);
+          testFail++;
+          updateTestSummary();
+        }
+    
+        spinner.style.display = 'none';
+        btn.disabled = false;
+      }
+    
+      async function runTests() {
+        logTest('INFO', '── Health check ──');
+        {
+          const r = await apiCall('GET', '/healthz');
+          assert(r.ok, 'GET /healthz returns 200', `got ${r.status}`);
+          assert(r.data && r.data.status === 'ok', 'Health body has status=ok', JSON.stringify(r.data));
+        }
+    
+        // ── Test 1: Create → Get ──────────────────────────────────────────────
+        logTest('INFO', '── Create + Get lifecycle ──');
+        const orderId1 = `ORD-TEST-${Date.now()}`;
+        let p1;
+        {
+          const r = await apiCall('POST', '/api/v1/payments', {
+            amount: 49.99, currency: 'USD', order_id: orderId1, callback_url: ''
+          });
+          assert(r.status === 201, 'POST /api/v1/payments → 201', `got ${r.status}`);
+          assert(r.data && r.data.id, 'Response has id field', JSON.stringify(r.data));
+          assert(r.data && r.data.status === 'pending', 'New payment status is pending', r.data && r.data.status);
+          assert(r.data && r.data.amount == 49.99, 'Amount matches', r.data && r.data.amount);
+          assert(r.data && r.data.currency === 'USD', 'Currency matches', r.data && r.data.currency);
+          assert(r.data && r.data.order_id === orderId1, 'order_id matches', r.data && r.data.order_id);
+          p1 = r.data;
+        }
+    
+        if (p1) {
+          const r = await apiCall('GET', `/api/v1/payments/${p1.id}`);
+          assert(r.ok, `GET /api/v1/payments/${p1.id.slice(0,8)}… → 200`, `got ${r.status}`);
+          assert(r.data && r.data.id === p1.id, 'GET returns correct id', r.data && r.data.id);
+          assert(r.data && r.data.status === 'pending', 'Status still pending after GET', r.data && r.data.status);
+        }
+    
+        // ── Test 2: Capture ───────────────────────────────────────────────────
+        logTest('INFO', '── Capture ──');
+        if (p1) {
+          const r = await apiCall('POST', `/api/v1/payments/${p1.id}/capture`);
+          assert(r.ok, 'POST .../capture → 200', `got ${r.status}`);
+          assert(r.data && r.data.status === 'captured', 'Status is captured after capture', r.data && r.data.status);
+    
+          // Verify via GET
+          const r2 = await apiCall('GET', `/api/v1/payments/${p1.id}`);
+          assert(r2.data && r2.data.status === 'captured', 'GET confirms captured status', r2.data && r2.data.status);
+          p1 = r2.data;
+          updateSessionPayment(p1);
+          renderHistory();
+        }
+    
+        // ── Test 3: Create → Capture → Refund ────────────────────────────────
+        logTest('INFO', '── Create → Capture → Refund ──');
+        const orderId2 = `ORD-REFUND-${Date.now()}`;
+        let p2;
+        {
+          const r = await apiCall('POST', '/api/v1/payments', {
+            amount: 150.00, currency: 'EUR', order_id: orderId2
+          });
+          assert(r.status === 201, 'Create second payment → 201', `got ${r.status}`);
+          assert(r.data && r.data.currency === 'EUR', 'Currency EUR set correctly', r.data && r.data.currency);
+          p2 = r.data;
+        }
+    
+        if (p2) {
+          const rc = await apiCall('POST', `/api/v1/payments/${p2.id}/capture`);
+          assert(rc.ok, 'Capture second payment → 200', `got ${rc.status}`);
+          assert(rc.data && rc.data.status === 'captured', 'Second payment captured', rc.data && rc.data.status);
+        }
+    
+        if (p2) {
+          const rr = await apiCall('POST', `/api/v1/payments/${p2.id}/refund`);
+          assert(rr.ok, 'Refund second payment → 200', `got ${rr.status}`);
+          assert(rr.data && rr.data.status === 'refunded', 'Status is refunded', rr.data && rr.data.status);
+    
+          // Verify via GET
+          const r2 = await apiCall('GET', `/api/v1/payments/${p2.id}`);
+          assert(r2.data && r2.data.status === 'refunded', 'GET confirms refunded status', r2.data && r2.data.status);
+          p2 = r2.data;
+          updateSessionPayment(p2);
+          renderHistory();
+        }
+    
+        // ── Test 4: GBP currency ──────────────────────────────────────────────
+        logTest('INFO', '── Currency variants ──');
+        {
+          const r = await apiCall('POST', '/api/v1/payments', {
+            amount: 75.00, currency: 'GBP', order_id: `ORD-GBP-${Date.now()}`
+          });
+          assert(r.status === 201, 'Create GBP payment → 201', `got ${r.status}`);
+          assert(r.data && r.data.currency === 'GBP', 'GBP currency stored', r.data && r.data.currency);
+          if (r.data) { sessionPayments.unshift(r.data); renderHistory(); }
+        }
+    
+        // ── Test 5: 404 for unknown payment ───────────────────────────────────
+        logTest('INFO', '── 404 edge cases ──');
+        {
+          const fakeId = 'aaaaaaaa-0000-0000-0000-000000000000';
+          const r = await apiCall('GET', `/api/v1/payments/${fakeId}`);
+          assert(r.status === 404, 'GET unknown ID → 404', `got ${r.status}`);
+          assert(r.data && r.data.error, '404 response has error field', JSON.stringify(r.data));
+        }
+    
+        {
+          const fakeId = 'aaaaaaaa-0000-0000-0000-000000000000';
+          const r = await apiCall('POST', `/api/v1/payments/${fakeId}/capture`);
+          assert(r.status === 404, 'Capture unknown ID → 404', `got ${r.status}`);
+        }
+    
+        {
+          const fakeId = 'aaaaaaaa-0000-0000-0000-000000000000';
+          const r = await apiCall('POST', `/api/v1/payments/${fakeId}/refund`);
+          assert(r.status === 404, 'Refund unknown ID → 404', `got ${r.status}`);
+        }
+    
+        // ── Test 6: Large amount ──────────────────────────────────────────────
+        logTest('INFO', '── Edge cases ──');
+        {
+          const r = await apiCall('POST', '/api/v1/payments', {
+            amount: 999999.99, currency: 'USD', order_id: `ORD-LARGE-${Date.now()}`
+          });
+          assert(r.status === 201, 'Large amount payment → 201', `got ${r.status}`);
+          assert(r.data && r.data.amount == 999999.99, 'Large amount stored correctly', r.data && r.data.amount);
+          if (r.data) { sessionPayments.unshift(r.data); renderHistory(); }
+        }
+    
+        // ── Test 7: Minimal amount ────────────────────────────────────────────
+        {
+          const r = await apiCall('POST', '/api/v1/payments', {
+            amount: 0.01, currency: 'USD', order_id: `ORD-MIN-${Date.now()}`
+          });
+          assert(r.status === 201, 'Minimal amount (0.01) → 201', `got ${r.status}`);
+          if (r.data) { sessionPayments.unshift(r.data); renderHistory(); }
+        }
+    
+        // Final summary
+        logTest('INFO', `── Done: ${testPass} passed, ${testFail} failed ──`);
+    
+        // Select the first payment as current if none selected
+        if (!selectedPayment && p1) {
+          const r = await apiCall('GET', `/api/v1/payments/${p1.id}`);
+          if (r.ok && r.data) showPaymentDetail(r.data);
+        }
+        renderHistory();
+      }
+    
+      // ─── Init ─────────────────────────────────────────────────────────────────
+      updateLifecycle(null);
+    </script>
+    </body>
+    </html>
+    

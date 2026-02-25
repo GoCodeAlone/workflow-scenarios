@@ -1,0 +1,162 @@
+openapi: 3.0.3
+info:
+  title: Payment Service
+  version: 1.0.0
+paths:
+  /api/v1/payments:
+    post:
+      summary: 'POST /api/v1/payments (pipeline: payment-create)'
+      operationId: postApiV1Payments
+      tags:
+        - pipelines
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /api/v1/payments/{id}:
+    get:
+      summary: 'GET /api/v1/payments/{id} (pipeline: payment-get)'
+      operationId: getApiV1PaymentsById
+      tags:
+        - pipelines
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /api/v1/payments/{id}/capture:
+    post:
+      summary: 'POST /api/v1/payments/{id}/capture (pipeline: payment-capture)'
+      operationId: postApiV1PaymentsByIdCapture
+      tags:
+        - pipelines
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /api/v1/payments/{id}/refund:
+    post:
+      summary: 'POST /api/v1/payments/{id}/refund (pipeline: payment-refund)'
+      operationId: postApiV1PaymentsByIdRefund
+      tags:
+        - pipelines
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /healthz:
+    get:
+      summary: 'GET /healthz (pipeline: health)'
+      operationId: getHealthz
+      tags:
+        - pipelines
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scenario:
+                    type: string
+                  status:
+                    type: string
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
+  /internal/init-db:
+    post:
+      summary: 'POST /internal/init-db (pipeline: init-db)'
+      operationId: postInternalInitDb
+      tags:
+        - pipelines
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+        "400":
+          description: Bad request
+        "500":
+          description: Internal server error
