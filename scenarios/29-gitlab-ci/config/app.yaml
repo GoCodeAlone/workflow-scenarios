@@ -14,8 +14,14 @@ modules:
       url: "mock://"
       token: "mock-token"
 
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
 pipelines:
-  - name: healthz
+  healthz:
     trigger:
       type: http
       config:
@@ -29,7 +35,7 @@ pipelines:
             status: ok
 
   # Receive a GitLab webhook, parse and normalize the event
-  - name: gitlab-webhook
+  gitlab-webhook:
     trigger:
       type: http
       config:
@@ -47,7 +53,7 @@ pipelines:
           body_from: steps.parse
 
   # Trigger a GitLab pipeline (mock)
-  - name: trigger-pipeline
+  trigger-pipeline:
     trigger:
       type: http
       config:
@@ -69,7 +75,7 @@ pipelines:
           body_from: steps.trigger
 
   # Get pipeline status (mock)
-  - name: pipeline-status
+  pipeline-status:
     trigger:
       type: http
       config:
@@ -89,7 +95,7 @@ pipelines:
           body_from: steps.status
 
   # Create a merge request (mock)
-  - name: create-mr
+  create-mr:
     trigger:
       type: http
       config:
@@ -111,7 +117,7 @@ pipelines:
           body_from: steps.create
 
   # Post a comment on a merge request (mock)
-  - name: mr-comment
+  mr-comment:
     trigger:
       type: http
       config:

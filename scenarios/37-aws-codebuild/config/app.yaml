@@ -1,0 +1,166 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # AWS CodeBuild module — mock backend, no real AWS resources required.
+  - name: codebuild
+    type: aws.codebuild
+    config:
+      provider: mock
+      region: us-east-1
+      account_id: "123456789012"
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "37-aws-codebuild"
+
+  # Create a CodeBuild project with buildspec translated from pipeline config.
+  project-create:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/projects
+        method: POST
+    steps:
+      - name: create
+        type: step.codebuild_create_project
+        config:
+          project: "my-service-build"
+          source:
+            type: GITHUB
+            location: "https://github.com/example/my-service"
+          environment:
+            type: LINUX_CONTAINER
+            image: "aws/codebuild/standard:7.0"
+            compute_type: BUILD_GENERAL1_SMALL
+          artifacts:
+            type: S3
+            location: "my-build-artifacts"
+          buildspec:
+            version: "0.2"
+            phases:
+              install:
+                commands: ["go version"]
+              build:
+                commands: ["go build ./..."]
+              post_build:
+                commands: ["go test ./..."]
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Start a build for the project.
+  build-start:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/builds/start
+        method: POST
+    steps:
+      - name: start
+        type: step.codebuild_start
+        config:
+          project: "my-service-build"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Check build status (Pending → Running → Succeeded/Failed).
+  build-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/builds/status
+        method: GET
+    steps:
+      - name: status
+        type: step.codebuild_status
+        config:
+          project: "my-service-build"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Retrieve build logs.
+  build-logs:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/builds/logs
+        method: GET
+    steps:
+      - name: logs
+        type: step.codebuild_logs
+        config:
+          project: "my-service-build"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # List all builds for the project.
+  builds-list:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/builds
+        method: GET
+    steps:
+      - name: list
+        type: step.codebuild_list_builds
+        config:
+          project: "my-service-build"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Delete the CodeBuild project.
+  project-delete:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/projects
+        method: DELETE
+    steps:
+      - name: delete
+        type: step.codebuild_delete_project
+        config:
+          project: "my-service-build"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."

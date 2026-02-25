@@ -60,6 +60,12 @@ modules:
         client_id: "22222222-2222-2222-2222-222222222222"
         client_secret: "fake-azure-secret-for-demo"
 
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
 pipelines:
   health:
     trigger:

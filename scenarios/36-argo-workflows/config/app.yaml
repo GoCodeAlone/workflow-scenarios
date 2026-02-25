@@ -1,0 +1,137 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Argo Workflows module — mock backend, no real cluster required.
+  - name: argo
+    type: argo.workflows
+    config:
+      provider: mock
+      namespace: argo
+      server_url: "https://argo.example.com"
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "36-argo-workflows"
+
+  # Submit a workflow — translates pipeline steps into an Argo DAG and submits it.
+  workflow-submit:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/workflows/submit
+        method: POST
+    steps:
+      - name: submit
+        type: step.argo_submit
+        config:
+          service: argo
+          workflow_name: "pipeline-run"
+          steps:
+            - name: main
+              image: alpine:3.18
+              command: ["sh", "-c", "echo hello"]
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Check status of a workflow run.
+  workflow-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/workflows/status
+        method: GET
+    steps:
+      - name: status
+        type: step.argo_status
+        config:
+          service: argo
+          workflow_name: "pipeline-run"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Retrieve logs from a workflow run.
+  workflow-logs:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/workflows/logs
+        method: GET
+    steps:
+      - name: logs
+        type: step.argo_logs
+        config:
+          service: argo
+          workflow_name: "pipeline-run"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # List workflow runs with optional label filtering.
+  workflow-list:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/workflows
+        method: GET
+    steps:
+      - name: list
+        type: step.argo_list
+        config:
+          service: argo
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Delete a completed or failed workflow run.
+  workflow-delete:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/workflows
+        method: DELETE
+    steps:
+      - name: delete
+        type: step.argo_delete
+        config:
+          service: argo
+          workflow_name: "pipeline-run"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."

@@ -35,6 +35,12 @@ modules:
           min: 2
           max: 10
 
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
 pipelines:
   healthz:
     trigger:

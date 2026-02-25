@@ -8,8 +8,14 @@ modules:
     type: http.router
     dependsOn: [server]
 
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
 pipelines:
-  - name: healthz
+  healthz:
     trigger:
       type: http
       config:
@@ -22,7 +28,7 @@ pipelines:
           body:
             status: ok
 
-  - name: build-binary-dry-run
+  build-binary-dry-run:
     trigger:
       type: http
       config:

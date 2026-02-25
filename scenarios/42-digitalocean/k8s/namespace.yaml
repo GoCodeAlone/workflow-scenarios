@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wf-scenario-42
+  labels:
+    scenario: "42-digitalocean"

@@ -1,0 +1,112 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Policy engine — mock backend (no real OPA or Cedar runtime required).
+  # Deny logic: any loaded policy containing the word "deny" causes deny decisions.
+  - name: policy
+    type: policy.mock
+    config:
+      default_decision: allow
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "38-policy-engine"
+
+  # Load a named policy document into the engine.
+  policy-load:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/policy/load
+        method: POST
+    steps:
+      - name: load
+        type: step.policy_load
+        config:
+          engine: policy
+          policy_name: "default"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Evaluate a policy decision — allow or deny.
+  # step.policy_evaluate sets Stop=true on deny, halting the pipeline.
+  policy-evaluate:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/policy/evaluate
+        method: POST
+    steps:
+      - name: evaluate
+        type: step.policy_evaluate
+        config:
+          engine: policy
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # List all registered policies.
+  policy-list:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/policy/list
+        method: GET
+    steps:
+      - name: list
+        type: step.policy_list
+        config:
+          engine: policy
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Dry-run: test a policy against sample inputs.
+  policy-test:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/policy/test
+        method: POST
+    steps:
+      - name: test
+        type: step.policy_test
+        config:
+          engine: policy
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."

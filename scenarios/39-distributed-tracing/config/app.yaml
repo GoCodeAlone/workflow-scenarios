@@ -1,0 +1,159 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Tracing propagation module — W3C TraceContext propagation across HTTP,
+  # Kafka, EventBridge, and webhook boundaries.
+  - name: tracer
+    type: tracing.propagation
+    config:
+      propagator: w3c
+      service_name: "scenario-39"
+      exporter: noop
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "39-distributed-tracing"
+
+  # Start a new trace span; outputs trace_id and span_id into context.
+  trace-start:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/trace/start
+        method: POST
+    steps:
+      - name: start
+        type: step.trace_start
+        config:
+          module: tracer
+          span_name: "incoming-request"
+          attributes:
+            service: "api-gateway"
+            environment: "staging"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Inject current trace context into outbound carrier headers.
+  trace-inject:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/trace/inject
+        method: POST
+    steps:
+      - name: start
+        type: step.trace_start
+        config:
+          module: tracer
+          span_name: "outbound-call"
+      - name: inject
+        type: step.trace_inject
+        config:
+          module: tracer
+          carrier_field: "headers"
+          propagator: http
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Extract trace context from inbound carrier headers.
+  trace-extract:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/trace/extract
+        method: POST
+    steps:
+      - name: extract
+        type: step.trace_extract
+        config:
+          module: tracer
+          carrier_field: "headers"
+          propagator: http
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Annotate the current span with events and attributes.
+  trace-annotate:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/trace/annotate
+        method: POST
+    steps:
+      - name: start
+        type: step.trace_start
+        config:
+          module: tracer
+          span_name: "annotated-operation"
+      - name: annotate
+        type: step.trace_annotate
+        config:
+          module: tracer
+          event: "cache.miss"
+          attributes:
+            cache_key: "user:42"
+            latency_ms: 5
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Link current span to a parent trace from a remote service.
+  trace-link:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/trace/link
+        method: POST
+    steps:
+      - name: start
+        type: step.trace_start
+        config:
+          module: tracer
+          span_name: "linked-span"
+      - name: link
+        type: step.trace_link
+        config:
+          module: tracer
+          carrier_field: "parent_headers"
+          propagator: http
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."

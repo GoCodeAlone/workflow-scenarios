@@ -70,6 +70,12 @@ modules:
               token: fake-token-for-demo
         context: minikube
 
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
 pipelines:
   health:
     trigger:
@@ -102,9 +108,8 @@ pipelines:
       - name: set-default-account
         type: step.set
         config:
-          field: account
-          value: "aws-production"
-          only_if_missing: true
+          values:
+            account: "aws-production"
       - name: validate-aws-production
         type: step.cloud_validate
         config:

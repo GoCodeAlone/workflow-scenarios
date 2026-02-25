@@ -1,0 +1,164 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Multi-region deployment module — mock backend, no real cloud required.
+  - name: regions
+    type: platform.region
+    config:
+      provider: mock
+      regions:
+        - name: us-east-1
+          provider: mock
+          priority: primary
+        - name: us-west-2
+          provider: mock
+          priority: secondary
+        - name: eu-west-1
+          provider: mock
+          priority: dr
+
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "40-multi-region"
+
+  # Deploy tenant engine to a region.
+  region-deploy:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/regions/deploy
+        method: POST
+    steps:
+      - name: deploy
+        type: step.region_deploy
+        config:
+          module: regions
+          region: us-east-1
+          tenant_id: "tenant-abc"
+          image: "workflow-server:v0.2.2"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Check health status across all regions.
+  region-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/regions/status
+        method: GET
+    steps:
+      - name: status
+        type: step.region_status
+        config:
+          module: regions
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Trigger failover from primary to secondary region.
+  region-failover:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/regions/failover
+        method: POST
+    steps:
+      - name: failover
+        type: step.region_failover
+        config:
+          module: regions
+          from: us-east-1
+          to: us-west-2
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Promote a secondary region to primary.
+  region-promote:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/regions/promote
+        method: POST
+    steps:
+      - name: promote
+        type: step.region_promote
+        config:
+          module: regions
+          region: us-west-2
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Adjust traffic routing weights across regions.
+  region-weight:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/regions/weight
+        method: POST
+    steps:
+      - name: weight
+        type: step.region_weight
+        config:
+          module: regions
+          region: us-east-1
+          weight: 50
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Sync state and config across all regions.
+  region-sync:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/regions/sync
+        method: POST
+    steps:
+      - name: sync
+        type: step.region_sync
+        config:
+          module: regions
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."

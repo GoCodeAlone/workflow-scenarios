@@ -8,13 +8,28 @@ modules:
     type: http.router
     dependsOn: [server]
 
+  - name: aws-mock
+    type: cloud.account
+    config:
+      provider: mock
+      region: us-east-1
+
   - name: prod-cluster
     type: platform.kubernetes
+    dependsOn: [aws-mock]
     config:
+      account: aws-mock
       type: kind
+      version: "1.29"
+      nodeGroups:
+        - name: default
+          instanceType: t3.medium
+          min: 2
+          max: 5
 
-  - name: my-app
+  - name: webapp
     type: app.container
+    dependsOn: [prod-cluster]
     config:
       environment: prod-cluster
       image: nginx:1.25
@@ -26,6 +41,12 @@ modules:
       env:
         APP_ENV: production
         LOG_LEVEL: info
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
 
 pipelines:
   healthz:
@@ -53,7 +74,7 @@ pipelines:
       - name: deploy
         type: step.app_deploy
         config:
-          app: my-app
+          app: webapp
       - name: respond
         type: step.json_response
         config:
@@ -70,7 +91,7 @@ pipelines:
       - name: status
         type: step.app_status
         config:
-          app: my-app
+          app: webapp
       - name: respond
         type: step.json_response
         config:
@@ -87,7 +108,7 @@ pipelines:
       - name: rollback
         type: step.app_rollback
         config:
-          app: my-app
+          app: webapp
       - name: respond
         type: step.json_response
         config:

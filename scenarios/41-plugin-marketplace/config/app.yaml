@@ -1,0 +1,138 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "41-plugin-marketplace"
+
+  # Search the marketplace catalog by query, category, and/or tags.
+  marketplace-search:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/marketplace/search
+        method: GET
+    steps:
+      - name: search
+        type: step.marketplace_search
+        config:
+          query: "kafka"
+          category: "messaging"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Retrieve full metadata for a named plugin.
+  marketplace-detail:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/marketplace/detail
+        method: GET
+    steps:
+      - name: detail
+        type: step.marketplace_detail
+        config:
+          plugin: "messaging-kafka"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Download and install a plugin to data/plugins/.
+  marketplace-install:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/marketplace/install
+        method: POST
+    steps:
+      - name: install
+        type: step.marketplace_install
+        config:
+          plugin: "messaging-kafka"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # List all currently installed plugins.
+  marketplace-installed:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/marketplace/installed
+        method: GET
+    steps:
+      - name: installed
+        type: step.marketplace_installed
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Remove an installed plugin.
+  marketplace-uninstall:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/marketplace/uninstall
+        method: DELETE
+    steps:
+      - name: uninstall
+        type: step.marketplace_uninstall
+        config:
+          plugin: "messaging-kafka"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Update an installed plugin to the latest version.
+  marketplace-update:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/marketplace/update
+        method: POST
+    steps:
+      - name: update
+        type: step.marketplace_update
+        config:
+          plugin: "messaging-kafka"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."

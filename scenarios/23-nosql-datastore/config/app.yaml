@@ -13,6 +13,12 @@ modules:
     config:
       collection: items
 
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
 pipelines:
   health:
     trigger:
@@ -66,8 +72,7 @@ pipelines:
       - name: validate-id
         type: step.validate_path_param
         config:
-          param: id
-          required: true
+          params: [id]
       - name: fetch
         type: step.nosql_get
         config:
@@ -116,8 +121,7 @@ pipelines:
       - name: validate-id
         type: step.validate_path_param
         config:
-          param: id
-          required: true
+          params: [id]
       - name: remove
         type: step.nosql_delete
         config:

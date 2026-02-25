@@ -29,6 +29,12 @@ modules:
       basePath: /data/artifacts
     dependsOn: []
 
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
 pipelines:
   # ----------------------------------------------------------------
   # Health check
@@ -89,14 +95,16 @@ pipelines:
       - name: decode-and-store
         type: step.shell_exec
         config:
-          command: |
-            KEY="{{ .key }}"
-            CONTENT="{{ .content }}"
-            TMPDIR="/tmp/wf-artifact-$$"
-            mkdir -p "$TMPDIR"
-            TMPFILE="$TMPDIR/artifact"
-            echo "$CONTENT" | base64 -d > "$TMPFILE"
-            echo "{\"tmpfile\":\"$TMPFILE\",\"size\":$(wc -c < "$TMPFILE")}"
+          image: alpine:3.21
+          commands:
+            - |
+              KEY="{{ .key }}"
+              CONTENT="{{ .content }}"
+              TMPDIR="/tmp/wf-artifact-$$"
+              mkdir -p "$TMPDIR"
+              TMPFILE="$TMPDIR/artifact"
+              echo "$CONTENT" | base64 -d > "$TMPFILE"
+              echo "{\"tmpfile\":\"$TMPFILE\",\"size\":$(wc -c < "$TMPFILE")}"
           output_field: shell_result
           parse_json: true
 
@@ -142,17 +150,19 @@ pipelines:
       - name: check-exists
         type: step.shell_exec
         config:
-          command: |
-            KEY="{{ .key }}"
-            SAFE_KEY=$(echo "$KEY" | sed 's|[^a-zA-Z0-9/_.-]||g')
-            FILE="/data/artifacts/$SAFE_KEY"
-            if [ -f "$FILE" ]; then
-              SIZE=$(wc -c < "$FILE")
-              CONTENT=$(base64 < "$FILE")
-              echo "{\"exists\":true,\"size\":$SIZE,\"content\":\"$CONTENT\"}"
-            else
-              echo "{\"exists\":false}"
-            fi
+          image: alpine:3.21
+          commands:
+            - |
+              KEY="{{ .key }}"
+              SAFE_KEY=$(echo "$KEY" | sed 's|[^a-zA-Z0-9/_.-]||g')
+              FILE="/data/artifacts/$SAFE_KEY"
+              if [ -f "$FILE" ]; then
+                SIZE=$(wc -c < "$FILE")
+                CONTENT=$(base64 < "$FILE")
+                echo "{\"exists\":true,\"size\":$SIZE,\"content\":\"$CONTENT\"}"
+              else
+                echo "{\"exists\":false}"
+              fi
           output_field: artifact_data
           parse_json: true
 

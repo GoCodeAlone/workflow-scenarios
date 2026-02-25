@@ -28,6 +28,12 @@ modules:
       security_groups:
         - sg-0123456789
 
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
 pipelines:
   healthz:
     trigger:

@@ -36,6 +36,12 @@ modules:
           value: "v=spf1 include:_spf.google.com ~all"
           ttl: 3600
 
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
 pipelines:
   healthz:
     trigger:

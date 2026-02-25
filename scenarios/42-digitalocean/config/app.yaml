@@ -1,0 +1,197 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # DigitalOcean cloud account — mock backend, no real DO API calls.
+  - name: do-account
+    type: cloud.account
+    config:
+      provider: mock
+      region: nyc3
+
+  # DOKS: DigitalOcean Kubernetes Service cluster lifecycle.
+  - name: doks-cluster
+    type: platform.doks
+    config:
+      account: do-account
+      cluster_name: staging-k8s
+      region: nyc3
+      version: "1.29.1-do.0"
+      node_pool:
+        name: default
+        size: s-2vcpu-2gb
+        count: 3
+        auto_scale: true
+        min_nodes: 1
+        max_nodes: 5
+
+  # DO Networking: VPC and firewall management.
+  - name: do-networking
+    type: platform.do_networking
+    config:
+      account: do-account
+      provider: mock
+      vpc:
+        name: staging-vpc
+        region: nyc3
+        ip_range: "10.20.0.0/16"
+      firewalls:
+        - name: allow-web
+          inbound_rules:
+            - protocol: tcp
+              port_range: "80"
+              sources: "0.0.0.0/0"
+            - protocol: tcp
+              port_range: "443"
+              sources: "0.0.0.0/0"
+
+  # DO DNS: domain and DNS record management.
+  - name: do-dns
+    type: platform.do_dns
+    config:
+      account: do-account
+      provider: mock
+      domain: staging.example.com
+      records:
+        - name: api
+          type: A
+          data: "10.0.0.100"
+          ttl: 300
+        - name: www
+          type: CNAME
+          data: staging.example.com
+          ttl: 3600
+
+  # DO App Platform: deploy and manage containerized apps.
+  - name: do-app
+    type: platform.do_app
+    config:
+      account: do-account
+      provider: mock
+      name: my-api
+      region: nyc
+      image: "registry.example.com/my-api:v1.0.0"
+      instances: 2
+      http_port: 8080
+      envs:
+        APP_ENV: production
+        PORT: "8080"
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "42-digitalocean"
+
+  # Deploy the DO App Platform app.
+  do-deploy:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/do/deploy
+        method: POST
+    steps:
+      - name: deploy
+        type: step.do_deploy
+        config:
+          app: do-app
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Check app deployment status.
+  do-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/do/status
+        method: GET
+    steps:
+      - name: status
+        type: step.do_status
+        config:
+          app: do-app
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Retrieve app logs.
+  do-logs:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/do/logs
+        method: GET
+    steps:
+      - name: logs
+        type: step.do_logs
+        config:
+          app: do-app
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Scale app instance count.
+  do-scale:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/do/scale
+        method: POST
+    steps:
+      - name: scale
+        type: step.do_scale
+        config:
+          app: do-app
+          instances: 4
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Destroy the app deployment.
+  do-destroy:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/do
+        method: DELETE
+    steps:
+      - name: destroy
+        type: step.do_destroy
+        config:
+          app: do-app
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."

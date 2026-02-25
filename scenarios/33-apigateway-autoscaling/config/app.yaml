@@ -16,6 +16,7 @@ modules:
 
   - name: production-gateway
     type: platform.apigateway
+    dependsOn: [aws-mock]
     config:
       account: aws-mock
       provider: mock
@@ -34,8 +35,9 @@ modules:
           target: "http://orders-service:8080"
           auth_type: jwt
 
-  - name: app-scaling
+  - name: my-scaling
     type: platform.autoscaling
+    dependsOn: [aws-mock]
     config:
       account: aws-mock
       provider: mock
@@ -52,6 +54,12 @@ modules:
           target_resource: staging-ecs
           schedule: "cron(0 22 * * ? *)"
           desired_capacity: 1
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
 
 pipelines:
   healthz:
@@ -147,7 +155,7 @@ pipelines:
       - name: plan
         type: step.scaling_plan
         config:
-          scaling: app-scaling
+          scaling: my-scaling
       - name: respond
         type: step.json_response
         config:
@@ -164,7 +172,7 @@ pipelines:
       - name: apply
         type: step.scaling_apply
         config:
-          scaling: app-scaling
+          scaling: my-scaling
       - name: respond
         type: step.json_response
         config:
@@ -181,7 +189,7 @@ pipelines:
       - name: status
         type: step.scaling_status
         config:
-          scaling: app-scaling
+          scaling: my-scaling
       - name: respond
         type: step.json_response
         config:
@@ -198,7 +206,7 @@ pipelines:
       - name: destroy
         type: step.scaling_destroy
         config:
-          scaling: app-scaling
+          scaling: my-scaling
       - name: respond
         type: step.json_response
         config:
