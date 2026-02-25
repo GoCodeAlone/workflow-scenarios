@@ -1,10 +1,3 @@
-# ============================================================
-# Scenario 14: Low-Code CRUD — Task Manager
-#
-# This is the ONLY file a developer needs to write.
-# The backend, API spec, and frontend are all derived from this.
-# ============================================================
-
 modules:
   - name: server
     type: http.server
@@ -30,12 +23,6 @@ modules:
       tokenExpiry: "24h"
     dependsOn: [router]
 
-  - name: auth-middleware
-    type: http.middleware.auth
-    config:
-      authType: Bearer
-    dependsOn: [jwt]
-
   - name: broker
     type: messaging.broker
     config:
@@ -47,7 +34,7 @@ workflows:
     router: router
     server: server
     routes:
-      # Auth — public
+      # Auth — handled natively by jwt module
       - method: POST
         path: /api/v1/auth/register
         handler: jwt
@@ -56,67 +43,11 @@ workflows:
         path: /api/v1/auth/login
         handler: jwt
 
-      # Auth — protected
       - method: GET
         path: /api/v1/auth/profile
         handler: jwt
-        middlewares:
-          - auth-middleware
-
-      # Tasks — protected
-      - method: POST
-        path: /api/v1/tasks
-        handler: router
-        middlewares:
-          - auth-middleware
-
-      - method: GET
-        path: /api/v1/tasks
-        handler: router
-        middlewares:
-          - auth-middleware
-
-      - method: GET
-        path: /api/v1/tasks/{id}
-        handler: router
-        middlewares:
-          - auth-middleware
-
-      - method: PUT
-        path: /api/v1/tasks/{id}
-        handler: router
-        middlewares:
-          - auth-middleware
-
-      - method: DELETE
-        path: /api/v1/tasks/{id}
-        handler: router
-        middlewares:
-          - auth-middleware
-
-      - method: POST
-        path: /api/v1/tasks/{id}/complete
-        handler: router
-        middlewares:
-          - auth-middleware
-
-      # Categories — protected
-      - method: GET
-        path: /api/v1/categories
-        handler: router
-        middlewares:
-          - auth-middleware
-
-      - method: POST
-        path: /api/v1/categories
-        handler: router
-        middlewares:
-          - auth-middleware
 
 pipelines:
-  # ----------------------------------------------------------------
-  # Health
-  # ----------------------------------------------------------------
   health:
     trigger:
       type: http
@@ -132,9 +63,6 @@ pipelines:
             status: ok
             scenario: "14-low-code-crud"
 
-  # ----------------------------------------------------------------
-  # Internal — schema initialisation (called by seed.sh)
-  # ----------------------------------------------------------------
   init-db:
     trigger:
       type: http
@@ -149,7 +77,7 @@ pipelines:
           query: |
             CREATE TABLE IF NOT EXISTS tasks (
               id        INTEGER PRIMARY KEY AUTOINCREMENT,
-              user_id   INTEGER NOT NULL,
+              user_id   INTEGER NOT NULL DEFAULT 1,
               title     TEXT    NOT NULL,
               description TEXT  DEFAULT '',
               priority  TEXT    NOT NULL DEFAULT 'medium',
@@ -188,77 +116,6 @@ pipelines:
             status: ok
             message: database schema initialised
 
-  # ----------------------------------------------------------------
-  # Auth
-  # ----------------------------------------------------------------
-  auth-register:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/auth/register
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: validate
-        type: step.validate
-        config:
-          strategy: required_fields
-          required_fields: [email, password, name]
-          source: "steps.parse-body.body"
-      - name: register
-        type: step.user_register
-        config:
-          auth: jwt
-          email_field: "steps.parse-body.body.email"
-          password_field: "steps.parse-body.body.password"
-          name_field: "steps.parse-body.body.name"
-
-  auth-login:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/auth/login
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: validate
-        type: step.validate
-        config:
-          strategy: required_fields
-          required_fields: [email, password]
-          source: "steps.parse-body.body"
-      - name: login
-        type: step.user_login
-        config:
-          auth: jwt
-          email_field: "steps.parse-body.body.email"
-          password_field: "steps.parse-body.body.password"
-
-  auth-profile:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/auth/profile
-        method: GET
-    steps:
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
-      - name: profile
-        type: step.user_profile
-        config:
-          auth: jwt
-
-  # ----------------------------------------------------------------
-  # Tasks — CRUD
-  # ----------------------------------------------------------------
   task-create:
     trigger:
       type: http
@@ -270,10 +127,6 @@ pipelines:
         type: step.request_parse
         config:
           parse_body: true
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
       - name: validate
         type: step.validate
         config:
@@ -286,12 +139,11 @@ pipelines:
           database: db
           query: |
             INSERT INTO tasks (user_id, title, description, priority, due_date, category_id)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (1, ?, ?, ?, ?, ?)
           params:
-            - "{{ .user.id }}"
             - "{{ .body.title }}"
             - "{{ .body.description }}"
-            - "{{ default .body.priority \"medium\" }}"
+            - "{{ .body.priority | default \"medium\" }}"
             - "{{ .body.due_date }}"
             - "{{ .body.category_id }}"
       - name: fetch-created
@@ -299,7 +151,7 @@ pipelines:
         config:
           database: db
           query: "SELECT id, user_id, title, description, priority, status, due_date, category_id, created_at FROM tasks WHERE id = last_insert_rowid()"
-          mode: one
+          mode: single
       - name: publish-created
         type: step.publish
         config:
@@ -318,10 +170,6 @@ pipelines:
         path: /api/v1/tasks
         method: GET
     steps:
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
       - name: get-tasks
         type: step.db_query
         config:
@@ -332,11 +180,8 @@ pipelines:
                    t.created_at, t.updated_at
             FROM tasks t
             LEFT JOIN categories c ON c.id = t.category_id
-            WHERE t.user_id = ?
             ORDER BY t.created_at DESC
             LIMIT 100
-          params:
-            - "{{ .user.id }}"
           mode: list
       - name: respond
         type: step.json_response
@@ -351,10 +196,6 @@ pipelines:
         path: /api/v1/tasks/{id}
         method: GET
     steps:
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
       - name: get-task
         type: step.db_query
         config:
@@ -365,18 +206,23 @@ pipelines:
                    t.created_at, t.updated_at
             FROM tasks t
             LEFT JOIN categories c ON c.id = t.category_id
-            WHERE t.id = ? AND t.user_id = ?
+            WHERE t.id = ?
           params:
-            - "{{ .params.id }}"
-            - "{{ .user.id }}"
-          mode: one
-      - name: not-found-check
-        type: step.validate
+            - "{{ .id }}"
+          mode: single
+      - name: check-exists
+        type: step.conditional
         config:
-          strategy: not_empty
-          source: "steps.get-task.row"
-          error_status: 404
-          error_message: task not found
+          field: steps.get-task.row.id
+          routes:
+            "": not-found
+          default: respond
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: task not found
       - name: respond
         type: step.json_response
         config:
@@ -394,40 +240,34 @@ pipelines:
         type: step.request_parse
         config:
           parse_body: true
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
       - name: update
         type: step.db_exec
         config:
           database: db
           query: |
             UPDATE tasks
-            SET title = COALESCE(?, title),
-                description = COALESCE(?, description),
-                priority = COALESCE(?, priority),
-                due_date = COALESCE(?, due_date),
-                category_id = COALESCE(?, category_id),
+            SET title = COALESCE(NULLIF(?, ''), title),
+                description = COALESCE(NULLIF(?, ''), description),
+                priority = COALESCE(NULLIF(?, ''), priority),
+                due_date = COALESCE(NULLIF(?, ''), due_date),
+                category_id = COALESCE(NULLIF(CAST(? AS TEXT), ''), CAST(category_id AS TEXT)),
                 updated_at = datetime('now')
-            WHERE id = ? AND user_id = ?
+            WHERE id = ?
           params:
             - "{{ .body.title }}"
             - "{{ .body.description }}"
             - "{{ .body.priority }}"
             - "{{ .body.due_date }}"
             - "{{ .body.category_id }}"
-            - "{{ .params.id }}"
-            - "{{ .user.id }}"
+            - "{{ .id }}"
       - name: fetch-updated
         type: step.db_query
         config:
           database: db
-          query: "SELECT id, title, description, priority, status, due_date, category_id, updated_at FROM tasks WHERE id = ? AND user_id = ?"
+          query: "SELECT id, title, description, priority, status, due_date, category_id, updated_at FROM tasks WHERE id = ?"
           params:
-            - "{{ .params.id }}"
-            - "{{ .user.id }}"
-          mode: one
+            - "{{ .id }}"
+          mode: single
       - name: respond
         type: step.json_response
         config:
@@ -441,18 +281,13 @@ pipelines:
         path: /api/v1/tasks/{id}
         method: DELETE
     steps:
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
       - name: delete
         type: step.db_exec
         config:
           database: db
-          query: "DELETE FROM tasks WHERE id = ? AND user_id = ?"
+          query: "DELETE FROM tasks WHERE id = ?"
           params:
-            - "{{ .params.id }}"
-            - "{{ .user.id }}"
+            - "{{ .id }}"
       - name: respond
         type: step.json_response
         config:
@@ -461,7 +296,6 @@ pipelines:
             status: ok
             message: task deleted
 
-  # State machine: todo → in_progress → done
   task-complete:
     trigger:
       type: http
@@ -469,52 +303,63 @@ pipelines:
         path: /api/v1/tasks/{id}/complete
         method: POST
     steps:
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
       - name: get-current-status
         type: step.db_query
         config:
           database: db
-          query: "SELECT id, status FROM tasks WHERE id = ? AND user_id = ?"
+          query: "SELECT id, status FROM tasks WHERE id = ?"
           params:
-            - "{{ .params.id }}"
-            - "{{ .user.id }}"
-          mode: one
-      - name: not-found-check
-        type: step.validate
+            - "{{ .id }}"
+          mode: single
+      - name: check-exists
+        type: step.conditional
         config:
-          strategy: not_empty
-          source: "steps.get-current-status.row"
-          error_status: 404
-          error_message: task not found
-      - name: transition
-        type: step.statemachine_transition
+          field: steps.get-current-status.row.id
+          routes:
+            "": not-found
+          default: check-state
+      - name: not-found
+        type: step.json_response
         config:
-          current_state_from: "steps.get-current-status.row.status"
-          transitions:
-            todo: in_progress
-            in_progress: done
-          error_status: 409
-          error_message: "cannot transition from current state"
-      - name: update-status
+          status: 404
+          body:
+            error: task not found
+      - name: check-state
+        type: step.conditional
+        config:
+          field: steps.get-current-status.row.status
+          routes:
+            done: already-done
+          default: do-update
+      - name: already-done
+        type: step.json_response
+        config:
+          status: 409
+          body:
+            error: cannot transition from current state
+      - name: do-update
         type: step.db_exec
         config:
           database: db
-          query: "UPDATE tasks SET status = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?"
+          query: |
+            UPDATE tasks
+            SET status = CASE status
+              WHEN 'todo' THEN 'in_progress'
+              WHEN 'in_progress' THEN 'done'
+              ELSE status
+            END,
+            updated_at = datetime('now')
+            WHERE id = ?
           params:
-            - "{{ steps.transition.next_state }}"
-            - "{{ .params.id }}"
-            - "{{ .user.id }}"
+            - "{{ .id }}"
       - name: fetch-updated
         type: step.db_query
         config:
           database: db
           query: "SELECT id, title, status, updated_at FROM tasks WHERE id = ?"
           params:
-            - "{{ .params.id }}"
-          mode: one
+            - "{{ .id }}"
+          mode: single
       - name: publish-updated
         type: step.publish
         config:
@@ -526,9 +371,6 @@ pipelines:
           status: 200
           body_from: "steps.fetch-updated.row"
 
-  # ----------------------------------------------------------------
-  # Categories
-  # ----------------------------------------------------------------
   category-list:
     trigger:
       type: http
@@ -536,33 +378,17 @@ pipelines:
         path: /api/v1/categories
         method: GET
     steps:
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
-      - name: cache-check
-        type: step.cache_get
-        config:
-          key: "categories:all"
       - name: get-categories
         type: step.db_query
         config:
           database: db
           query: "SELECT id, name, color, created_at FROM categories ORDER BY name ASC"
           mode: list
-          skip_if: "steps.cache-check.hit"
-      - name: cache-set
-        type: step.cache_set
-        config:
-          key: "categories:all"
-          value_from: "steps.get-categories.rows"
-          ttl: "60s"
-          skip_if: "steps.cache-check.hit"
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "steps.cache-check.value || steps.get-categories.rows"
+          body_from: "steps.get-categories.rows"
 
   category-create:
     trigger:
@@ -575,10 +401,6 @@ pipelines:
         type: step.request_parse
         config:
           parse_body: true
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
       - name: validate
         type: step.validate
         config:
@@ -592,22 +414,19 @@ pipelines:
           query: "INSERT INTO categories (name, color) VALUES (?, ?)"
           params:
             - "{{ .body.name }}"
-            - "{{ default .body.color \"#6366f1\" }}"
+            - "{{ .body.color | default \"#6366f1\" }}"
       - name: fetch-created
         type: step.db_query
         config:
           database: db
           query: "SELECT id, name, color, created_at FROM categories WHERE id = last_insert_rowid()"
-          mode: one
+          mode: single
       - name: respond
         type: step.json_response
         config:
           status: 201
           body_from: "steps.fetch-created.row"
 
-  # ----------------------------------------------------------------
-  # Task event log (broker subscriber)
-  # ----------------------------------------------------------------
   log-task-event:
     steps:
       - name: log

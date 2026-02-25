@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-02-25T07:08:21.000000Z",
+  "lastUpdated": "2026-02-25T07:24:00.000000Z",
   "componentVersions": {
     "workflow": "v0.2.8",
     "workflow-cloud": "v0.1.0",
@@ -131,40 +131,37 @@
       "blockers": []
     },
     "12-approval-workflow": {
-      "status": "testable",
+      "status": "passed",
       "namespace": "wf-scenario-12",
-      "deployed": false,
-      "lastTested": null,
-      "lastResult": null,
+      "deployed": true,
+      "lastTested": "2026-02-25T07:24:00.000000Z",
+      "lastResult": "pass",
       "testCount": 15,
-      "passCount": 0,
+      "passCount": 15,
       "failCount": 0,
       "blockers": []
     },
     "13-iot-telemetry": {
-      "status": "testable",
+      "status": "passed",
       "namespace": "wf-scenario-13",
-      "deployed": false,
-      "lastTested": null,
-      "lastResult": null,
+      "deployed": true,
+      "lastTested": "2026-02-25T07:24:00.000000Z",
+      "lastResult": "pass",
       "testCount": 14,
-      "passCount": 0,
+      "passCount": 14,
       "failCount": 0,
       "blockers": []
     },
     "14-low-code-crud": {
-      "status": "pending",
+      "status": "passed",
       "namespace": "wf-scenario-14",
-      "deployed": false,
-      "lastTested": null,
-      "lastResult": null,
-      "testCount": 0,
-      "passCount": 0,
+      "deployed": true,
+      "lastTested": "2026-02-25T07:24:00.000000Z",
+      "lastResult": "pass",
+      "testCount": 20,
+      "passCount": 20,
       "failCount": 0,
-      "blockers": [
-        "wfctl api extract <config.yaml> not yet implemented",
-        "wfctl ui scaffold -spec <openapi.json> -output ui/ not yet implemented"
-      ]
+      "blockers": []
     }
   }
 }

@@ -21,12 +21,6 @@ modules:
       maxQueueSize: 1000
       deliveryTimeout: "30s"
 
-  - name: cache
-    type: cache.memory
-    config:
-      defaultTTL: "300s"
-      maxEntries: 10000
-
 workflows:
   http:
     router: router
@@ -124,17 +118,17 @@ pipelines:
           required_fields: [name, sensor_type, location]
           source: "steps.parse-body.body"
       - name: gen-id
-        type: step.set_variable
+        type: step.set
         config:
-          name: sensor_id
-          value: "sensor-{{ randHex 8 }}"
+          values:
+            sensor_id: "sensor-{{ uuidv4 }}"
       - name: insert-sensor
         type: step.db_exec
         config:
           database: db
           query: "INSERT INTO sensors (id, name, sensor_type, location, threshold_value, threshold_operator, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'active', datetime('now'), datetime('now'))"
           params:
-            - "{{ .vars.sensor_id }}"
+            - "{{ index .steps \"gen-id\" \"sensor_id\" }}"
             - "{{ .body.name }}"
             - "{{ .body.sensor_type }}"
             - "{{ .body.location }}"
@@ -145,7 +139,7 @@ pipelines:
         config:
           status: 201
           body:
-            id: "{{ .vars.sensor_id }}"
+            id: "{{ index .steps \"gen-id\" \"sensor_id\" }}"
             status: active
             message: sensor registered
 
@@ -172,7 +166,7 @@ pipelines:
           database: db
           query: "SELECT id, name, sensor_type, threshold_value, threshold_operator FROM sensors WHERE id = ? AND status = 'active'"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-sensor-exists
         type: step.conditional
@@ -193,33 +187,29 @@ pipelines:
           database: db
           query: "INSERT INTO sensor_readings (sensor_id, value, unit, ts) VALUES (?, ?, ?, datetime('now'))"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
             - "{{ .body.value }}"
             - "{{ .body.unit | default \"\" }}"
-      - name: update-cache
-        type: step.cache_set
-        config:
-          cache: cache
-          key: "sensor:latest:{{ .path.id }}"
-          value_from: "steps.parse-body.body"
-          ttl: "600s"
       - name: check-threshold
         type: step.conditional
         config:
           field: steps.fetch-sensor.row.threshold_value
           routes:
             "": respond-ok
-            "<nil>": respond-ok
-          default: evaluate-threshold
-      - name: evaluate-threshold
-        type: step.set_variable
+          default: check-alert-db
+      - name: check-alert-db
+        type: step.db_query
         config:
-          name: alert_triggered
-          value: "{{ gt (float64 .body.value) (float64 .steps.fetch-sensor.row.threshold_value) }}"
+          database: db
+          query: "SELECT CASE WHEN CAST(? AS REAL) > threshold_value THEN 'true' ELSE 'false' END AS alert_triggered FROM sensors WHERE id = ?"
+          params:
+            - "{{ .body.value }}"
+            - "{{ .id }}"
+          mode: single
       - name: check-alert
         type: step.conditional
         config:
-          field: vars.alert_triggered
+          field: steps.check-alert-db.row.alert_triggered
           routes:
             "true": fire-alert
           default: respond-ok
@@ -229,10 +219,10 @@ pipelines:
           database: db
           query: "INSERT INTO sensor_alerts (sensor_id, reading_value, threshold_value, message) VALUES (?, ?, ?, ?)"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
             - "{{ .body.value }}"
-            - "{{ .steps.fetch-sensor.row.threshold_value }}"
-            - "Threshold exceeded: value {{ .body.value }} > threshold {{ .steps.fetch-sensor.row.threshold_value }}"
+            - "{{ index .steps \"fetch-sensor\" \"row\" \"threshold_value\" }}"
+            - "Threshold exceeded: value {{ .body.value }} > threshold {{ index .steps \"fetch-sensor\" \"row\" \"threshold_value\" }}"
       - name: publish-alert
         type: step.publish
         config:
@@ -243,7 +233,7 @@ pipelines:
         config:
           status: 202
           body:
-            sensor_id: "{{ .path.id }}"
+            sensor_id: "{{ .id }}"
             value: "{{ .body.value }}"
             alert: true
             message: reading ingested and alert triggered
@@ -252,7 +242,7 @@ pipelines:
         config:
           status: 202
           body:
-            sensor_id: "{{ .path.id }}"
+            sensor_id: "{{ .id }}"
             value: "{{ .body.value }}"
             alert: false
             message: reading ingested
@@ -264,25 +254,13 @@ pipelines:
         path: /api/v1/sensors/{id}/latest
         method: GET
     steps:
-      - name: check-cache
-        type: step.cache_get
-        config:
-          cache: cache
-          key: "sensor:latest:{{ .path.id }}"
-      - name: cache-hit-check
-        type: step.conditional
-        config:
-          field: steps.check-cache.hit
-          routes:
-            "true": respond-cached
-          default: fetch-db-latest
       - name: fetch-db-latest
         type: step.db_query
         config:
           database: db
           query: "SELECT sensor_id, value, unit, ts, alert_triggered FROM sensor_readings WHERE sensor_id = ? ORDER BY ts DESC LIMIT 1"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-has-reading
         type: step.conditional
@@ -302,11 +280,6 @@ pipelines:
         config:
           status: 200
           body_from: "steps.fetch-db-latest.row"
-      - name: respond-cached
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.check-cache.value"
 
   get-alerts:
     trigger:
@@ -321,7 +294,7 @@ pipelines:
           database: db
           query: "SELECT id FROM sensors WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-exists
         type: step.conditional
@@ -342,7 +315,7 @@ pipelines:
           database: db
           query: "SELECT id, sensor_id, reading_value, threshold_value, message, created_at FROM sensor_alerts WHERE sensor_id = ? ORDER BY created_at DESC LIMIT 50"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: list
       - name: respond
         type: step.json_response
@@ -373,7 +346,7 @@ pipelines:
           database: db
           query: "SELECT id FROM sensors WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-exists
         type: step.conditional
@@ -396,13 +369,13 @@ pipelines:
           params:
             - "{{ .body.value }}"
             - "{{ .body.operator | default \"gt\" }}"
-            - "{{ .path.id }}"
+            - "{{ .id }}"
       - name: respond
         type: step.json_response
         config:
           status: 200
           body:
-            sensor_id: "{{ .path.id }}"
+            sensor_id: "{{ .id }}"
             threshold: "{{ .body.value }}"
             operator: "{{ .body.operator | default \"gt\" }}"
             message: threshold updated

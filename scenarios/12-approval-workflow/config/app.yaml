@@ -104,22 +104,17 @@ pipelines:
           required_fields: [description, category, amount, requester]
           source: "steps.parse-body.body"
       - name: gen-id
-        type: step.set_variable
+        type: step.set
         config:
-          name: request_id
-          value: "req-{{ randHex 8 }}"
-      - name: determine-level
-        type: step.set_variable
-        config:
-          name: amount_str
-          value: "{{ .body.amount }}"
+          values:
+            request_id: "req-{{ uuidv4 }}"
       - name: insert-request
         type: step.db_exec
         config:
           database: db
           query: "INSERT INTO approval_requests (id, description, category, amount, requester, status, approval_level, required_level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'submitted', 'none', 'tbd', datetime('now'), datetime('now'))"
           params:
-            - "{{ .vars.request_id }}"
+            - "{{ index .steps \"gen-id\" \"request_id\" }}"
             - "{{ .body.description }}"
             - "{{ .body.category }}"
             - "{{ .body.amount }}"
@@ -130,14 +125,14 @@ pipelines:
           database: db
           query: "INSERT INTO approval_history (request_id, action, actor, notes) VALUES (?, 'submitted', ?, 'Request submitted')"
           params:
-            - "{{ .vars.request_id }}"
+            - "{{ index .steps \"gen-id\" \"request_id\" }}"
             - "{{ .body.requester }}"
       - name: respond
         type: step.json_response
         config:
           status: 201
           body:
-            id: "{{ .vars.request_id }}"
+            id: "{{ index .steps \"gen-id\" \"request_id\" }}"
             status: submitted
             amount: "{{ .body.amount }}"
             message: request submitted for approval
@@ -174,7 +169,7 @@ pipelines:
           database: db
           query: "SELECT id, description, category, amount, requester, status, approval_level, required_level, approved_by, rejected_by, rejection_reason, created_at, updated_at FROM approval_requests WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-exists
         type: step.conditional
@@ -218,7 +213,7 @@ pipelines:
           database: db
           query: "SELECT id, amount, status FROM approval_requests WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-approvable
         type: step.conditional
@@ -249,14 +244,14 @@ pipelines:
           params:
             - "{{ .body.level }}"
             - "{{ .body.approver }}"
-            - "{{ .path.id }}"
+            - "{{ .id }}"
       - name: log-approved
         type: step.db_exec
         config:
           database: db
           query: "INSERT INTO approval_history (request_id, action, actor, level, notes) VALUES (?, 'approved', ?, ?, ?)"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
             - "{{ .body.approver }}"
             - "{{ .body.level }}"
             - "{{ .body.notes | default \"Approved\" }}"
@@ -265,7 +260,7 @@ pipelines:
         config:
           status: 200
           body:
-            id: "{{ .path.id }}"
+            id: "{{ .id }}"
             status: approved
             approved_by: "{{ .body.approver }}"
             level: "{{ .body.level }}"
@@ -294,7 +289,7 @@ pipelines:
           database: db
           query: "SELECT id, status FROM approval_requests WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-rejectable
         type: step.conditional
@@ -325,14 +320,14 @@ pipelines:
           params:
             - "{{ .body.rejector }}"
             - "{{ .body.reason }}"
-            - "{{ .path.id }}"
+            - "{{ .id }}"
       - name: log-rejected
         type: step.db_exec
         config:
           database: db
           query: "INSERT INTO approval_history (request_id, action, actor, notes) VALUES (?, 'rejected', ?, ?)"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
             - "{{ .body.rejector }}"
             - "{{ .body.reason }}"
       - name: respond
@@ -340,7 +335,7 @@ pipelines:
         config:
           status: 200
           body:
-            id: "{{ .path.id }}"
+            id: "{{ .id }}"
             status: rejected
             rejected_by: "{{ .body.rejector }}"
             reason: "{{ .body.reason }}"
@@ -359,7 +354,7 @@ pipelines:
           database: db
           query: "SELECT id FROM approval_requests WHERE id = ?"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: single
       - name: check-found
         type: step.conditional
@@ -380,7 +375,7 @@ pipelines:
           database: db
           query: "SELECT id, request_id, action, actor, level, notes, created_at FROM approval_history WHERE request_id = ? ORDER BY created_at ASC"
           params:
-            - "{{ .path.id }}"
+            - "{{ .id }}"
           mode: list
       - name: respond
         type: step.json_response
