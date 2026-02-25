@@ -1,0 +1,43 @@
+name: External Policy Engine Adapter — OPA and Cedar
+id: "38-policy-engine"
+category: security
+description: |
+  Demonstrates the policy engine adapter supporting OPA (Open Policy Agent),
+  Cedar, and mock backends. Uses policy.mock for testing without external dependencies.
+
+  Policy evaluation is integrated as a pipeline step: step.policy_evaluate
+  reads an input document from the pipeline context, calls the engine, and
+  stops the pipeline with a deny if the decision is not allowed.
+
+  Endpoints:
+    POST /api/v1/policy/evaluate         — evaluate a policy decision (input in request body)
+    POST /api/v1/policy/load             — load a named policy document into the engine
+    GET  /api/v1/policy/list             — list all registered policies
+    POST /api/v1/policy/test             — test a policy against sample inputs (dry-run)
+    GET  /healthz                        — health check
+
+components:
+  - workflow (engine)
+  - policy.mock module (in-memory policy engine for testing)
+  - step.policy_evaluate pipeline step (allow/deny decision)
+  - step.policy_load pipeline step (dynamic policy loading)
+  - step.policy_list pipeline step (policy introspection)
+  - step.policy_test pipeline step (dry-run policy testing)
+
+tags:
+  - security
+  - policy
+  - authorization
+  - opa
+  - cedar
+  - policy-enforcement
+
+status: pending
+notes: |
+  Port-forward uses 18038.
+  Uses policy.mock backend — no real OPA or Cedar runtime required.
+  OPA backend stub: production would POST to <endpoint>/v1/data/<path>.
+  Cedar backend stub: production would use the cedar-go library.
+  Deny logic: any loaded policy containing the word "deny" causes deny decisions.
+  step.policy_evaluate sets Stop=true on deny, halting the pipeline.
+  step.policy_test verifies expected allow/deny outcomes against sample inputs.
