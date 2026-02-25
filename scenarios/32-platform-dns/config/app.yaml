@@ -1,0 +1,104 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: aws-mock
+    type: cloud.account
+    config:
+      provider: mock
+      region: us-east-1
+
+  - name: prod-dns
+    type: platform.dns
+    config:
+      account: aws-mock
+      provider: mock
+      zone:
+        name: example.com
+        comment: production zone
+      records:
+        - name: api.example.com
+          type: A
+          value: "10.0.1.50"
+          ttl: 300
+        - name: www.example.com
+          type: CNAME
+          value: cdn.example.com
+          ttl: 3600
+        - name: example.com
+          type: TXT
+          value: "v=spf1 include:_spf.google.com ~all"
+          ttl: 3600
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "32-platform-dns"
+
+  dns-plan:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/dns/plan
+        method: POST
+    steps:
+      - name: plan
+        type: step.dns_plan
+        config:
+          zone: prod-dns
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  dns-apply:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/dns/apply
+        method: POST
+    steps:
+      - name: apply
+        type: step.dns_apply
+        config:
+          zone: prod-dns
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  dns-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/dns/status
+        method: GET
+    steps:
+      - name: status
+        type: step.dns_status
+        config:
+          zone: prod-dns
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."

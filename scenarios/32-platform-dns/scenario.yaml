@@ -1,0 +1,14 @@
+name: Platform DNS
+id: "32-platform-dns"
+category: C
+description: |
+  Demonstrates platform.dns module with the mock backend (in-memory state).
+  Exposes plan/apply/status operations via HTTP pipelines backed by
+  step.dns_plan, step.dns_apply, and step.dns_status.
+  No real DNS API calls are made — zone and record state is tracked entirely
+  in-memory, making the scenario runnable without any cloud credentials.
+components:
+  - workflow (engine)
+  - cloud plugin (cloud.account)
+  - platform plugin (platform.dns, dns pipeline steps)
+status: testable
