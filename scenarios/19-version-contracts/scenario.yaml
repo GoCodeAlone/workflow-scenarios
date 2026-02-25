@@ -1,0 +1,11 @@
+name: version-contracts
+description: "Tests contract generation, comparison, and breaking change detection across config versions"
+category: validation
+components:
+  - wfctl
+tags:
+  - contracts
+  - versioning
+  - breaking-changes
+  - compatibility
+  - local-only

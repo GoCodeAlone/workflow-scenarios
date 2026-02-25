@@ -1,0 +1,10 @@
+name: template-validation
+description: "Validates all project templates produce correct, deployable configs and generate valid OpenAPI specs and contracts"
+category: validation
+components:
+  - wfctl
+tags:
+  - templates
+  - validation
+  - contracts
+  - local-only

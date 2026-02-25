@@ -1,0 +1,229 @@
+# ============================================================
+# Scenario 19 — v1 Simple API (baseline)
+#
+# Minimal but fully deployable REST API with JWT auth and
+# SQLite persistence.  Five pipelines:
+#   POST /api/v1/auth/register  — create account
+#   POST /api/v1/auth/login     — obtain JWT
+#   GET  /api/v1/auth/profile   — authenticated profile
+#   POST /api/v1/items          — create item (auth required)
+#   GET  /api/v1/items          — list items (public)
+#
+# This config is the stable baseline for contract comparison.
+# v2 must extend it without breaking changes.
+# v3 intentionally introduces breaking changes that the
+# contract tooling should detect.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: db
+    type: storage.sqlite
+    config:
+      dbPath: "/data/scenario19-v1.db"
+      maxConnections: 5
+      walMode: true
+
+  - name: jwt
+    type: auth.jwt
+    config:
+      secret: "${JWT_SECRET:-scenario19-dev-secret}"
+      issuer: "scenario-19-v1"
+      tokenExpiry: "1h"
+    dependsOn: [router]
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes:
+      - method: POST
+        path: /api/v1/auth/register
+        handler: jwt
+
+      - method: POST
+        path: /api/v1/auth/login
+        handler: jwt
+
+      - method: GET
+        path: /api/v1/auth/profile
+        handler: jwt
+
+      - method: POST
+        path: /api/v1/items
+        handler: jwt
+
+      - method: GET
+        path: /api/v1/items
+        handler: jwt
+
+pipelines:
+  # ----------------------------------------------------------------
+  # Health
+  # ----------------------------------------------------------------
+  health:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            version: v1
+            scenario: "19-version-contracts"
+
+  # ----------------------------------------------------------------
+  # Auth: Register
+  # ----------------------------------------------------------------
+  register:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/auth/register
+        method: POST
+    steps:
+      - name: validate-input
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [email, password, name]
+      - name: create-user
+        type: step.user_register
+        config:
+          database: db
+          emailField: email
+          passwordField: password
+          nameField: name
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body:
+            status: created
+            message: "Account created successfully"
+
+  # ----------------------------------------------------------------
+  # Auth: Login
+  # ----------------------------------------------------------------
+  login:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/auth/login
+        method: POST
+    steps:
+      - name: validate-input
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [email, password]
+      - name: authenticate
+        type: step.user_login
+        config:
+          database: db
+          jwtModule: jwt
+          emailField: email
+          passwordField: password
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.authenticate.result"
+
+  # ----------------------------------------------------------------
+  # Auth: Profile
+  # ----------------------------------------------------------------
+  profile:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/auth/profile
+        method: GET
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          jwtModule: jwt
+      - name: get-profile
+        type: step.user_profile
+        config:
+          database: db
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.get-profile.user"
+
+  # ----------------------------------------------------------------
+  # Items: Create
+  # ----------------------------------------------------------------
+  create-item:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/items
+        method: POST
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          jwtModule: jwt
+      - name: validate-input
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [name]
+      - name: log-create
+        type: step.log
+        config:
+          level: info
+          message: "Creating item"
+      - name: store-item
+        type: step.cache_set
+        config:
+          key: "item:{{ .request.body.name }}"
+          value: "{{ json .request.body }}"
+          ttl: "24h"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body:
+            status: created
+            name: "{{ .request.body.name }}"
+
+  # ----------------------------------------------------------------
+  # Items: List
+  # ----------------------------------------------------------------
+  list-items:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/items
+        method: GET
+    steps:
+      - name: log-list
+        type: step.log
+        config:
+          level: info
+          message: "Listing items"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            items: []
+            version: v1

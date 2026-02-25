@@ -1,0 +1,355 @@
+# ============================================================
+# Scenario 19 — v2 Extended API (non-breaking extension)
+#
+# Extends v1 without breaking any existing contracts:
+#   - All v1 endpoints present and unchanged
+#   - Adds messaging.broker module
+#   - Adds three new item endpoints:
+#       GET  /api/v1/items/{id}  — get single item
+#       PUT  /api/v1/items/{id}  — update item (auth required)
+#       DELETE /api/v1/items/{id} — delete item (auth required)
+#   - Adds step.publish for event notifications on writes
+#
+# Contract comparison: v2 vs v1 should show ZERO breaking
+# changes and report only new endpoints as additions.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: db
+    type: storage.sqlite
+    config:
+      dbPath: "/data/scenario19-v2.db"
+      maxConnections: 5
+      walMode: true
+
+  - name: jwt
+    type: auth.jwt
+    config:
+      secret: "${JWT_SECRET:-scenario19-dev-secret}"
+      issuer: "scenario-19-v2"
+      tokenExpiry: "1h"
+    dependsOn: [router]
+
+  - name: broker
+    type: messaging.broker
+    config:
+      maxQueueSize: 1000
+      deliveryTimeout: "30s"
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes:
+      # --- v1 routes (unchanged) ---
+      - method: POST
+        path: /api/v1/auth/register
+        handler: jwt
+
+      - method: POST
+        path: /api/v1/auth/login
+        handler: jwt
+
+      - method: GET
+        path: /api/v1/auth/profile
+        handler: jwt
+
+      - method: POST
+        path: /api/v1/items
+        handler: jwt
+
+      - method: GET
+        path: /api/v1/items
+        handler: jwt
+
+      # --- v2 additions ---
+      - method: GET
+        path: /api/v1/items/{id}
+        handler: jwt
+
+      - method: PUT
+        path: /api/v1/items/{id}
+        handler: jwt
+
+      - method: DELETE
+        path: /api/v1/items/{id}
+        handler: jwt
+
+pipelines:
+  # ----------------------------------------------------------------
+  # Health
+  # ----------------------------------------------------------------
+  health:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            version: v2
+            scenario: "19-version-contracts"
+
+  # ----------------------------------------------------------------
+  # Auth: Register (unchanged from v1)
+  # ----------------------------------------------------------------
+  register:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/auth/register
+        method: POST
+    steps:
+      - name: validate-input
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [email, password, name]
+      - name: create-user
+        type: step.user_register
+        config:
+          database: db
+          emailField: email
+          passwordField: password
+          nameField: name
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body:
+            status: created
+            message: "Account created successfully"
+
+  # ----------------------------------------------------------------
+  # Auth: Login (unchanged from v1)
+  # ----------------------------------------------------------------
+  login:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/auth/login
+        method: POST
+    steps:
+      - name: validate-input
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [email, password]
+      - name: authenticate
+        type: step.user_login
+        config:
+          database: db
+          jwtModule: jwt
+          emailField: email
+          passwordField: password
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.authenticate.result"
+
+  # ----------------------------------------------------------------
+  # Auth: Profile (unchanged from v1)
+  # ----------------------------------------------------------------
+  profile:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/auth/profile
+        method: GET
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          jwtModule: jwt
+      - name: get-profile
+        type: step.user_profile
+        config:
+          database: db
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.get-profile.user"
+
+  # ----------------------------------------------------------------
+  # Items: Create (unchanged from v1, adds publish)
+  # ----------------------------------------------------------------
+  create-item:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/items
+        method: POST
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          jwtModule: jwt
+      - name: validate-input
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [name]
+      - name: log-create
+        type: step.log
+        config:
+          level: info
+          message: "Creating item"
+      - name: store-item
+        type: step.cache_set
+        config:
+          key: "item:{{ .request.body.name }}"
+          value: "{{ json .request.body }}"
+          ttl: "24h"
+      - name: notify-created
+        type: step.publish
+        config:
+          topic: "item.created"
+          broker: broker
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body:
+            status: created
+            name: "{{ .request.body.name }}"
+
+  # ----------------------------------------------------------------
+  # Items: List (unchanged from v1)
+  # ----------------------------------------------------------------
+  list-items:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/items
+        method: GET
+    steps:
+      - name: log-list
+        type: step.log
+        config:
+          level: info
+          message: "Listing items"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            items: []
+            version: v2
+
+  # ----------------------------------------------------------------
+  # Items: Get by ID (new in v2)
+  # ----------------------------------------------------------------
+  get-item:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/items/{id}
+        method: GET
+    steps:
+      - name: fetch-item
+        type: step.cache_get
+        config:
+          key: "item:{{ .request.pathParams.id }}"
+      - name: check-found
+        type: step.conditional
+        config:
+          field: steps.fetch-item.value
+          routes:
+            "": not-found
+          default: respond-item
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: item not found
+      - name: respond-item
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.fetch-item.value"
+
+  # ----------------------------------------------------------------
+  # Items: Update (new in v2, auth required)
+  # ----------------------------------------------------------------
+  update-item:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/items/{id}
+        method: PUT
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          jwtModule: jwt
+      - name: validate-input
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [name]
+      - name: store-updated
+        type: step.cache_set
+        config:
+          key: "item:{{ .request.pathParams.id }}"
+          value: "{{ json .request.body }}"
+          ttl: "24h"
+      - name: notify-updated
+        type: step.publish
+        config:
+          topic: "item.updated"
+          broker: broker
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: updated
+            id: "{{ .request.pathParams.id }}"
+
+  # ----------------------------------------------------------------
+  # Items: Delete (new in v2, auth required)
+  # ----------------------------------------------------------------
+  delete-item:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/items/{id}
+        method: DELETE
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          jwtModule: jwt
+      - name: remove-item
+        type: step.cache_delete
+        config:
+          key: "item:{{ .request.pathParams.id }}"
+      - name: notify-deleted
+        type: step.publish
+        config:
+          topic: "item.deleted"
+          broker: broker
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: deleted
+            id: "{{ .request.pathParams.id }}"
