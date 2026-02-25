@@ -1,0 +1,155 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Cloud credentials (mock — no real cloud provider needed).
+  - name: aws-mock
+    type: cloud.account
+    config:
+      provider: mock
+      region: us-east-1
+
+  # IaC state backend — filesystem so state survives pod restarts.
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: filesystem
+      directory: /var/lib/workflow/iac-state
+
+  # Kubernetes platform provider (kind — in-memory cluster simulation).
+  - name: production-cluster
+    type: platform.kubernetes
+    config:
+      account: aws-mock
+      type: kind
+      version: "1.29"
+      nodeGroups:
+        - name: default
+          instanceType: t3.medium
+          min: 2
+          max: 10
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "28-iac-pipeline"
+
+  # IaC plan — computes the desired changes and records "planned" state.
+  iac-plan:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/plan
+        method: POST
+    steps:
+      - name: plan
+        type: step.iac_plan
+        config:
+          platform: production-cluster
+          resource_id: production-cluster
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # IaC apply — provisions the infrastructure and records "active" state.
+  iac-apply:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/apply
+        method: POST
+    steps:
+      - name: apply
+        type: step.iac_apply
+        config:
+          platform: production-cluster
+          resource_id: production-cluster
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # IaC status — returns live + stored infrastructure status.
+  iac-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/status
+        method: GET
+    steps:
+      - name: status
+        type: step.iac_status
+        config:
+          platform: production-cluster
+          resource_id: production-cluster
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # IaC drift detect — compares current config against stored config snapshot.
+  iac-drift:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/drift
+        method: POST
+    steps:
+      - name: drift
+        type: step.iac_drift_detect
+        config:
+          platform: production-cluster
+          resource_id: production-cluster
+          state_store: iac-state
+          config:
+            version: "1.30"
+            nodeGroups: changed
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # IaC destroy — tears down infrastructure and records "destroyed" state.
+  iac-destroy:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac
+        method: DELETE
+    steps:
+      - name: destroy
+        type: step.iac_destroy
+        config:
+          platform: production-cluster
+          resource_id: production-cluster
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."

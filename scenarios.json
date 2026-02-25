@@ -283,6 +283,18 @@
       "uiPath": "/ui/",
       "notes": "Full cross-service integration passing. Flow: register user (auth-service) → create order (calls payment-service) → capture payment → webhook updates order status to paid. UI generated via wfctl api extract + wfctl ui scaffold. Playwright QA: 9/9 browser integration tests passed.",
       "blockers": []
+    },
+    "28-iac-pipeline": {
+      "status": "ready",
+      "namespace": "wf-scenario-28",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 23,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "IaC state backend (iac.state) with filesystem persistence + generic IaC pipeline steps. Full lifecycle: plan → apply → status → drift-detect → destroy. No real cluster required (kind backend).",
+      "blockers": []
     }
   }
 }

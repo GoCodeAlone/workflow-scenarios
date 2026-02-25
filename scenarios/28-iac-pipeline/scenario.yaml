@@ -1,0 +1,20 @@
+name: IaC Pipeline
+id: "28-iac-pipeline"
+category: C
+description: |
+  Demonstrates the IaC state backend (iac.state module) and generic IaC pipeline
+  steps (step.iac_plan, step.iac_apply, step.iac_status, step.iac_destroy,
+  step.iac_drift_detect).
+
+  Infrastructure state is tracked by the iac.state module (filesystem backend,
+  persisted in a k8s volume) and lifecycle operations are exposed via HTTP
+  pipelines. The platform provider is platform.kubernetes (kind backend), so no
+  real cluster is created — all state transitions happen in memory/on disk.
+
+  This scenario validates the full IaC lifecycle:
+    plan → verify planned → apply → verify active → status → drift detect → destroy → verify destroyed
+components:
+  - workflow (engine)
+  - cloud plugin (cloud.account)
+  - platform plugin (platform.kubernetes, iac.state, iac pipeline steps)
+status: testable
