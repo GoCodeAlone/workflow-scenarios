@@ -245,10 +245,11 @@ TMPL_DIR="$WORK_DIR/template-roundtrip"
 mkdir -p "$TMPL_DIR"
 
 # Test 4.1: Init api-service template
-if "$WFCTL" init "roundtrip-api" \
+if "$WFCTL" init \
         --template "api-service" \
         --author "TestOrg" \
         --output "$TMPL_DIR" \
+        "roundtrip-api" \
         >/dev/null 2>&1; then
     pass "Template round-trip: wfctl init api-service succeeds"
 else
@@ -315,8 +316,8 @@ echo "=== Phase 5: OpenAPI spec comparison ==="
 
 # Test 5.1: Extract OpenAPI from v1
 SPEC_V1="$WORK_DIR/spec-v1.json"
-if "$WFCTL" api extract "$V1_CONFIG" --output "$SPEC_V1" >/dev/null 2>&1 || \
-   "$WFCTL" api extract "$V1_CONFIG" -output "$SPEC_V1" >/dev/null 2>&1; then
+if "$WFCTL" api extract --output "$SPEC_V1" "$V1_CONFIG" >/dev/null 2>&1 || \
+   "$WFCTL" api extract -output "$SPEC_V1" "$V1_CONFIG" >/dev/null 2>&1; then
     if [ -s "$SPEC_V1" ]; then
         pass "v1 OpenAPI spec extracted successfully"
     else
@@ -328,8 +329,8 @@ fi
 
 # Test 5.2: Extract OpenAPI from v2
 SPEC_V2="$WORK_DIR/spec-v2.json"
-if "$WFCTL" api extract "$V2_CONFIG" --output "$SPEC_V2" >/dev/null 2>&1 || \
-   "$WFCTL" api extract "$V2_CONFIG" -output "$SPEC_V2" >/dev/null 2>&1; then
+if "$WFCTL" api extract --output "$SPEC_V2" "$V2_CONFIG" >/dev/null 2>&1 || \
+   "$WFCTL" api extract -output "$SPEC_V2" "$V2_CONFIG" >/dev/null 2>&1; then
     if [ -s "$SPEC_V2" ]; then
         pass "v2 OpenAPI spec extracted successfully"
     else
@@ -371,8 +372,8 @@ fi
 
 # Test 5.5: Extract OpenAPI from v3
 SPEC_V3="$WORK_DIR/spec-v3.json"
-if "$WFCTL" api extract "$V3_CONFIG" --output "$SPEC_V3" >/dev/null 2>&1 || \
-   "$WFCTL" api extract "$V3_CONFIG" -output "$SPEC_V3" >/dev/null 2>&1; then
+if "$WFCTL" api extract --output "$SPEC_V3" "$V3_CONFIG" >/dev/null 2>&1 || \
+   "$WFCTL" api extract -output "$SPEC_V3" "$V3_CONFIG" >/dev/null 2>&1; then
     if [ -s "$SPEC_V3" ]; then
         pass "v3 OpenAPI spec extracted successfully"
     else

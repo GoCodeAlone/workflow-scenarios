@@ -473,7 +473,7 @@ pipelines:
           query: "INSERT INTO state_transitions (order_id, from_state, to_state, reason) VALUES (?, ?, 'cancelled', 'Customer cancelled')"
           params:
             - "{{ .id }}"
-            - "{{ steps.fetch.row.status }}"
+            - "{{ index .steps \"fetch\" \"row\" \"status\" }}"
       - name: respond
         type: step.json_response
         config:

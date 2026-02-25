@@ -18,6 +18,7 @@ spec:
         - name: workflow-server
           image: workflow-server-bento:local
           imagePullPolicy: Never
+          args: ["-config", "/app.yaml", "-data-dir", "/data"]
           env:
             - name: WORKFLOW_DATA_DIR
               value: "/data"

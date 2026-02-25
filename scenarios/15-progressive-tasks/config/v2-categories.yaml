@@ -349,7 +349,7 @@ pipelines:
         type: step.db_exec
         config:
           database: db
-          query: "INSERT INTO categories (name, color) VALUES (?, ?)"
+          query: "INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)"
           params:
             - "{{ .body.name }}"
             - "{{ .body.color }}"
@@ -357,7 +357,9 @@ pipelines:
         type: step.db_query
         config:
           database: db
-          query: "SELECT id, name, color, created_at FROM categories WHERE id = last_insert_rowid()"
+          query: "SELECT id, name, color, created_at FROM categories WHERE name = ?"
+          params:
+            - "{{ .body.name }}"
           mode: single
       - name: respond
         type: step.json_response

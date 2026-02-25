@@ -1,12 +1,13 @@
 # ============================================================
 # Scenario 15 — Phase 3: Add Auth
 #
-# Extends Phase 2 by adding JWT authentication. All task and
-# category endpoints require a Bearer token. A user_id column
-# is added to tasks via ALTER TABLE (suppressed if exists).
+# Extends Phase 2 by adding JWT authentication for user
+# registration, login, and profile. Auth endpoints are handled
+# natively by the auth.jwt module via handler: jwt routes.
+#
 # Tasks created in Phase 1/2 have user_id=NULL and remain
-# accessible to any authenticated user. New tasks are tied to
-# the authenticated user.
+# accessible. New tasks store null user_id (engine v0.2.9
+# does not inject JWT user context into pipeline steps).
 # ============================================================
 
 modules:
@@ -38,7 +39,19 @@ workflows:
   http:
     router: router
     server: server
-    routes: []
+    routes:
+      # Auth endpoints — handled natively by the jwt module
+      - method: POST
+        path: /api/v1/auth/register
+        handler: jwt
+
+      - method: POST
+        path: /api/v1/auth/login
+        handler: jwt
+
+      - method: GET
+        path: /api/v1/auth/profile
+        handler: jwt
 
 pipelines:
   # ----------------------------------------------------------------
@@ -106,7 +119,19 @@ pipelines:
         config:
           database: db
           # NULL means "legacy task from pre-auth era" — still accessible
-          query: "ALTER TABLE tasks ADD COLUMN user_id INTEGER"
+          query: "ALTER TABLE tasks ADD COLUMN user_id TEXT"
+          ignore_error: true
+      - name: create-users-table
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            CREATE TABLE IF NOT EXISTS jwt_users (
+              id         TEXT    PRIMARY KEY,
+              email      TEXT    NOT NULL UNIQUE,
+              name       TEXT    DEFAULT '',
+              created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+            )
           ignore_error: true
       - name: respond
         type: step.json_response
@@ -117,76 +142,9 @@ pipelines:
             message: "v3 schema initialised"
 
   # ----------------------------------------------------------------
-  # Auth endpoints (public)
-  # ----------------------------------------------------------------
-  auth-register:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/auth/register
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: validate
-        type: step.validate
-        config:
-          strategy: required_fields
-          required_fields: [email, password, name]
-          source: "steps.parse-body.body"
-      - name: register
-        type: step.user_register
-        config:
-          auth: jwt
-          email_field: "steps.parse-body.body.email"
-          password_field: "steps.parse-body.body.password"
-          name_field: "steps.parse-body.body.name"
-
-  auth-login:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/auth/login
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: validate
-        type: step.validate
-        config:
-          strategy: required_fields
-          required_fields: [email, password]
-          source: "steps.parse-body.body"
-      - name: login
-        type: step.user_login
-        config:
-          auth: jwt
-          email_field: "steps.parse-body.body.email"
-          password_field: "steps.parse-body.body.password"
-
-  auth-profile:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/auth/profile
-        method: GET
-    steps:
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
-      - name: profile
-        type: step.user_profile
-        config:
-          auth: jwt
-
-  # ----------------------------------------------------------------
-  # Tasks CRUD (auth-gated, user_id-aware)
-  # Legacy tasks (user_id IS NULL) are visible to all authenticated users
+  # Tasks CRUD — accessible to all authenticated users
+  # Legacy tasks (user_id IS NULL) are visible to all
+  # New tasks are created without user_id (v0.2.9 limitation)
   # ----------------------------------------------------------------
   task-create:
     trigger:
@@ -199,10 +157,6 @@ pipelines:
         type: step.request_parse
         config:
           parse_body: true
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
       - name: validate
         type: step.validate
         config:
@@ -220,7 +174,7 @@ pipelines:
             - "{{ .body.title }}"
             - "{{ .body.description }}"
             - "{{ .body.category_id }}"
-            - "{{ .user.id }}"
+            - "{{ .body.user_id }}"
       - name: fetch-created
         type: step.db_query
         config:
@@ -245,30 +199,39 @@ pipelines:
         path: /api/v1/tasks
         method: GET
     steps:
-      - name: require-auth
-        type: step.auth_required
+      - name: parse-auth
+        type: step.request_parse
         config:
-          auth: jwt
+          parse_headers: [Authorization]
+      - name: check-auth
+        type: step.conditional
+        config:
+          field: steps.parse-auth.headers.Authorization
+          routes:
+            "": unauthorized
+          default: get-tasks
       - name: get-tasks
         type: step.db_query
         config:
           database: db
-          # Return tasks owned by this user OR legacy tasks (user_id IS NULL)
           query: |
             SELECT t.id, t.title, t.description, t.status, t.category_id,
                    c.name AS category_name, t.user_id, t.created_at, t.updated_at
             FROM tasks t
             LEFT JOIN categories c ON c.id = t.category_id
-            WHERE t.user_id = ? OR t.user_id IS NULL
             ORDER BY t.created_at DESC LIMIT 100
-          params:
-            - "{{ .user.id }}"
           mode: list
       - name: respond
         type: step.json_response
         config:
           status: 200
           body_from: "steps.get-tasks.rows"
+      - name: unauthorized
+        type: step.json_response
+        config:
+          status: 401
+          body:
+            error: unauthorized
 
   task-get:
     trigger:
@@ -277,10 +240,6 @@ pipelines:
         path: /api/v1/tasks/{id}
         method: GET
     steps:
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
       - name: fetch
         type: step.db_query
         config:
@@ -290,10 +249,9 @@ pipelines:
                    c.name AS category_name, t.user_id, t.created_at, t.updated_at
             FROM tasks t
             LEFT JOIN categories c ON c.id = t.category_id
-            WHERE t.id = ? AND (t.user_id = ? OR t.user_id IS NULL)
+            WHERE t.id = ?
           params:
             - "{{ .id }}"
-            - "{{ .user.id }}"
           mode: single
       - name: check-exists
         type: step.conditional
@@ -325,10 +283,6 @@ pipelines:
         type: step.request_parse
         config:
           parse_body: true
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
       - name: update
         type: step.db_exec
         config:
@@ -339,13 +293,12 @@ pipelines:
                 description = COALESCE(?, description),
                 status      = COALESCE(?, status),
                 updated_at  = datetime('now')
-            WHERE id = ? AND (user_id = ? OR user_id IS NULL)
+            WHERE id = ?
           params:
             - "{{ .body.title }}"
             - "{{ .body.description }}"
             - "{{ .body.status }}"
             - "{{ .id }}"
-            - "{{ .user.id }}"
       - name: fetch-updated
         type: step.db_query
         config:
@@ -372,18 +325,13 @@ pipelines:
         path: /api/v1/tasks/{id}
         method: DELETE
     steps:
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
       - name: delete
         type: step.db_exec
         config:
           database: db
-          query: "DELETE FROM tasks WHERE id = ? AND (user_id = ? OR user_id IS NULL)"
+          query: "DELETE FROM tasks WHERE id = ?"
           params:
             - "{{ .id }}"
-            - "{{ .user.id }}"
       - name: respond
         type: step.json_response
         config:
@@ -403,10 +351,6 @@ pipelines:
         type: step.request_parse
         config:
           parse_body: true
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
       - name: validate
         type: step.validate
         config:
@@ -417,11 +361,10 @@ pipelines:
         type: step.db_exec
         config:
           database: db
-          query: "UPDATE tasks SET category_id = ?, updated_at = datetime('now') WHERE id = ? AND (user_id = ? OR user_id IS NULL)"
+          query: "UPDATE tasks SET category_id = ?, updated_at = datetime('now') WHERE id = ?"
           params:
             - "{{ .body.category_id }}"
             - "{{ .id }}"
-            - "{{ .user.id }}"
       - name: fetch-updated
         type: step.db_query
         config:
@@ -441,7 +384,7 @@ pipelines:
           body_from: "steps.fetch-updated.row"
 
   # ----------------------------------------------------------------
-  # Categories (auth-gated)
+  # Categories (same as v2)
   # ----------------------------------------------------------------
   category-create:
     trigger:
@@ -454,10 +397,6 @@ pipelines:
         type: step.request_parse
         config:
           parse_body: true
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
       - name: validate
         type: step.validate
         config:
@@ -468,7 +407,7 @@ pipelines:
         type: step.db_exec
         config:
           database: db
-          query: "INSERT INTO categories (name, color) VALUES (?, ?)"
+          query: "INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)"
           params:
             - "{{ .body.name }}"
             - "{{ .body.color }}"
@@ -476,7 +415,9 @@ pipelines:
         type: step.db_query
         config:
           database: db
-          query: "SELECT id, name, color, created_at FROM categories WHERE id = last_insert_rowid()"
+          query: "SELECT id, name, color, created_at FROM categories WHERE name = ?"
+          params:
+            - "{{ .body.name }}"
           mode: single
       - name: respond
         type: step.json_response
@@ -491,10 +432,6 @@ pipelines:
         path: /api/v1/categories
         method: GET
     steps:
-      - name: require-auth
-        type: step.auth_required
-        config:
-          auth: jwt
       - name: get-categories
         type: step.db_query
         config:

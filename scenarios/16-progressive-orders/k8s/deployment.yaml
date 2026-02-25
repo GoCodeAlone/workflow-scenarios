@@ -18,7 +18,7 @@ spec:
         - name: workflow-server
           image: workflow-server:local
           imagePullPolicy: Never
-          args: ["-config", "/config/app.yaml"]
+          args: ["-config", "/config/app.yaml", "-data-dir", "/data"]
           ports:
             - containerPort: 8080
           volumeMounts:
@@ -26,6 +26,13 @@ spec:
               mountPath: /config
             - name: data
               mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 3
+            failureThreshold: 20
           resources:
             limits:
               cpu: 300m

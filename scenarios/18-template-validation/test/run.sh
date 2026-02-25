@@ -71,10 +71,11 @@ test_template() {
     # Step 1: Scaffold
     # ------------------------------------------------------------------
     mkdir -p "$OUT"
-    if "$WFCTL" init "test-$TEMPLATE" \
+    if "$WFCTL" init \
             --template "$TEMPLATE" \
             --author "TestOrg" \
             --output "$OUT" \
+            "test-$TEMPLATE" \
             >/dev/null 2>&1; then
         pass "[$TEMPLATE] wfctl init scaffolds project"
     else
@@ -150,8 +151,8 @@ test_template() {
         skip "[$TEMPLATE] wfctl api extract — no config file"
     else
         OPENAPI_FILE="$OUT/openapi.json"
-        if "$WFCTL" api extract "$CONFIG_FILE" --output "$OPENAPI_FILE" >/dev/null 2>&1 || \
-           "$WFCTL" api extract "$CONFIG_FILE" -output "$OPENAPI_FILE" >/dev/null 2>&1; then
+        if "$WFCTL" api extract --output "$OPENAPI_FILE" "$CONFIG_FILE" >/dev/null 2>&1 || \
+           "$WFCTL" api extract -output "$OPENAPI_FILE" "$CONFIG_FILE" >/dev/null 2>&1; then
             if [ -s "$OPENAPI_FILE" ]; then
                 pass "[$TEMPLATE] wfctl api extract generates OpenAPI spec"
             else
