@@ -1,0 +1,61 @@
+name: Plugin Marketplace — Search, Install, and Manage Plugins
+id: "41-plugin-marketplace"
+category: platform
+description: |
+  Demonstrates the plugin marketplace pipeline steps for discovering and managing
+  workflow plugins. Uses a local file-system-backed registry with a built-in
+  catalog of community plugins (no network access required).
+
+  Pipeline steps provided by the marketplace plugin:
+    step.marketplace_search   — search by query, category, and/or tags
+    step.marketplace_detail   — retrieve full metadata for a named plugin
+    step.marketplace_install  — download and install a plugin to data/plugins/
+    step.marketplace_installed — list all currently installed plugins
+    step.marketplace_uninstall — remove an installed plugin
+    step.marketplace_update   — update an installed plugin to the latest version
+
+  Admin UI:
+    The Plugin Marketplace page (view id: marketplace) in the admin UI displays
+    enabled/disabled plugins and provides Enable/Disable toggle actions. It is
+    pre-registered in the VIEW_REGISTRY and rendered via the admin-core plugin's
+    page declaration.
+
+  Example pipeline (search → install → verify):
+    steps:
+      - name: search
+        type: step.marketplace_search
+        config:
+          query: "kafka"
+          category: "messaging"
+      - name: install
+        type: step.marketplace_install
+        config:
+          plugin: "messaging-kafka"
+      - name: verify
+        type: step.marketplace_installed
+
+components:
+  - workflow (engine)
+  - plugins/marketplace plugin
+  - step.marketplace_search pipeline step
+  - step.marketplace_detail pipeline step
+  - step.marketplace_install pipeline step
+  - step.marketplace_installed pipeline step
+  - step.marketplace_uninstall pipeline step
+  - step.marketplace_update pipeline step
+  - Admin UI marketplace page (ui/src/components/marketplace/Marketplace.tsx)
+
+tags:
+  - marketplace
+  - plugins
+  - platform
+  - admin-ui
+  - pipeline-steps
+
+status: pending
+notes: |
+  Port-forward uses 18041.
+  No real network registry is required — uses the built-in local catalog.
+  Installed plugins are tracked via data/plugins/<name>/.installed sentinel files.
+  The admin UI Marketplace page shows enabled/disabled plugins from the running
+  engine and supports Enable/Disable toggle actions.
