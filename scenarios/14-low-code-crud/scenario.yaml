@@ -1,0 +1,42 @@
+name: Low-Code CRUD Application
+id: "14-low-code-crud"
+category: low-code
+description: |
+  A complete Task Manager CRUD application where the developer writes ONLY the
+  backend app.yaml config — no Go code. The full pipeline validates the zero-code
+  frontend story:
+
+    1. Developer writes app.yaml (tasks, auth, categories, state machine)
+    2. wfctl api extract generates an OpenAPI 3.0 spec from the config
+    3. wfctl ui scaffold generates a React SPA from the spec
+    4. wfctl build-ui compiles the React app
+    5. The backend serves the built UI via static.fileserver
+
+  Validates: auth (JWT), CRUD pipelines, state machine transitions (todo →
+  in_progress → done), cache, messaging broker, and the wfctl UI generation
+  toolchain end-to-end.
+components:
+  - workflow (engine)
+  - wfctl (api extract, ui scaffold, build-ui)
+  - SQLite (task storage)
+tags:
+  - low-code
+  - no-code
+  - ui-generation
+  - crud
+  - state-machine
+  - auth
+status: pending
+notes: |
+  Blocked on:
+    - wfctl api extract <config.yaml>  (not yet implemented)
+    - wfctl ui scaffold -spec <openapi.json> -output ui/  (not yet implemented)
+
+  API tests (test/run.sh) run against the deployed k8s pod and do not require
+  the wfctl UI toolchain.
+
+  UI generation tests (test/ui-test.sh) run locally using wfctl commands and
+  do not require k8s. They gracefully skip if wfctl subcommands are absent.
+
+  The app.yaml is the ONLY file a developer needs to write. Everything else
+  (OpenAPI spec, React UI, built assets) is generated from it.

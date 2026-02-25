@@ -1,0 +1,624 @@
+# ============================================================
+# Scenario 14: Low-Code CRUD — Task Manager
+#
+# This is the ONLY file a developer needs to write.
+# The backend, API spec, and frontend are all derived from this.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: db
+    type: storage.sqlite
+    config:
+      dbPath: "/data/tasks.db"
+      maxConnections: 5
+      walMode: true
+
+  - name: jwt
+    type: auth.jwt
+    config:
+      secret: "${JWT_SECRET}"
+      issuer: "scenario-14-tasks"
+      tokenExpiry: "24h"
+    dependsOn: [router]
+
+  - name: auth-middleware
+    type: http.middleware.auth
+    config:
+      authType: Bearer
+    dependsOn: [jwt]
+
+  - name: broker
+    type: messaging.broker
+    config:
+      maxQueueSize: 1000
+      deliveryTimeout: "30s"
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes:
+      # Auth — public
+      - method: POST
+        path: /api/v1/auth/register
+        handler: jwt
+
+      - method: POST
+        path: /api/v1/auth/login
+        handler: jwt
+
+      # Auth — protected
+      - method: GET
+        path: /api/v1/auth/profile
+        handler: jwt
+        middlewares:
+          - auth-middleware
+
+      # Tasks — protected
+      - method: POST
+        path: /api/v1/tasks
+        handler: router
+        middlewares:
+          - auth-middleware
+
+      - method: GET
+        path: /api/v1/tasks
+        handler: router
+        middlewares:
+          - auth-middleware
+
+      - method: GET
+        path: /api/v1/tasks/{id}
+        handler: router
+        middlewares:
+          - auth-middleware
+
+      - method: PUT
+        path: /api/v1/tasks/{id}
+        handler: router
+        middlewares:
+          - auth-middleware
+
+      - method: DELETE
+        path: /api/v1/tasks/{id}
+        handler: router
+        middlewares:
+          - auth-middleware
+
+      - method: POST
+        path: /api/v1/tasks/{id}/complete
+        handler: router
+        middlewares:
+          - auth-middleware
+
+      # Categories — protected
+      - method: GET
+        path: /api/v1/categories
+        handler: router
+        middlewares:
+          - auth-middleware
+
+      - method: POST
+        path: /api/v1/categories
+        handler: router
+        middlewares:
+          - auth-middleware
+
+pipelines:
+  # ----------------------------------------------------------------
+  # Health
+  # ----------------------------------------------------------------
+  health:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "14-low-code-crud"
+
+  # ----------------------------------------------------------------
+  # Internal — schema initialisation (called by seed.sh)
+  # ----------------------------------------------------------------
+  init-db:
+    trigger:
+      type: http
+      config:
+        path: /internal/init-db
+        method: POST
+    steps:
+      - name: create-tasks-table
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            CREATE TABLE IF NOT EXISTS tasks (
+              id        INTEGER PRIMARY KEY AUTOINCREMENT,
+              user_id   INTEGER NOT NULL,
+              title     TEXT    NOT NULL,
+              description TEXT  DEFAULT '',
+              priority  TEXT    NOT NULL DEFAULT 'medium',
+              status    TEXT    NOT NULL DEFAULT 'todo',
+              due_date  TEXT,
+              category_id INTEGER,
+              created_at TEXT NOT NULL DEFAULT (datetime('now')),
+              updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+      - name: create-categories-table
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            CREATE TABLE IF NOT EXISTS categories (
+              id   INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT    NOT NULL UNIQUE,
+              color TEXT   DEFAULT '#6366f1',
+              created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+      - name: create-task-idx-user
+        type: step.db_exec
+        config:
+          database: db
+          query: "CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_id)"
+      - name: create-task-idx-status
+        type: step.db_exec
+        config:
+          database: db
+          query: "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            message: database schema initialised
+
+  # ----------------------------------------------------------------
+  # Auth
+  # ----------------------------------------------------------------
+  auth-register:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/auth/register
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: validate
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [email, password, name]
+          source: "steps.parse-body.body"
+      - name: register
+        type: step.user_register
+        config:
+          auth: jwt
+          email_field: "steps.parse-body.body.email"
+          password_field: "steps.parse-body.body.password"
+          name_field: "steps.parse-body.body.name"
+
+  auth-login:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/auth/login
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: validate
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [email, password]
+          source: "steps.parse-body.body"
+      - name: login
+        type: step.user_login
+        config:
+          auth: jwt
+          email_field: "steps.parse-body.body.email"
+          password_field: "steps.parse-body.body.password"
+
+  auth-profile:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/auth/profile
+        method: GET
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: profile
+        type: step.user_profile
+        config:
+          auth: jwt
+
+  # ----------------------------------------------------------------
+  # Tasks — CRUD
+  # ----------------------------------------------------------------
+  task-create:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tasks
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: validate
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [title]
+          source: "steps.parse-body.body"
+      - name: insert
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            INSERT INTO tasks (user_id, title, description, priority, due_date, category_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+          params:
+            - "{{ .user.id }}"
+            - "{{ .body.title }}"
+            - "{{ .body.description }}"
+            - "{{ default .body.priority \"medium\" }}"
+            - "{{ .body.due_date }}"
+            - "{{ .body.category_id }}"
+      - name: fetch-created
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, user_id, title, description, priority, status, due_date, category_id, created_at FROM tasks WHERE id = last_insert_rowid()"
+          mode: one
+      - name: publish-created
+        type: step.publish
+        config:
+          topic: "task.events"
+          broker: broker
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body_from: "steps.fetch-created.row"
+
+  task-list:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tasks
+        method: GET
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: get-tasks
+        type: step.db_query
+        config:
+          database: db
+          query: |
+            SELECT t.id, t.title, t.description, t.priority, t.status,
+                   t.due_date, t.category_id, c.name AS category_name,
+                   t.created_at, t.updated_at
+            FROM tasks t
+            LEFT JOIN categories c ON c.id = t.category_id
+            WHERE t.user_id = ?
+            ORDER BY t.created_at DESC
+            LIMIT 100
+          params:
+            - "{{ .user.id }}"
+          mode: list
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.get-tasks.rows"
+
+  task-get:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tasks/{id}
+        method: GET
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: get-task
+        type: step.db_query
+        config:
+          database: db
+          query: |
+            SELECT t.id, t.title, t.description, t.priority, t.status,
+                   t.due_date, t.category_id, c.name AS category_name,
+                   t.created_at, t.updated_at
+            FROM tasks t
+            LEFT JOIN categories c ON c.id = t.category_id
+            WHERE t.id = ? AND t.user_id = ?
+          params:
+            - "{{ .params.id }}"
+            - "{{ .user.id }}"
+          mode: one
+      - name: not-found-check
+        type: step.validate
+        config:
+          strategy: not_empty
+          source: "steps.get-task.row"
+          error_status: 404
+          error_message: task not found
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.get-task.row"
+
+  task-update:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tasks/{id}
+        method: PUT
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: update
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            UPDATE tasks
+            SET title = COALESCE(?, title),
+                description = COALESCE(?, description),
+                priority = COALESCE(?, priority),
+                due_date = COALESCE(?, due_date),
+                category_id = COALESCE(?, category_id),
+                updated_at = datetime('now')
+            WHERE id = ? AND user_id = ?
+          params:
+            - "{{ .body.title }}"
+            - "{{ .body.description }}"
+            - "{{ .body.priority }}"
+            - "{{ .body.due_date }}"
+            - "{{ .body.category_id }}"
+            - "{{ .params.id }}"
+            - "{{ .user.id }}"
+      - name: fetch-updated
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, title, description, priority, status, due_date, category_id, updated_at FROM tasks WHERE id = ? AND user_id = ?"
+          params:
+            - "{{ .params.id }}"
+            - "{{ .user.id }}"
+          mode: one
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.fetch-updated.row"
+
+  task-delete:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tasks/{id}
+        method: DELETE
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: delete
+        type: step.db_exec
+        config:
+          database: db
+          query: "DELETE FROM tasks WHERE id = ? AND user_id = ?"
+          params:
+            - "{{ .params.id }}"
+            - "{{ .user.id }}"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            message: task deleted
+
+  # State machine: todo → in_progress → done
+  task-complete:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tasks/{id}/complete
+        method: POST
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: get-current-status
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, status FROM tasks WHERE id = ? AND user_id = ?"
+          params:
+            - "{{ .params.id }}"
+            - "{{ .user.id }}"
+          mode: one
+      - name: not-found-check
+        type: step.validate
+        config:
+          strategy: not_empty
+          source: "steps.get-current-status.row"
+          error_status: 404
+          error_message: task not found
+      - name: transition
+        type: step.statemachine_transition
+        config:
+          current_state_from: "steps.get-current-status.row.status"
+          transitions:
+            todo: in_progress
+            in_progress: done
+          error_status: 409
+          error_message: "cannot transition from current state"
+      - name: update-status
+        type: step.db_exec
+        config:
+          database: db
+          query: "UPDATE tasks SET status = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?"
+          params:
+            - "{{ steps.transition.next_state }}"
+            - "{{ .params.id }}"
+            - "{{ .user.id }}"
+      - name: fetch-updated
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, title, status, updated_at FROM tasks WHERE id = ?"
+          params:
+            - "{{ .params.id }}"
+          mode: one
+      - name: publish-updated
+        type: step.publish
+        config:
+          topic: "task.events"
+          broker: broker
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.fetch-updated.row"
+
+  # ----------------------------------------------------------------
+  # Categories
+  # ----------------------------------------------------------------
+  category-list:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/categories
+        method: GET
+    steps:
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: cache-check
+        type: step.cache_get
+        config:
+          key: "categories:all"
+      - name: get-categories
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, name, color, created_at FROM categories ORDER BY name ASC"
+          mode: list
+          skip_if: "steps.cache-check.hit"
+      - name: cache-set
+        type: step.cache_set
+        config:
+          key: "categories:all"
+          value_from: "steps.get-categories.rows"
+          ttl: "60s"
+          skip_if: "steps.cache-check.hit"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.cache-check.value || steps.get-categories.rows"
+
+  category-create:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/categories
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: require-auth
+        type: step.auth_required
+        config:
+          auth: jwt
+      - name: validate
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [name]
+          source: "steps.parse-body.body"
+      - name: insert
+        type: step.db_exec
+        config:
+          database: db
+          query: "INSERT INTO categories (name, color) VALUES (?, ?)"
+          params:
+            - "{{ .body.name }}"
+            - "{{ default .body.color \"#6366f1\" }}"
+      - name: fetch-created
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, name, color, created_at FROM categories WHERE id = last_insert_rowid()"
+          mode: one
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body_from: "steps.fetch-created.row"
+
+  # ----------------------------------------------------------------
+  # Task event log (broker subscriber)
+  # ----------------------------------------------------------------
+  log-task-event:
+    steps:
+      - name: log
+        type: step.log
+        config:
+          level: info
+          message: "Task event received from broker"
+
+triggers:
+  event:
+    subscriptions:
+      - topic: "task.events"
+        workflow: "pipeline:log-task-event"
+        action: "log"

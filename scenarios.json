@@ -96,6 +96,20 @@
       "failCount": 0,
       "persistenceVerified": true,
       "blockers": []
+    },
+    "14-low-code-crud": {
+      "status": "pending",
+      "namespace": "wf-scenario-14",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": [
+        "wfctl api extract <config.yaml> not yet implemented",
+        "wfctl ui scaffold -spec <openapi.json> -output ui/ not yet implemented"
+      ]
     }
   }
 }
