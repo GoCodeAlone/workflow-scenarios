@@ -1,7 +1,7 @@
 {
-  "lastUpdated": "2026-02-25T18:00:00.000000Z",
+  "lastUpdated": "2026-02-25T19:00:00.000000Z",
   "componentVersions": {
-    "workflow": "v0.2.14",
+    "workflow": "v0.2.15",
     "workflow-cloud": "v0.1.0",
     "ratchet": ""
   },
@@ -438,6 +438,90 @@
       "passCount": 0,
       "failCount": 0,
       "notes": "GCP and Azure credential types added to cloud.account module. Service account, managed identity, workload identity support.",
+      "blockers": []
+    },
+    "36-argo-workflows": {
+      "status": "ready",
+      "namespace": "wf-scenario-36",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 24,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Argo Workflows integration. Pipeline-to-DAG translation, submit/status/logs/delete lifecycle. Mock backend.",
+      "blockers": []
+    },
+    "37-aws-codebuild": {
+      "status": "ready",
+      "namespace": "wf-scenario-37",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 38,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "AWS CodeBuild plugin. Project/build lifecycle, buildspec generation from pipeline config. Mock backend.",
+      "blockers": []
+    },
+    "38-policy-engine": {
+      "status": "ready",
+      "namespace": "wf-scenario-38",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 21,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "External policy engine adapter. OPA/Cedar backends with evaluate/load/list/test steps. Mock backend.",
+      "blockers": []
+    },
+    "39-distributed-tracing": {
+      "status": "ready",
+      "namespace": "wf-scenario-39",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 26,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Distributed tracing propagation. HTTP/Kafka/EventBridge/Webhook propagators, span creation, trace linking.",
+      "blockers": []
+    },
+    "40-multi-region": {
+      "status": "ready",
+      "namespace": "wf-scenario-40",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 33,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Multi-region tenant deployment. Deploy/promote/failover/status/weight/sync lifecycle. Failover state machine.",
+      "blockers": []
+    },
+    "41-plugin-marketplace": {
+      "status": "ready",
+      "namespace": "wf-scenario-41",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 15,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Plugin marketplace. Search/detail/install/uninstall/update steps with mock registry backend.",
+      "blockers": []
+    },
+    "42-digitalocean": {
+      "status": "ready",
+      "namespace": "wf-scenario-42",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 49,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "DigitalOcean cloud provider. DOKS, VPC/firewalls, DNS, App Platform with real godo client + mock backends.",
       "blockers": []
     }
   }
