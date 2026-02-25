@@ -1,7 +1,7 @@
 {
-  "lastUpdated": "2026-02-25T10:30:00.000000Z",
+  "lastUpdated": "2026-02-25T18:00:00.000000Z",
   "componentVersions": {
-    "workflow": "v0.2.12",
+    "workflow": "v0.2.14",
     "workflow-cloud": "v0.1.0",
     "ratchet": ""
   },
@@ -284,6 +284,66 @@
       "notes": "Full cross-service integration passing. Flow: register user (auth-service) → create order (calls payment-service) → capture payment → webhook updates order status to paid. UI generated via wfctl api extract + wfctl ui scaffold. Playwright QA: 9/9 browser integration tests passed.",
       "blockers": []
     },
+    "23-nosql-datastore": {
+      "status": "ready",
+      "namespace": "wf-scenario-23",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "NoSQL data store modules (DynamoDB, MongoDB, Redis) with mock backends. CRUD lifecycle via pipeline steps.",
+      "blockers": []
+    },
+    "24-artifact-store": {
+      "status": "ready",
+      "namespace": "wf-scenario-24",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Artifact store with filesystem backend. Upload, download, list, delete lifecycle via pipeline steps.",
+      "blockers": []
+    },
+    "25-cloud-account": {
+      "status": "ready",
+      "namespace": "wf-scenario-25",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Cloud account credential resolution for AWS with mock backend. Validates credential retrieval via pipeline step.",
+      "blockers": []
+    },
+    "26-config-to-binary": {
+      "status": "ready",
+      "namespace": "wf-scenario-26",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Config-to-binary build step. Takes workflow config YAML and builds a standalone Go binary.",
+      "blockers": []
+    },
+    "27-platform-kubernetes": {
+      "status": "ready",
+      "namespace": "wf-scenario-27",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 14,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Platform Kubernetes module with kind backend. Plan/apply/status/destroy lifecycle. 14 unit tests passing.",
+      "blockers": []
+    },
     "28-iac-pipeline": {
       "status": "ready",
       "namespace": "wf-scenario-28",
@@ -296,6 +356,66 @@
       "notes": "IaC state backend (iac.state) with filesystem persistence + generic IaC pipeline steps. Full lifecycle: plan → apply → status → drift-detect → destroy. No real cluster required (kind backend).",
       "blockers": []
     },
+    "29-gitlab-ci": {
+      "status": "ready",
+      "namespace": "wf-scenario-29",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "GitLab CI plugin with webhook receiver, REST API client, and pipeline steps. Mock GitLab backend for testing.",
+      "blockers": []
+    },
+    "30-ecs-fargate": {
+      "status": "ready",
+      "namespace": "wf-scenario-30",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 17,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Platform ECS/Fargate module. Plan/apply/status/destroy lifecycle with mock backend. Task definitions, services, networking config.",
+      "blockers": []
+    },
+    "31-platform-networking": {
+      "status": "ready",
+      "namespace": "wf-scenario-31",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 19,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Platform networking module for VPC/subnet/NAT/security group management. Mock and AWS stub backends.",
+      "blockers": []
+    },
+    "32-platform-dns": {
+      "status": "ready",
+      "namespace": "wf-scenario-32",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 23,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Platform DNS module for zone and record management. Mock and Route53 stub backends. A/CNAME/MX record types.",
+      "blockers": []
+    },
+    "33-apigateway-autoscaling": {
+      "status": "ready",
+      "namespace": "wf-scenario-33",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 16,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "API Gateway provisioning (routes, CORS, rate limiting) and autoscaling policies (target tracking, step, scheduled). Mock backends.",
+      "blockers": []
+    },
     "34-app-container": {
       "status": "ready",
       "namespace": "wf-scenario-34",
@@ -305,7 +425,19 @@
       "testCount": 19,
       "passCount": 0,
       "failCount": 0,
-      "notes": "App container deployment abstraction. Deploy/status/rollback lifecycle using in-memory mock backend. Backed by app.container module with platform.kubernetes (kind) environment. No real cluster required.",
+      "notes": "App container deployment abstraction. Deploy/status/rollback lifecycle using mock backend. k8s and ECS backends.",
+      "blockers": []
+    },
+    "35-multi-cloud-accounts": {
+      "status": "ready",
+      "namespace": "wf-scenario-35",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "GCP and Azure credential types added to cloud.account module. Service account, managed identity, workload identity support.",
       "blockers": []
     }
   }
