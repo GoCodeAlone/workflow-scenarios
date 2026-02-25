@@ -1,0 +1,127 @@
+requires:
+  plugins:
+    - name: pipeline-steps
+
+pipelines:
+  # Pipeline 1: Logging steps at various levels
+  log-demo:
+    trigger:
+      type: manual
+    steps:
+      - name: logstart
+        type: step.log
+        config:
+          level: info
+          message: "Starting log-demo pipeline"
+      - name: setgreeting
+        type: step.set
+        config:
+          values:
+            greeting: "Hello, {{.name}}"
+            env: "{{.environment}}"
+      - name: loggreeting
+        type: step.log
+        config:
+          level: info
+          message: "Greeting: {{.steps.setgreeting.greeting}}"
+      - name: logdone
+        type: step.log
+        config:
+          level: debug
+          message: "log-demo pipeline complete"
+
+  # Pipeline 2: Conditional branching
+  conditional-demo:
+    trigger:
+      type: manual
+    steps:
+      - name: setstatus
+        type: step.set
+        config:
+          values:
+            status: "{{.status}}"
+      - name: routebystatus
+        type: step.conditional
+        config:
+          field: steps.setstatus.status
+          routes:
+            active: logactive
+            inactive: loginactive
+          default: logunknown
+      - name: logactive
+        type: step.log
+        config:
+          level: info
+          message: "Status is ACTIVE"
+      - name: loginactive
+        type: step.log
+        config:
+          level: info
+          message: "Status is INACTIVE"
+      - name: logunknown
+        type: step.log
+        config:
+          level: warn
+          message: "Status is UNKNOWN"
+
+  # Pipeline 3: ForEach iteration (added in v0.2.5)
+  foreach-demo:
+    trigger:
+      type: manual
+    steps:
+      - name: setitems
+        type: step.set
+        config:
+          values:
+            items:
+              - alpha
+              - beta
+              - gamma
+      - name: processitems
+        type: step.foreach
+        config:
+          collection: steps.setitems.items
+          item_key: current_item
+          index_key: current_index
+          steps:
+            - name: logitem
+              type: step.log
+              level: info
+              message: "Processing item[{{.current_index}}]: {{.current_item}}"
+      - name: logsummary
+        type: step.log
+        config:
+          level: info
+          message: "ForEach complete"
+
+  # Pipeline 4: Template rendering via step.set with Go template expressions
+  template-demo:
+    trigger:
+      type: manual
+    steps:
+      - name: setcontext
+        type: step.set
+        config:
+          values:
+            user: "{{.username}}"
+            version: "{{.version}}"
+            service: "workflow-cli"
+      - name: rendermessage
+        type: step.set
+        config:
+          values:
+            message: "Deploying {{.steps.setcontext.service}} v{{.steps.setcontext.version}} for user {{.steps.setcontext.user}}"
+      - name: logrendered
+        type: step.log
+        config:
+          level: info
+          message: "{{.steps.rendermessage.message}}"
+      - name: validateoutput
+        type: step.validate
+        config:
+          strategy: required_fields
+          source: steps.setcontext
+          required_fields:
+            - user
+            - version
+            - service

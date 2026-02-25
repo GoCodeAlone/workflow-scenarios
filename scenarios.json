@@ -40,20 +40,18 @@
       "blockers": []
     },
     "04-cli-tool": {
-      "status": "blocked",
+      "status": "passed",
       "namespace": "wf-scenario-04",
       "deployed": false,
-      "lastTested": "",
-      "lastResult": "",
-      "testCount": 0,
-      "passCount": 0,
+      "lastTested": "2026-02-24T23:10:00.000000Z",
+      "lastResult": "pass",
+      "testCount": 15,
+      "passCount": 15,
       "failCount": 0,
-      "blockers": [
-        "wfctl pipeline run not implemented"
-      ]
+      "blockers": []
     },
     "05-saas-webapp": {
-      "status": "blocked",
+      "status": "not_tested",
       "namespace": "wf-scenario-05",
       "deployed": false,
       "lastTested": "",
@@ -61,12 +59,10 @@
       "testCount": 0,
       "passCount": 0,
       "failCount": 0,
-      "blockers": [
-        "cloud UI plugin not yet deployed"
-      ]
+      "blockers": []
     },
     "06-multitenant-api": {
-      "status": "blocked",
+      "status": "not_tested",
       "namespace": "wf-scenario-06",
       "deployed": false,
       "lastTested": "",
@@ -74,9 +70,7 @@
       "testCount": 0,
       "passCount": 0,
       "failCount": 0,
-      "blockers": [
-        "partial \u2014 manual API calls only"
-      ]
+      "blockers": []
     },
     "07-no-code-workflow": {
       "status": "not_tested",

@@ -8,10 +8,9 @@ description: |
 components:
   - workflow (engine)
   - wfctl (CLI)
-status: blocked
-blockers:
-  - "wfctl pipeline run command not yet implemented in the CLI"
-  - "Streaming pipeline progress over gRPC/SSE not yet available"
+status: testable
 notes: |
-  This scenario can be partially validated via HTTP API calls that simulate
-  what the CLI would do. Full automation requires wfctl pipeline run.
+  Validated via wfctl pipeline list and pipeline run commands running locally.
+  No k8s deployment required — the wfctl binary embeds the workflow engine.
+  Tests cover: pipeline list, run with --var, --input, --verbose, invalid name,
+  conditional branching, foreach iteration, template rendering, and validation.
