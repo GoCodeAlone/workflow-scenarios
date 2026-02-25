@@ -97,6 +97,61 @@
       "persistenceVerified": true,
       "blockers": []
     },
+    "09-order-management": {
+      "status": "testable",
+      "namespace": "wf-scenario-09",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 15,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": []
+    },
+    "10-content-moderation": {
+      "status": "testable",
+      "namespace": "wf-scenario-10",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 14,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": []
+    },
+    "11-support-ticketing": {
+      "status": "testable",
+      "namespace": "wf-scenario-11",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 14,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": []
+    },
+    "12-approval-workflow": {
+      "status": "testable",
+      "namespace": "wf-scenario-12",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 15,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": []
+    },
+    "13-iot-telemetry": {
+      "status": "testable",
+      "namespace": "wf-scenario-13",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 14,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": []
+    },
     "14-low-code-crud": {
       "status": "pending",
       "namespace": "wf-scenario-14",

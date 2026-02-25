@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow-server
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: workflow-server
+  template:
+    metadata:
+      labels:
+        app: workflow-server
+    spec:
+      containers:
+        - name: workflow-server
+          image: workflow-server:local
+          imagePullPolicy: Never
+          args: ["-config", "/config/app.yaml"]
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: data
+              mountPath: /data
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+      volumes:
+        - name: config
+          configMap:
+            name: app
+        - name: data
+          persistentVolumeClaim:
+            claimName: scenario-10-data

@@ -1,0 +1,13 @@
+name: Content Moderation Queue
+id: "10-content-moderation"
+category: B
+description: |
+  Human-in-the-loop content review workflow with webhook notifications.
+  Content moves through submitted → in_review → approved/rejected.
+  Demonstrates webhook signature verification, auto-rejection rules,
+  batch submission via foreach, and publish/subscribe notifications.
+components:
+  - workflow (engine)
+  - SQLite (storage)
+  - InMemory broker (messaging)
+status: testable

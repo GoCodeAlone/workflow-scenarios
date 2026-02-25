@@ -1,0 +1,13 @@
+name: E-Commerce Order Management
+id: "09-order-management"
+category: B
+description: |
+  E-commerce order lifecycle with full state machine transitions.
+  Orders move through pending → paid → shipped → delivered with
+  cancel and refund branches. Validates state machine step types,
+  conditional business rules, and SQLite persistence.
+components:
+  - workflow (engine)
+  - SQLite (storage)
+  - InMemory broker (messaging)
+status: testable

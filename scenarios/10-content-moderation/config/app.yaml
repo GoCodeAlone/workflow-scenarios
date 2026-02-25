@@ -1,0 +1,381 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: db
+    type: storage.sqlite
+    config:
+      dbPath: "/data/scenario.db"
+      maxConnections: 5
+      walMode: true
+
+  - name: broker
+    type: messaging.broker
+    config:
+      maxQueueSize: 1000
+      deliveryTimeout: "30s"
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  health:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "10-content-moderation"
+
+  init-db:
+    trigger:
+      type: http
+      config:
+        path: /internal/init-db
+        method: POST
+    steps:
+      - name: create-content-table
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            CREATE TABLE IF NOT EXISTS content_items (
+              id TEXT PRIMARY KEY,
+              author TEXT NOT NULL,
+              content_type TEXT NOT NULL,
+              body TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'submitted',
+              rejection_reason TEXT,
+              reviewer TEXT,
+              created_at TEXT NOT NULL DEFAULT (datetime('now')),
+              updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            message: database initialized
+
+  submit-content:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/content/submit
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: validate-content
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [author, content_type, body]
+          source: "steps.parse-body.body"
+      - name: gen-id
+        type: step.set_variable
+        config:
+          name: content_id
+          value: "content-{{ randHex 8 }}"
+      - name: check-auto-reject
+        type: step.conditional
+        config:
+          field: steps.parse-body.body.content_type
+          routes:
+            spam: do-auto-reject
+          default: check-length
+      - name: check-length
+        type: step.set_variable
+        config:
+          name: body_len
+          value: "{{ len .body.body }}"
+      - name: store-submitted
+        type: step.db_exec
+        config:
+          database: db
+          query: "INSERT INTO content_items (id, author, content_type, body, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'submitted', datetime('now'), datetime('now'))"
+          params:
+            - "{{ .vars.content_id }}"
+            - "{{ .body.author }}"
+            - "{{ .body.content_type }}"
+            - "{{ .body.body }}"
+      - name: publish-submitted
+        type: step.publish
+        config:
+          topic: "content-events"
+          broker: broker
+      - name: respond-submitted
+        type: step.json_response
+        config:
+          status: 201
+          body:
+            id: "{{ .vars.content_id }}"
+            status: submitted
+            message: content submitted for review
+      - name: do-auto-reject
+        type: step.db_exec
+        config:
+          database: db
+          query: "INSERT INTO content_items (id, author, content_type, body, status, rejection_reason, created_at, updated_at) VALUES (?, ?, ?, ?, 'rejected', 'Auto-rejected: spam content type', datetime('now'), datetime('now'))"
+          params:
+            - "{{ .vars.content_id }}"
+            - "{{ .body.author }}"
+            - "{{ .body.content_type }}"
+            - "{{ .body.body }}"
+
+  get-queue:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/content/queue
+        method: GET
+    steps:
+      - name: get-pending
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, author, content_type, status, created_at FROM content_items WHERE status IN ('submitted', 'in_review') ORDER BY created_at ASC"
+          mode: list
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.get-pending.rows"
+
+  get-content-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/content/{id}/status
+        method: GET
+    steps:
+      - name: fetch-item
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, author, content_type, status, rejection_reason, reviewer, created_at, updated_at FROM content_items WHERE id = ?"
+          params:
+            - "{{ .path.id }}"
+          mode: single
+      - name: check-exists
+        type: step.conditional
+        config:
+          field: steps.fetch-item.row.id
+          routes:
+            "": not-found
+          default: respond-status
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: content item not found
+      - name: respond-status
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.fetch-item.row"
+
+  approve-content:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/content/{id}/approve
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: fetch-item
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, status FROM content_items WHERE id = ?"
+          params:
+            - "{{ .path.id }}"
+          mode: single
+      - name: check-state
+        type: step.conditional
+        config:
+          field: steps.fetch-item.row.status
+          routes:
+            submitted: do-approve
+            in_review: do-approve
+            approved: already-decided
+            rejected: already-decided
+          default: not-found
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: content item not found
+      - name: already-decided
+        type: step.json_response
+        config:
+          status: 409
+          body:
+            error: content already has a final decision
+      - name: do-approve
+        type: step.db_exec
+        config:
+          database: db
+          query: "UPDATE content_items SET status = 'approved', reviewer = ?, updated_at = datetime('now') WHERE id = ?"
+          params:
+            - "{{ .body.reviewer | default \"system\" }}"
+            - "{{ .path.id }}"
+      - name: publish-approved
+        type: step.publish
+        config:
+          topic: "content-approved"
+          broker: broker
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            id: "{{ .path.id }}"
+            status: approved
+            message: content approved
+
+  reject-content:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/content/{id}/reject
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: validate-rejection
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [reason]
+          source: "steps.parse-body.body"
+      - name: fetch-item
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, status FROM content_items WHERE id = ?"
+          params:
+            - "{{ .path.id }}"
+          mode: single
+      - name: check-state
+        type: step.conditional
+        config:
+          field: steps.fetch-item.row.status
+          routes:
+            submitted: do-reject
+            in_review: do-reject
+            approved: already-decided
+            rejected: already-decided
+          default: not-found
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: content item not found
+      - name: already-decided
+        type: step.json_response
+        config:
+          status: 409
+          body:
+            error: content already has a final decision
+      - name: do-reject
+        type: step.db_exec
+        config:
+          database: db
+          query: "UPDATE content_items SET status = 'rejected', rejection_reason = ?, reviewer = ?, updated_at = datetime('now') WHERE id = ?"
+          params:
+            - "{{ .body.reason }}"
+            - "{{ .body.reviewer | default \"system\" }}"
+            - "{{ .path.id }}"
+      - name: publish-rejected
+        type: step.publish
+        config:
+          topic: "content-rejected"
+          broker: broker
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            id: "{{ .path.id }}"
+            status: rejected
+            reason: "{{ .body.reason }}"
+            message: content rejected
+
+  webhook-content:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/webhooks/content
+        method: POST
+    steps:
+      - name: verify-webhook
+        type: step.webhook_verify
+        config:
+          secret: "webhook-secret-scenario-10"
+          header: "X-Webhook-Signature"
+          algorithm: sha256
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: log-webhook
+        type: step.log
+        config:
+          level: info
+          message: "Webhook received and verified"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            message: webhook processed
+
+  content-event-log:
+    steps:
+      - name: log
+        type: step.log
+        config:
+          level: info
+          message: "Content event received"
+
+triggers:
+  event:
+    subscriptions:
+      - topic: "content-events"
+        workflow: "pipeline:content-event-log"
+        action: "log"
+      - topic: "content-approved"
+        workflow: "pipeline:content-event-log"
+        action: "log"
+      - topic: "content-rejected"
+        workflow: "pipeline:content-event-log"
+        action: "log"

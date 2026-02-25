@@ -1,0 +1,13 @@
+name: Customer Support Ticketing
+id: "11-support-ticketing"
+category: B
+description: |
+  Customer support ticketing system with assignment, escalation, and SLA rules.
+  Tickets flow through open → assigned → in_progress → resolved with a
+  reopen path back to assigned. Demonstrates priority-based conditional routing,
+  cache-based fast path for frequently accessed tickets, and full lifecycle tests.
+components:
+  - workflow (engine)
+  - SQLite (storage)
+  - InMemory broker (messaging)
+status: testable

@@ -1,0 +1,12 @@
+name: Multi-Step Approval Workflow
+id: "12-approval-workflow"
+category: B
+description: |
+  Multi-level approval workflow for expense reports and purchase orders.
+  Amount-based routing: <$100 auto-approved, $100-$1000 needs manager,
+  >$1000 needs VP. Validates conditional routing, set_variable for tracking
+  approval level, and full approval history via audit log.
+components:
+  - workflow (engine)
+  - SQLite (storage)
+status: testable

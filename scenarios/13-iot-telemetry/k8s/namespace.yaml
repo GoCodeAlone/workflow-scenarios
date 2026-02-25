@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wf-scenario-13
+  labels:
+    scenario: "13-iot-telemetry"

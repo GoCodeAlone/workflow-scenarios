@@ -1,0 +1,14 @@
+name: IoT Sensor Telemetry
+id: "13-iot-telemetry"
+category: B
+description: |
+  IoT sensor data ingest with threshold alerts and aggregation.
+  Sensors register, push readings, and trigger alerts when thresholds
+  are exceeded. Latest readings served from cache (fast path).
+  Demonstrates validate, conditional threshold checking, cache operations,
+  publish for alerts, and SQLite for sensor registry and alert log.
+components:
+  - workflow (engine)
+  - SQLite (storage)
+  - InMemory broker (messaging)
+status: testable

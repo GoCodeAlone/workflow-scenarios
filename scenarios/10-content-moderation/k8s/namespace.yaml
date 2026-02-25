@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wf-scenario-10
+  labels:
+    scenario: "10-content-moderation"

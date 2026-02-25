@@ -1,0 +1,553 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: db
+    type: storage.sqlite
+    config:
+      dbPath: "/data/scenario.db"
+      maxConnections: 5
+      walMode: true
+
+  - name: broker
+    type: messaging.broker
+    config:
+      maxQueueSize: 1000
+      deliveryTimeout: "30s"
+
+  - name: cache
+    type: cache.memory
+    config:
+      defaultTTL: "300s"
+      maxEntries: 1000
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  health:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "11-support-ticketing"
+
+  init-db:
+    trigger:
+      type: http
+      config:
+        path: /internal/init-db
+        method: POST
+    steps:
+      - name: create-tickets-table
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            CREATE TABLE IF NOT EXISTS tickets (
+              id TEXT PRIMARY KEY,
+              subject TEXT NOT NULL,
+              description TEXT NOT NULL,
+              priority TEXT NOT NULL DEFAULT 'medium',
+              status TEXT NOT NULL DEFAULT 'open',
+              assigned_to TEXT,
+              created_at TEXT NOT NULL DEFAULT (datetime('now')),
+              updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+      - name: create-comments-table
+        type: step.db_exec
+        config:
+          database: db
+          query: |
+            CREATE TABLE IF NOT EXISTS ticket_comments (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              ticket_id TEXT NOT NULL,
+              author TEXT NOT NULL,
+              body TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            message: database initialized
+
+  create-ticket:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tickets
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: validate-ticket
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [subject, description]
+          source: "steps.parse-body.body"
+      - name: gen-id
+        type: step.set_variable
+        config:
+          name: ticket_id
+          value: "ticket-{{ randHex 8 }}"
+      - name: set-priority
+        type: step.set_variable
+        config:
+          name: priority
+          value: "{{ .body.priority | default \"medium\" }}"
+      - name: insert-ticket
+        type: step.db_exec
+        config:
+          database: db
+          query: "INSERT INTO tickets (id, subject, description, priority, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'open', datetime('now'), datetime('now'))"
+          params:
+            - "{{ .vars.ticket_id }}"
+            - "{{ .body.subject }}"
+            - "{{ .body.description }}"
+            - "{{ .vars.priority }}"
+      - name: check-priority-escalate
+        type: step.conditional
+        config:
+          field: vars.priority
+          routes:
+            critical: log-escalation
+            high: log-escalation
+          default: publish-created
+      - name: log-escalation
+        type: step.log
+        config:
+          level: warn
+          message: "High/critical priority ticket created - auto-escalation flagged"
+      - name: publish-created
+        type: step.publish
+        config:
+          topic: "ticket-events"
+          broker: broker
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body:
+            id: "{{ .vars.ticket_id }}"
+            status: open
+            priority: "{{ .vars.priority }}"
+            message: ticket created
+
+  list-tickets:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tickets
+        method: GET
+    steps:
+      - name: get-tickets
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, subject, priority, status, assigned_to, created_at FROM tickets ORDER BY created_at DESC LIMIT 100"
+          mode: list
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.get-tickets.rows"
+
+  get-ticket:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tickets/{id}
+        method: GET
+    steps:
+      - name: check-cache
+        type: step.cache_get
+        config:
+          cache: cache
+          key: "ticket:{{ .path.id }}"
+      - name: cache-hit-check
+        type: step.conditional
+        config:
+          field: steps.check-cache.hit
+          routes:
+            "true": respond-cached
+          default: fetch-db
+      - name: fetch-db
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, subject, description, priority, status, assigned_to, created_at, updated_at FROM tickets WHERE id = ?"
+          params:
+            - "{{ .path.id }}"
+          mode: single
+      - name: check-exists
+        type: step.conditional
+        config:
+          field: steps.fetch-db.row.id
+          routes:
+            "": not-found
+          default: cache-and-respond
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: ticket not found
+      - name: cache-and-respond
+        type: step.cache_set
+        config:
+          cache: cache
+          key: "ticket:{{ .path.id }}"
+          value_from: "steps.fetch-db.row"
+          ttl: "60s"
+      - name: respond-db
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.fetch-db.row"
+      - name: respond-cached
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.check-cache.value"
+
+  assign-ticket:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tickets/{id}/assign
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: validate-assign
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [agent]
+          source: "steps.parse-body.body"
+      - name: fetch-ticket
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, status FROM tickets WHERE id = ?"
+          params:
+            - "{{ .path.id }}"
+          mode: single
+      - name: check-assignable
+        type: step.conditional
+        config:
+          field: steps.fetch-ticket.row.status
+          routes:
+            open: do-assign
+            assigned: do-assign
+            in_progress: do-assign
+            resolved: cannot-assign
+          default: not-found
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: ticket not found
+      - name: cannot-assign
+        type: step.json_response
+        config:
+          status: 422
+          body:
+            error: cannot assign resolved ticket
+      - name: do-assign
+        type: step.db_exec
+        config:
+          database: db
+          query: "UPDATE tickets SET status = 'assigned', assigned_to = ?, updated_at = datetime('now') WHERE id = ?"
+          params:
+            - "{{ .body.agent }}"
+            - "{{ .path.id }}"
+      - name: invalidate-cache
+        type: step.cache_delete
+        config:
+          cache: cache
+          key: "ticket:{{ .path.id }}"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            id: "{{ .path.id }}"
+            status: assigned
+            assigned_to: "{{ .body.agent }}"
+            message: ticket assigned
+
+  escalate-ticket:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tickets/{id}/escalate
+        method: POST
+    steps:
+      - name: fetch-ticket
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, status, priority FROM tickets WHERE id = ?"
+          params:
+            - "{{ .path.id }}"
+          mode: single
+      - name: check-exists
+        type: step.conditional
+        config:
+          field: steps.fetch-ticket.row.id
+          routes:
+            "": not-found
+          default: do-escalate
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: ticket not found
+      - name: do-escalate
+        type: step.db_exec
+        config:
+          database: db
+          query: "UPDATE tickets SET priority = 'critical', updated_at = datetime('now') WHERE id = ? AND priority != 'critical'"
+          params:
+            - "{{ .path.id }}"
+      - name: invalidate-cache
+        type: step.cache_delete
+        config:
+          cache: cache
+          key: "ticket:{{ .path.id }}"
+      - name: publish-escalated
+        type: step.publish
+        config:
+          topic: "ticket-escalations"
+          broker: broker
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            id: "{{ .path.id }}"
+            priority: critical
+            message: ticket escalated to critical priority
+
+  add-comment:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tickets/{id}/comment
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: validate-comment
+        type: step.validate
+        config:
+          strategy: required_fields
+          required_fields: [author, body]
+          source: "steps.parse-body.body"
+      - name: check-ticket
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id FROM tickets WHERE id = ?"
+          params:
+            - "{{ .path.id }}"
+          mode: single
+      - name: check-exists
+        type: step.conditional
+        config:
+          field: steps.check-ticket.row.id
+          routes:
+            "": not-found
+          default: insert-comment
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: ticket not found
+      - name: insert-comment
+        type: step.db_exec
+        config:
+          database: db
+          query: "INSERT INTO ticket_comments (ticket_id, author, body, created_at) VALUES (?, ?, ?, datetime('now'))"
+          params:
+            - "{{ .path.id }}"
+            - "{{ .body.author }}"
+            - "{{ .body.body }}"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body:
+            ticket_id: "{{ .path.id }}"
+            message: comment added
+
+  resolve-ticket:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tickets/{id}/resolve
+        method: POST
+    steps:
+      - name: fetch-ticket
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, status FROM tickets WHERE id = ?"
+          params:
+            - "{{ .path.id }}"
+          mode: single
+      - name: check-state
+        type: step.conditional
+        config:
+          field: steps.fetch-ticket.row.status
+          routes:
+            assigned: do-resolve
+            in_progress: do-resolve
+            open: cannot-resolve-unassigned
+            resolved: already-resolved
+          default: not-found
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: ticket not found
+      - name: cannot-resolve-unassigned
+        type: step.json_response
+        config:
+          status: 422
+          body:
+            error: cannot resolve unassigned ticket — assign to an agent first
+      - name: already-resolved
+        type: step.json_response
+        config:
+          status: 409
+          body:
+            error: ticket already resolved
+      - name: do-resolve
+        type: step.db_exec
+        config:
+          database: db
+          query: "UPDATE tickets SET status = 'resolved', updated_at = datetime('now') WHERE id = ?"
+          params:
+            - "{{ .path.id }}"
+      - name: invalidate-cache
+        type: step.cache_delete
+        config:
+          cache: cache
+          key: "ticket:{{ .path.id }}"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            id: "{{ .path.id }}"
+            status: resolved
+            message: ticket resolved
+
+  reopen-ticket:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tickets/{id}/reopen
+        method: POST
+    steps:
+      - name: fetch-ticket
+        type: step.db_query
+        config:
+          database: db
+          query: "SELECT id, status FROM tickets WHERE id = ?"
+          params:
+            - "{{ .path.id }}"
+          mode: single
+      - name: check-state
+        type: step.conditional
+        config:
+          field: steps.fetch-ticket.row.status
+          routes:
+            resolved: do-reopen
+            open: already-open
+            assigned: already-open
+            in_progress: already-open
+          default: not-found
+      - name: not-found
+        type: step.json_response
+        config:
+          status: 404
+          body:
+            error: ticket not found
+      - name: already-open
+        type: step.json_response
+        config:
+          status: 409
+          body:
+            error: ticket is not resolved
+      - name: do-reopen
+        type: step.db_exec
+        config:
+          database: db
+          query: "UPDATE tickets SET status = 'open', updated_at = datetime('now') WHERE id = ?"
+          params:
+            - "{{ .path.id }}"
+      - name: invalidate-cache
+        type: step.cache_delete
+        config:
+          cache: cache
+          key: "ticket:{{ .path.id }}"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            id: "{{ .path.id }}"
+            status: open
+            message: ticket reopened
+
+  ticket-event-log:
+    steps:
+      - name: log
+        type: step.log
+        config:
+          level: info
+          message: "Ticket event received"
+
+triggers:
+  event:
+    subscriptions:
+      - topic: "ticket-events"
+        workflow: "pipeline:ticket-event-log"
+        action: "log"
+      - topic: "ticket-escalations"
+        workflow: "pipeline:ticket-event-log"
+        action: "log"
