@@ -1,0 +1,206 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: aws-mock
+    type: cloud.account
+    config:
+      provider: mock
+      region: us-east-1
+
+  - name: production-gateway
+    type: platform.apigateway
+    config:
+      account: aws-mock
+      provider: mock
+      name: my-api
+      stage: prod
+      cors:
+        allow_origins: ["*"]
+        allow_methods: ["GET", "POST", "PUT", "DELETE"]
+      routes:
+        - path: /api/v1/users
+          method: "*"
+          target: "http://users-service:8080"
+          rate_limit: 100
+        - path: /api/v1/orders
+          method: "*"
+          target: "http://orders-service:8080"
+          auth_type: jwt
+
+  - name: app-scaling
+    type: platform.autoscaling
+    config:
+      account: aws-mock
+      provider: mock
+      policies:
+        - name: cpu-target
+          type: target_tracking
+          target_resource: staging-ecs
+          min_capacity: 2
+          max_capacity: 20
+          metric_name: CPUUtilization
+          target_value: 70
+        - name: night-scale-down
+          type: scheduled
+          target_resource: staging-ecs
+          schedule: "cron(0 22 * * ? *)"
+          desired_capacity: 1
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "33-apigateway-autoscaling"
+
+  gateway-plan:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/gateway/plan
+        method: POST
+    steps:
+      - name: plan
+        type: step.apigw_plan
+        config:
+          gateway: production-gateway
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  gateway-apply:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/gateway/apply
+        method: POST
+    steps:
+      - name: apply
+        type: step.apigw_apply
+        config:
+          gateway: production-gateway
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  gateway-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/gateway/status
+        method: GET
+    steps:
+      - name: status
+        type: step.apigw_status
+        config:
+          gateway: production-gateway
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  gateway-destroy:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/gateway
+        method: DELETE
+    steps:
+      - name: destroy
+        type: step.apigw_destroy
+        config:
+          gateway: production-gateway
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  scaling-plan:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/scaling/plan
+        method: POST
+    steps:
+      - name: plan
+        type: step.scaling_plan
+        config:
+          scaling: app-scaling
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  scaling-apply:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/scaling/apply
+        method: POST
+    steps:
+      - name: apply
+        type: step.scaling_apply
+        config:
+          scaling: app-scaling
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  scaling-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/scaling/status
+        method: GET
+    steps:
+      - name: status
+        type: step.scaling_status
+        config:
+          scaling: app-scaling
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  scaling-destroy:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/scaling
+        method: DELETE
+    steps:
+      - name: destroy
+        type: step.scaling_destroy
+        config:
+          scaling: app-scaling
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
