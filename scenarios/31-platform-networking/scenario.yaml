@@ -1,0 +1,16 @@
+name: Platform Networking
+id: "31-platform-networking"
+category: C
+description: |
+  Demonstrates platform.networking module with the mock backend (in-memory state).
+  Exposes plan/apply/status operations via HTTP pipelines backed by
+  step.network_plan, step.network_apply, and step.network_status.
+  Uses a cloud.account (mock) as the credential provider.
+  No real VPC is created — network state is tracked entirely in-memory,
+  making the scenario runnable without any cloud tooling installed.
+  Provisions a VPC with public/private subnets, a NAT gateway, and security groups.
+components:
+  - workflow (engine)
+  - cloud plugin (cloud.account)
+  - platform plugin (platform.networking, network pipeline steps)
+status: testable

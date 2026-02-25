@@ -1,0 +1,123 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: aws-mock
+    type: cloud.account
+    config:
+      provider: mock
+      region: us-east-1
+
+  - name: prod-network
+    type: platform.networking
+    config:
+      account: aws-mock
+      provider: mock
+      vpc:
+        cidr: "10.0.0.0/16"
+        name: prod-vpc
+      subnets:
+        - name: public-a
+          cidr: "10.0.1.0/24"
+          az: us-east-1a
+          public: true
+        - name: public-b
+          cidr: "10.0.2.0/24"
+          az: us-east-1b
+          public: true
+        - name: private-a
+          cidr: "10.0.10.0/24"
+          az: us-east-1a
+          public: false
+        - name: private-b
+          cidr: "10.0.11.0/24"
+          az: us-east-1b
+          public: false
+      nat_gateway: true
+      security_groups:
+        - name: web
+          rules:
+            - protocol: tcp
+              port: 443
+              source: "0.0.0.0/0"
+            - protocol: tcp
+              port: 80
+              source: "0.0.0.0/0"
+        - name: internal
+          rules:
+            - protocol: tcp
+              port: 5432
+              source: "10.0.0.0/16"
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "31-platform-networking"
+
+  network-plan:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/networks/plan
+        method: POST
+    steps:
+      - name: plan
+        type: step.network_plan
+        config:
+          network: prod-network
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  network-apply:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/networks/apply
+        method: POST
+    steps:
+      - name: apply
+        type: step.network_apply
+        config:
+          network: prod-network
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  network-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/networks/status
+        method: GET
+    steps:
+      - name: status
+        type: step.network_status
+        config:
+          network: prod-network
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
