@@ -1,0 +1,18 @@
+name: AWS CodeBuild Integration
+id: "37-aws-codebuild"
+category: C
+description: |
+  Demonstrates the aws.codebuild module with mock backend.
+  Covers the full project and build lifecycle: create project, start build,
+  check build status, retrieve logs, list builds, and delete project.
+  Buildspec generation translates pipeline config (install, pre_build, build,
+  post_build commands, artifacts, cache, env vars) to CodeBuild buildspec.yml format.
+  Uses step.codebuild_create_project, step.codebuild_start, step.codebuild_status,
+  step.codebuild_logs, step.codebuild_list_builds, and step.codebuild_delete_project.
+  No real AWS resources are created — all state is tracked in-memory via the mock backend,
+  making the scenario runnable without any cloud tooling installed.
+components:
+  - workflow (engine)
+  - cicd plugin (aws.codebuild module, codebuild pipeline steps)
+  - cloud plugin (cloud.account, optional)
+status: testable
