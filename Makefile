@@ -1,6 +1,8 @@
-.PHONY: deploy test status teardown upgrade list test-all
+.PHONY: deploy test status teardown upgrade list test-all verify-persistence verify-all-persistence
 
 SCENARIO ?=
+COMPONENT ?=
+VERSION ?=
 
 deploy:
 	@test -n "$(SCENARIO)" || (echo "Usage: make deploy SCENARIO=01-idp" && exit 1)
@@ -20,6 +22,13 @@ teardown:
 upgrade:
 	@test -n "$(COMPONENT)" || (echo "Usage: make upgrade COMPONENT=workflow VERSION=v0.3.0" && exit 1)
 	@./scripts/upgrade.sh $(COMPONENT) $(VERSION)
+
+verify-persistence:
+	@test -n "$(SCENARIO)" || (echo "Usage: make verify-persistence SCENARIO=02-event-driven" && exit 1)
+	@./scripts/verify-persistence.sh $(SCENARIO)
+
+verify-all-persistence:
+	@./scripts/test-all-persistence.sh
 
 list:
 	@echo "Available scenarios:"
