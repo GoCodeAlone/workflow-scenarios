@@ -1,0 +1,113 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: aws-mock
+    type: cloud.account
+    config:
+      provider: mock
+      region: us-east-1
+
+  - name: staging-ecs
+    type: platform.ecs
+    config:
+      account: aws-mock
+      cluster: staging-cluster
+      region: us-east-1
+      launch_type: FARGATE
+      desired_count: 2
+      vpc_subnets:
+        - subnet-abc123
+        - subnet-def456
+      security_groups:
+        - sg-0123456789
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "30-ecs-fargate"
+
+  ecs-plan:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/services/plan
+        method: POST
+    steps:
+      - name: plan
+        type: step.ecs_plan
+        config:
+          service: staging-ecs
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  ecs-apply:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/services/apply
+        method: POST
+    steps:
+      - name: apply
+        type: step.ecs_apply
+        config:
+          service: staging-ecs
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  ecs-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/services/status
+        method: GET
+    steps:
+      - name: status
+        type: step.ecs_status
+        config:
+          service: staging-ecs
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  ecs-destroy:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/services
+        method: DELETE
+    steps:
+      - name: destroy
+        type: step.ecs_destroy
+        config:
+          service: staging-ecs
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."

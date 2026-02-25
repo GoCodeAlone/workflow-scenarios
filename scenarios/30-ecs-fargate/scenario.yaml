@@ -1,0 +1,15 @@
+name: ECS Fargate
+id: "30-ecs-fargate"
+category: C
+description: |
+  Demonstrates platform.ecs module with the in-memory mock backend.
+  Exposes plan/apply/status/destroy operations via HTTP pipelines backed by
+  step.ecs_plan, step.ecs_apply, step.ecs_status, and step.ecs_destroy.
+  Uses a cloud.account (mock) as the credential provider.
+  No real AWS resources are created — service state is tracked entirely in-memory,
+  making the scenario runnable without AWS credentials or tooling.
+components:
+  - workflow (engine)
+  - cloud plugin (cloud.account)
+  - platform plugin (platform.ecs, ecs pipeline steps)
+status: testable
