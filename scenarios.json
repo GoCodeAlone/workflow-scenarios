@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-02-25T04:00:00.000000Z",
+  "lastUpdated": "2026-02-25T04:20:00.000000Z",
   "componentVersions": {
     "workflow": "",
     "workflow-cloud": "",
@@ -18,14 +18,14 @@
       "blockers": []
     },
     "02-event-driven": {
-      "status": "not_tested",
+      "status": "failed",
       "namespace": "wf-scenario-02",
-      "deployed": false,
-      "lastTested": "",
-      "lastResult": "",
-      "testCount": 0,
-      "passCount": 0,
-      "failCount": 0,
+      "deployed": true,
+      "lastTested": "2026-02-25T04:16:28.699477Z",
+      "lastResult": "fail",
+      "testCount": 7,
+      "passCount": 1,
+      "failCount": 6,
       "blockers": []
     },
     "03-ai-agent": {
@@ -51,15 +51,17 @@
       "blockers": []
     },
     "05-saas-webapp": {
-      "status": "not_tested",
-      "namespace": "wf-scenario-05",
-      "deployed": false,
-      "lastTested": "",
-      "lastResult": "",
-      "testCount": 0,
-      "passCount": 0,
-      "failCount": 0,
-      "blockers": []
+      "status": "partial",
+      "namespace": "default",
+      "deployed": true,
+      "lastTested": "2026-02-25T04:20:00.000000Z",
+      "lastResult": "partial",
+      "testCount": 14,
+      "passCount": 13,
+      "failCount": 1,
+      "blockers": [
+        "cloud-ui plugin not loaded in workflow-cloud pod (GET / returns 404)"
+      ]
     },
     "06-multitenant-api": {
       "status": "not_tested",

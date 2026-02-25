@@ -1,17 +1,15 @@
 name: SaaS Web Application
 id: "05-saas-webapp"
-category: B
+category: A
 description: |
-  A SaaS web application deployed ON a workflow-cloud instance via the UI.
-  Validates multi-tenant app deployment, plugin installation, and the
-  workflow-cloud control plane for managing tenant applications.
+  Validates the workflow-cloud SaaS control plane REST API: user registration,
+  login, JWT auth, org management, plugin browsing, and API key lifecycle.
+  Tests against the existing workflow-cloud deployment in the default namespace.
 components:
   - workflow-cloud
-  - workflow-cloud-ui (plugin)
-status: blocked
-blockers:
-  - "workflow-cloud UI plugin not yet deployed"
-  - "Category B deployment flow requires functional web UI"
+  - PostgreSQL
+status: testable
 notes: |
-  Partially testable via workflow-cloud REST API for tenant/org management.
-  Full scenario requires the workflow-cloud-ui plugin to be functional.
+  This scenario does not deploy its own server — it tests against the
+  workflow-cloud deployment already running in the default namespace.
+  Uses port-forward to reach workflow-cloud.default.svc:8080.

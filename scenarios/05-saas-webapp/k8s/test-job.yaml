@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: scenario-05-test
+  namespace: default
+  labels:
+    scenario: "05-saas-webapp"
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: test
+          image: curlimages/curl:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              BASE="http://workflow-cloud.default.svc:8080"
+              TIMESTAMP=$(date +%s)
+              EMAIL="scenario05-${TIMESTAMP}@test.local"
+              PASSWORD="TestPass123!"
+              NAME="Scenario05 User"
+
+              # Health check
+              HEALTH=$(curl -sf "$BASE/healthz" 2>/dev/null || echo "")
+              if echo "$HEALTH" | grep -q "ok"; then
+                echo "PASS: Health check returns ok"
+              else
+                echo "FAIL: Health check failed: $HEALTH"
+              fi
+
+              # Register
+              REG=$(curl -sf -X POST "$BASE/api/v1/auth/register" \
+                -H "Content-Type: application/json" \
+                -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"name\":\"$NAME\"}" 2>/dev/null || echo "")
+              if echo "$REG" | grep -q "token"; then
+                echo "PASS: Registration returns token"
+              else
+                echo "FAIL: Registration failed: $REG"
+              fi
