@@ -1,0 +1,15 @@
+# Scenario 03: AI Agent Platform
+# Ratchet is pre-deployed; this config documents expected endpoints and settings.
+# No workflow-server needed for this scenario — tests target ratchet directly.
+
+ratchet:
+  namespace: default
+  service: ratchet
+  port: 8080
+
+# Test targets
+endpoints:
+  health: /health
+  providers: /api/v1/providers
+  agents: /api/v1/agents
+  workspaces: /api/v1/workspaces

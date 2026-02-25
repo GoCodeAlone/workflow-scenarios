@@ -1,0 +1,17 @@
+name: CLI Tool with Workflow Backend
+id: "04-cli-tool"
+category: A
+description: |
+  A developer CLI tool (wfctl) that uses the workflow engine as a backend
+  for executing multi-step automation pipelines. Validates CLI-driven pipeline
+  invocation, progress streaming, and artifact output.
+components:
+  - workflow (engine)
+  - wfctl (CLI)
+status: blocked
+blockers:
+  - "wfctl pipeline run command not yet implemented in the CLI"
+  - "Streaming pipeline progress over gRPC/SSE not yet available"
+notes: |
+  This scenario can be partially validated via HTTP API calls that simulate
+  what the CLI would do. Full automation requires wfctl pipeline run.

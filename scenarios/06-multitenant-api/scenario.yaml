@@ -1,0 +1,18 @@
+name: Multi-Tenant API Service
+id: "06-multitenant-api"
+category: B
+description: |
+  A multi-tenant API service managed by workflow-cloud. Each tenant gets
+  isolated namespaces, rate limiting, and separate data stores. Validates
+  the tenant lifecycle, org management, and billing integration.
+components:
+  - workflow-cloud
+  - PostgreSQL
+status: blocked
+blockers:
+  - "Partial — manual API calls only, no automated end-to-end test"
+  - "Tenant provisioning via cloud API needs auth token flow to be automated"
+notes: |
+  workflow-cloud's /api/orgs and /api/tenants endpoints can be tested manually.
+  Automated testing blocked on: (1) OIDC login flow, (2) tenant provisioning
+  pipeline in cloud.yaml. Track with scenario 05 unblocking.

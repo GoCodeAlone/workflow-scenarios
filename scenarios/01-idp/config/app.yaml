@@ -1,0 +1,86 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: db
+    type: database.workflow
+    config:
+      driver: "pgx"
+      dsn: "${DATABASE_URL}"
+      maxOpenConns: 10
+      maxIdleConns: 3
+
+  - name: jwt
+    type: auth.jwt
+    config:
+      secret: "${JWT_SECRET}"
+      issuer: "scenario-01-idp"
+      expirationMinutes: 60
+
+  - name: users
+    type: auth.user-store
+    dependsOn: [db]
+
+pipelines:
+  health:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+
+  register:
+    trigger:
+      type: http
+      config:
+        path: /api/auth/register
+        method: POST
+    steps:
+      - type: step.user_register
+        config: {}
+      - type: step.json_response
+        config:
+          status: 201
+          body_from: user_id
+
+  login:
+    trigger:
+      type: http
+      config:
+        path: /api/auth/login
+        method: POST
+    steps:
+      - type: step.user_login
+        config: {}
+      - type: step.json_response
+        config:
+          status: 200
+          body_from: token
+
+  profile:
+    trigger:
+      type: http
+      config:
+        path: /api/auth/profile
+        method: GET
+    steps:
+      - type: step.auth_required
+        config: {}
+      - type: step.user_profile
+        config: {}
+      - type: step.json_response
+        config:
+          status: 200
+          body_from: profile

@@ -1,0 +1,19 @@
+name: Data Pipeline
+id: "08-data-pipeline"
+category: A
+description: |
+  A data processing pipeline using the workflow engine with the bento
+  stream processing plugin. Consumes from Kafka/NATS, transforms data
+  via bento processors, and outputs to PostgreSQL or S3.
+components:
+  - workflow (engine)
+  - workflow-plugin-bento
+  - Kafka or NATS (external)
+status: blocked
+blockers:
+  - "workflow-plugin-bento requires manual install — not yet in plugin registry"
+  - "Kafka/NATS not deployed on minikube cluster"
+notes: |
+  Once bento plugin is published to the GoCodeAlone plugin registry and
+  auto-sync is enabled (via scenario 02 work), this scenario becomes
+  deployable. Kafka can be replaced with NATS for lighter-weight testing.

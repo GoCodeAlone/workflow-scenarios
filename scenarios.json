@@ -1,0 +1,98 @@
+{
+  "lastUpdated": "",
+  "componentVersions": {
+    "workflow": "",
+    "workflow-cloud": "",
+    "ratchet": ""
+  },
+  "scenarios": {
+    "01-idp": {
+      "status": "not_tested",
+      "namespace": "wf-scenario-01",
+      "deployed": false,
+      "lastTested": "",
+      "lastResult": "",
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": []
+    },
+    "02-event-driven": {
+      "status": "not_tested",
+      "namespace": "wf-scenario-02",
+      "deployed": false,
+      "lastTested": "",
+      "lastResult": "",
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": []
+    },
+    "03-ai-agent": {
+      "status": "not_tested",
+      "namespace": "wf-scenario-03",
+      "deployed": false,
+      "lastTested": "",
+      "lastResult": "",
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": []
+    },
+    "04-cli-tool": {
+      "status": "blocked",
+      "namespace": "wf-scenario-04",
+      "deployed": false,
+      "lastTested": "",
+      "lastResult": "",
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": ["wfctl pipeline run not implemented"]
+    },
+    "05-saas-webapp": {
+      "status": "blocked",
+      "namespace": "wf-scenario-05",
+      "deployed": false,
+      "lastTested": "",
+      "lastResult": "",
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": ["cloud UI plugin not yet deployed"]
+    },
+    "06-multitenant-api": {
+      "status": "blocked",
+      "namespace": "wf-scenario-06",
+      "deployed": false,
+      "lastTested": "",
+      "lastResult": "",
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": ["partial — manual API calls only"]
+    },
+    "07-no-code-workflow": {
+      "status": "blocked",
+      "namespace": "wf-scenario-07",
+      "deployed": false,
+      "lastTested": "",
+      "lastResult": "",
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": ["cloud UI required"]
+    },
+    "08-data-pipeline": {
+      "status": "blocked",
+      "namespace": "wf-scenario-08",
+      "deployed": false,
+      "lastTested": "",
+      "lastResult": "",
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": ["bento plugin manual install required"]
+    }
+  }
+}

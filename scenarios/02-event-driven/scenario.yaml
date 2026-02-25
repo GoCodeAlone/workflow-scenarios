@@ -1,0 +1,11 @@
+name: Event-Driven Microservice
+id: "02-event-driven"
+category: A
+description: |
+  Event-driven microservice demonstrating the messaging broker,
+  event publishing, and event-triggered pipelines. Tests the
+  publish/subscribe pattern within the workflow engine.
+components:
+  - workflow (engine)
+  - PostgreSQL
+status: testable

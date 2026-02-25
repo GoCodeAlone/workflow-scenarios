@@ -1,0 +1,24 @@
+# Helm values reference for ratchet deployment
+# Ratchet is already deployed in the default namespace on minikube.
+# This file documents the values used for the existing deployment.
+# To re-deploy or upgrade: helm upgrade ratchet <chart> -f this-file
+
+replicaCount: 1
+
+image:
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Providers are configured via environment variables or config
+# See ratchet documentation for provider setup

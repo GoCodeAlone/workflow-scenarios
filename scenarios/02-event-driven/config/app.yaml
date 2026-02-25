@@ -1,0 +1,105 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: db
+    type: database.workflow
+    config:
+      driver: "pgx"
+      dsn: "${DATABASE_URL}"
+      maxOpenConns: 10
+      maxIdleConns: 3
+
+  - name: broker
+    type: messaging.broker
+    config:
+      topics:
+        - "events.published"
+        - "events.processed"
+
+  - name: event-bus
+    type: messaging.event-bus
+    dependsOn: [broker]
+
+pipelines:
+  health:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+
+  publish-event:
+    trigger:
+      type: http
+      config:
+        path: /api/events
+        method: POST
+    steps:
+      - type: step.validate_body
+        config:
+          required: [type, payload]
+      - type: step.store_record
+        config:
+          table: events
+          fields: [type, payload, created_at]
+      - type: step.publish_event
+        config:
+          topic: "events.published"
+          payload_from: body
+      - type: step.json_response
+        config:
+          status: 202
+          body:
+            status: accepted
+
+  list-events:
+    trigger:
+      type: http
+      config:
+        path: /api/events
+        method: GET
+    steps:
+      - type: step.query_records
+        config:
+          table: events
+          order_by: created_at DESC
+          limit: 100
+      - type: step.json_response
+        config:
+          status: 200
+          body_from: records
+
+  process-event:
+    trigger:
+      type: event
+      config:
+        topic: "events.published"
+    steps:
+      - type: step.log
+        config:
+          message: "Processing event: ${event.type}"
+      - type: step.update_record
+        config:
+          table: events
+          set:
+            processed: true
+            processed_at: now()
+          where:
+            id: "${event.id}"
+      - type: step.publish_event
+        config:
+          topic: "events.processed"
+          payload_from: event

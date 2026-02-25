@@ -1,0 +1,10 @@
+name: AI Agent Platform
+id: "03-ai-agent"
+category: A
+description: |
+  AI agent orchestration via Ratchet. Uses the existing ratchet
+  deployment. Tests agent creation, provider configuration,
+  and basic agent execution.
+components:
+  - ratchet
+status: testable

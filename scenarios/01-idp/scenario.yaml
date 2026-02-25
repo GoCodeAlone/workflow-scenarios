@@ -1,0 +1,11 @@
+name: Identity Provider Application
+id: "01-idp"
+category: A
+description: |
+  Full-featured identity provider with user registration, login, JWT auth,
+  and profile management. Uses PostgreSQL for persistence. Validates the
+  core auth pipeline steps.
+components:
+  - workflow (engine)
+  - PostgreSQL
+status: testable

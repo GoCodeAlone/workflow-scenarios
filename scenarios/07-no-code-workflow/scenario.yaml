@@ -1,0 +1,18 @@
+name: Automated Workflow (No-Code)
+id: "07-no-code-workflow"
+category: B
+description: |
+  A no-code workflow automation created entirely through the workflow-cloud UI.
+  End users define pipelines visually without writing code. Validates the
+  drag-and-drop pipeline builder, trigger configuration, and step library.
+components:
+  - workflow-cloud
+  - workflow-cloud-ui (plugin)
+status: blocked
+blockers:
+  - "workflow-cloud UI plugin required for no-code pipeline builder"
+  - "Visual pipeline builder not yet implemented"
+notes: |
+  This scenario depends entirely on the workflow-cloud-ui plugin.
+  Cannot be tested via API — the UX of no-code creation is the core feature.
+  Unblocks after scenario 05 is resolved.
