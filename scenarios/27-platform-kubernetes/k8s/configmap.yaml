@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app
+  namespace: wf-scenario-27
+data:
+  app.yaml: |
+    modules:
+      - name: server
+        type: http.server
+        config:
+          address: ":8080"
+
+      - name: router
+        type: http.router
+        dependsOn: [server]
+
+      - name: aws-mock
+        type: cloud.account
+        config:
+          provider: mock
+          region: us-east-1
+
+      - name: production-cluster
+        type: platform.kubernetes
+        config:
+          account: aws-mock
+          type: kind
+          version: "1.29"
+          nodeGroups:
+            - name: default
+              instanceType: t3.medium
+              min: 2
+              max: 10
+
+    pipelines:
+      healthz:
+        trigger:
+          type: http
+          config:
+            path: /healthz
+            method: GET
+        steps:
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body:
+                status: ok
+                scenario: "27-platform-kubernetes"
+
+      cluster-plan:
+        trigger:
+          type: http
+          config:
+            path: /api/v1/clusters/plan
+            method: POST
+        steps:
+          - name: plan
+            type: step.k8s_plan
+            config:
+              cluster: production-cluster
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body_from: "."
+
+      cluster-apply:
+        trigger:
+          type: http
+          config:
+            path: /api/v1/clusters/apply
+            method: POST
+        steps:
+          - name: apply
+            type: step.k8s_apply
+            config:
+              cluster: production-cluster
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body_from: "."
+
+      cluster-status:
+        trigger:
+          type: http
+          config:
+            path: /api/v1/clusters/status
+            method: GET
+        steps:
+          - name: status
+            type: step.k8s_status
+            config:
+              cluster: production-cluster
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body_from: "."
+
+      cluster-destroy:
+        trigger:
+          type: http
+          config:
+            path: /api/v1/clusters
+            method: DELETE
+        steps:
+          - name: destroy
+            type: step.k8s_destroy
+            config:
+              cluster: production-cluster
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body_from: "."
