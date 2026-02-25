@@ -1,0 +1,112 @@
+name: DigitalOcean Cloud Provider
+id: "42-digitalocean"
+category: C
+description: |
+  Demonstrates DigitalOcean as a first-class cloud provider using the mock backend.
+  Covers four platform modules:
+    - platform.doks: DigitalOcean Kubernetes (DOKS) cluster lifecycle (create/get/delete/list-node-pools)
+    - platform.do_networking: VPC and firewall management (plan/apply/status/destroy)
+    - platform.do_dns: Domain and DNS record management (plan/apply/status/destroy)
+    - platform.do_app: App Platform deployment (deploy/status/logs/scale/destroy)
+
+  Also shows the five DO pipeline steps: step.do_deploy, step.do_status, step.do_logs,
+  step.do_scale, and step.do_destroy wired to a platform.do_app module.
+
+  No real DigitalOcean API calls are made — all state is tracked in-memory using
+  mock backends, making the scenario runnable without any cloud credentials.
+
+  When provider=digitalocean is set on a cloud.account module with credential
+  type api_token (or env reading DIGITALOCEAN_TOKEN), the real godo client is used
+  instead of the mock, enabling live DO API calls.
+
+components:
+  - workflow (engine)
+  - cloud plugin (cloud.account with provider=digitalocean)
+  - platform plugin (platform.doks, platform.do_networking, platform.do_dns, platform.do_app)
+  - platform pipeline steps (step.do_deploy, step.do_status, step.do_logs, step.do_scale, step.do_destroy)
+status: testable
+
+modules:
+  cloud.account:
+    provider: digitalocean
+    region: nyc3
+    credentials:
+      type: env  # reads DIGITALOCEAN_TOKEN from environment
+
+  platform.doks:
+    cluster_name: staging-k8s
+    region: nyc3
+    version: "1.29.1-do.0"
+    node_pool:
+      name: default
+      size: s-2vcpu-2gb
+      count: 3
+      auto_scale: true
+      min_nodes: 1
+      max_nodes: 5
+
+  platform.do_networking:
+    provider: mock
+    vpc:
+      name: staging-vpc
+      region: nyc3
+      ip_range: "10.20.0.0/16"
+    firewalls:
+      - name: allow-web
+        inbound_rules:
+          - protocol: tcp
+            port_range: "80"
+            sources: "0.0.0.0/0"
+          - protocol: tcp
+            port_range: "443"
+            sources: "0.0.0.0/0"
+
+  platform.do_dns:
+    provider: mock
+    domain: staging.example.com
+    records:
+      - name: api
+        type: A
+        data: "10.0.0.100"
+        ttl: 300
+      - name: www
+        type: CNAME
+        data: staging.example.com
+        ttl: 3600
+
+  platform.do_app:
+    provider: mock
+    name: my-api
+    region: nyc
+    image: "registry.example.com/my-api:v1.0.0"
+    instances: 2
+    http_port: 8080
+    envs:
+      APP_ENV: production
+      PORT: "8080"
+
+pipelines:
+  do-deploy:
+    steps:
+      - type: step.do_deploy
+        config:
+          app: my-api
+
+  do-status:
+    steps:
+      - type: step.do_status
+        config:
+          app: my-api
+
+  do-scale:
+    steps:
+      - type: step.do_scale
+        config:
+          app: my-api
+          instances: 4
+
+  do-destroy:
+    steps:
+      - type: step.do_destroy
+        config:
+          app: my-api
