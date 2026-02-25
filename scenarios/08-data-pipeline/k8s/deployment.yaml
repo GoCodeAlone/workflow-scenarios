@@ -24,8 +24,11 @@ spec:
           ports:
             - containerPort: 8080
           volumeMounts:
+            - name: config
+              mountPath: /app.yaml
+              subPath: app.yaml
             - name: data
-              mountPath: /data/db
+              mountPath: /db
           resources:
             limits:
               cpu: 500m
@@ -34,5 +37,9 @@ spec:
               cpu: 100m
               memory: 128Mi
       volumes:
+        - name: config
+          configMap:
+            name: app
         - name: data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: scenario-08-data

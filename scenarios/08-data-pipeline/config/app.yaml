@@ -11,7 +11,7 @@ modules:
   - name: db
     type: storage.sqlite
     config:
-      dbPath: "/tmp/pipeline.db"
+      dbPath: "/db/pipeline.db"
       maxConnections: 5
       walMode: true
 

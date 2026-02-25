@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-02-25T04:56:30.000000Z",
+  "lastUpdated": "2026-02-25T05:25:00.000000Z",
   "componentVersions": {
     "workflow": "v0.2.5",
     "workflow-cloud": "v0.1.0",
@@ -21,10 +21,10 @@
       "status": "passed",
       "namespace": "wf-scenario-02",
       "deployed": true,
-      "lastTested": "2026-02-25T04:18:53.469107Z",
+      "lastTested": "2026-02-25T05:25:00.000000Z",
       "lastResult": "pass",
-      "testCount": 7,
-      "passCount": 7,
+      "testCount": 8,
+      "passCount": 8,
       "failCount": 0,
       "blockers": []
     },
@@ -76,10 +76,10 @@
       "status": "passed",
       "namespace": "wf-scenario-07",
       "deployed": true,
-      "lastTested": "2026-02-25T04:45:00.000000Z",
+      "lastTested": "2026-02-25T05:25:00.000000Z",
       "lastResult": "pass",
-      "testCount": 10,
-      "passCount": 10,
+      "testCount": 11,
+      "passCount": 11,
       "failCount": 0,
       "blockers": []
     },
@@ -87,10 +87,10 @@
       "status": "passed",
       "namespace": "wf-scenario-08",
       "deployed": true,
-      "lastTested": "2026-02-25T04:56:30.000000Z",
+      "lastTested": "2026-02-25T05:25:00.000000Z",
       "lastResult": "pass",
-      "testCount": 12,
-      "passCount": 12,
+      "testCount": 13,
+      "passCount": 13,
       "failCount": 0,
       "blockers": []
     }

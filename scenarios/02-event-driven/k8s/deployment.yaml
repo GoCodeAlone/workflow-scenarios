@@ -38,4 +38,5 @@ spec:
           configMap:
             name: app
         - name: data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: scenario-02-data

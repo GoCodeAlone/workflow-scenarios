@@ -34,6 +34,8 @@ spec:
             - name: config
               mountPath: /app/app.yaml
               subPath: app.yaml
+            - name: data
+              mountPath: /app/data/data
           resources:
             limits:
               cpu: 500m
@@ -45,3 +47,6 @@ spec:
         - name: config
           configMap:
             name: app
+        - name: data
+          persistentVolumeClaim:
+            claimName: scenario-07-data

@@ -18,6 +18,14 @@ trap cleanup EXIT
 echo "Initializing database schema..."
 curl -sf -X POST http://localhost:18080/internal/init-db || echo "DB init may have already run"
 
+# Check if seed data already exists
+EXISTING=$(curl -sf "http://localhost:18080/api/pipeline/records" 2>/dev/null | grep -c "seed-record-001" 2>/dev/null || echo "0")
+EXISTING=$(echo "$EXISTING" | tr -d '[:space:]')
+if [ "${EXISTING:-0}" -gt "0" ] 2>/dev/null; then
+    echo "Seed data already present, skipping..."
+    exit 0
+fi
+
 echo "Ingesting seed records through bento pipeline..."
 curl -sf -X POST http://localhost:18080/api/pipeline/ingest \
     -H "Content-Type: application/json" \

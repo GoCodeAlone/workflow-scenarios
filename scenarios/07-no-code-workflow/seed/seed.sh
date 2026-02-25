@@ -34,14 +34,21 @@ for i in $(seq 1 10); do
     sleep 3
 done
 
+# Check if seed data already exists (admin user already set up)
+SETUP_STATUS=$(curl -s "$ADMIN_BASE/api/v1/auth/setup-status" 2>/dev/null || echo "")
+if echo "$SETUP_STATUS" | grep -q '"setup_done":true\|"setupDone":true\|"setup_complete":true'; then
+    echo "Admin user already set up, skipping seed..."
+    exit 0
+fi
+
 # Create the admin user via the setup endpoint
 echo "Creating admin user via /api/v1/auth/setup..."
 SETUP_RESP=$(curl -sf -X POST "$ADMIN_BASE/api/v1/auth/setup" \
     -H "Content-Type: application/json" \
-    -d '{"email":"admin@example.com","password":"TestPass123x","name":"Admin User"}' 2>/dev/null || \
+    -d '{"email":"admin@scenario07.com","password":"TestPass123x","name":"Admin"}' 2>/dev/null || \
     curl -s -X POST "$ADMIN_BASE/api/v1/auth/setup" \
     -H "Content-Type: application/json" \
-    -d '{"email":"admin@example.com","password":"TestPass123x","name":"Admin User"}' 2>/dev/null || echo "")
+    -d '{"email":"admin@scenario07.com","password":"TestPass123x","name":"Admin"}' 2>/dev/null || echo "")
 echo "Setup response: $SETUP_RESP"
 
 echo "Seed complete."
