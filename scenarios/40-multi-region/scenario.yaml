@@ -1,0 +1,33 @@
+name: Multi-Region Tenant Deployment
+id: "40-multi-region"
+category: C
+description: |
+  Demonstrates multi-region tenant deployment support via the platform.region module.
+  Supports region-aware deployments with health checking, failover, traffic weight
+  routing, and cross-region state synchronisation.
+
+  Key capabilities:
+  - Deploy a tenant engine to multiple regions (primary, secondary, DR)
+  - Health check across all regions (mock backend — no real cloud required)
+  - Failover state machine: healthy → degraded → failed → recovering → healthy
+  - Traffic weight adjustment for gradual region migrations
+  - Promote a secondary region to primary
+  - Cross-region sync (no-op in mock; hooks into cloud provider in real backends)
+
+  Pipeline steps:
+    step.region_deploy   — deploy to a specific region
+    step.region_status   — check health across all regions
+    step.region_failover — trigger failover from one region to another
+    step.region_promote  — promote a region from secondary to primary
+    step.region_weight   — adjust traffic routing weights
+    step.region_sync     — sync state/config across regions
+
+  Routing module (MultiRegionRoutingModule) supports:
+    - Latency-based routing (highest weight = lowest latency, mock)
+    - Geographic routing (prefers primary → secondary → dr, mock)
+    - Failover state machine per-region (RegionFailoverState)
+
+components:
+  - workflow (engine)
+  - platform plugin (platform.region, region pipeline steps)
+status: testable
