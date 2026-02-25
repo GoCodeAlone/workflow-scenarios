@@ -1,0 +1,15 @@
+name: GitLab CI Integration
+id: "29-gitlab-ci"
+category: C
+description: |
+  Demonstrates the GitLab CI plugin: a gitlab.client module (mock mode) and
+  gitlab.webhook module wired together with pipeline steps for triggering
+  pipelines, checking status, creating merge requests, and posting MR comments.
+  All GitLab API calls use mock mode so no real GitLab instance is required.
+  Tests cover webhook parsing, pipeline trigger, pipeline status, MR creation,
+  and MR commenting flows.
+components:
+  - workflow (engine)
+  - gitlab plugin (gitlab.webhook, gitlab.client)
+  - gitlab pipeline steps (trigger, status, create_mr, mr_comment, parse_webhook)
+status: testable

@@ -1,0 +1,129 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app
+  namespace: wf-scenario-29
+data:
+  app.yaml: |
+    modules:
+      - name: server
+        type: http.server
+        config:
+          address: ":8080"
+
+      - name: router
+        type: http.router
+        dependsOn: [server]
+
+      - name: gitlab-client
+        type: gitlab.client
+        config:
+          url: "mock://"
+          token: "mock-token"
+
+    pipelines:
+      - name: healthz
+        trigger:
+          type: http
+          config:
+            path: /healthz
+            method: GET
+        steps:
+          - name: respond
+            type: step.json_response
+            config:
+              body:
+                status: ok
+
+      - name: gitlab-webhook
+        trigger:
+          type: http
+          config:
+            path: /webhooks/gitlab
+            method: POST
+        steps:
+          - name: parse
+            type: step.gitlab_parse_webhook
+            config:
+              secret: ""
+          - name: respond
+            type: step.json_response
+            config:
+              body_from: steps.parse
+
+      - name: trigger-pipeline
+        trigger:
+          type: http
+          config:
+            path: /api/v1/gitlab/trigger
+            method: POST
+        steps:
+          - name: trigger
+            type: step.gitlab_trigger_pipeline
+            config:
+              client: gitlab-client
+              project: "group/project"
+              ref: main
+              variables:
+                DEPLOY_ENV: production
+          - name: respond
+            type: step.json_response
+            config:
+              body_from: steps.trigger
+
+      - name: pipeline-status
+        trigger:
+          type: http
+          config:
+            path: /api/v1/gitlab/pipeline/{id}
+            method: GET
+        steps:
+          - name: status
+            type: step.gitlab_pipeline_status
+            config:
+              client: gitlab-client
+              project: "group/project"
+              pipeline_id: "42"
+          - name: respond
+            type: step.json_response
+            config:
+              body_from: steps.status
+
+      - name: create-mr
+        trigger:
+          type: http
+          config:
+            path: /api/v1/gitlab/mr
+            method: POST
+        steps:
+          - name: create
+            type: step.gitlab_create_mr
+            config:
+              client: gitlab-client
+              project: "group/project"
+              source_branch: feature-demo
+              target_branch: main
+              title: "Demo MR from scenario 29"
+          - name: respond
+            type: step.json_response
+            config:
+              body_from: steps.create
+
+      - name: mr-comment
+        trigger:
+          type: http
+          config:
+            path: /api/v1/gitlab/mr/comment
+            method: POST
+        steps:
+          - name: comment
+            type: step.gitlab_mr_comment
+            config:
+              client: gitlab-client
+              project: "group/project"
+              mr_iid: 1
+              body: "Pipeline passed! Scenario 29 verified."
+          - name: respond
+            type: step.json_response
+            config:
+              body_from: steps.comment
