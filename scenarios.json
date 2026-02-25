@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-02-25T04:20:00.000000Z",
+  "lastUpdated": "2026-02-25T04:18:53.469254Z",
   "componentVersions": {
     "workflow": "",
     "workflow-cloud": "",
@@ -18,14 +18,14 @@
       "blockers": []
     },
     "02-event-driven": {
-      "status": "failed",
+      "status": "passed",
       "namespace": "wf-scenario-02",
       "deployed": true,
-      "lastTested": "2026-02-25T04:16:28.699477Z",
-      "lastResult": "fail",
+      "lastTested": "2026-02-25T04:18:53.469107Z",
+      "lastResult": "pass",
       "testCount": 7,
-      "passCount": 1,
-      "failCount": 6,
+      "passCount": 7,
+      "failCount": 0,
       "blockers": []
     },
     "03-ai-agent": {

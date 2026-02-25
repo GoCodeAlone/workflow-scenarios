@@ -19,14 +19,13 @@ spec:
           image: workflow-server:local
           imagePullPolicy: Never
           args: ["-config", "/config/app.yaml"]
-          env:
-            - name: DATABASE_URL
-              value: "postgres://workflow:workflow@postgres:5432/events?sslmode=disable"
           ports:
             - containerPort: 8080
           volumeMounts:
             - name: config
               mountPath: /config
+            - name: data
+              mountPath: /data
           resources:
             limits:
               cpu: 200m
@@ -38,3 +37,5 @@ spec:
         - name: config
           configMap:
             name: app
+        - name: data
+          emptyDir: {}

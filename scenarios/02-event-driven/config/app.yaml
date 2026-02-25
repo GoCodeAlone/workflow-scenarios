@@ -9,23 +9,23 @@ modules:
     dependsOn: [server]
 
   - name: db
-    type: database.workflow
+    type: storage.sqlite
     config:
-      driver: "pgx"
-      dsn: "${DATABASE_URL}"
-      maxOpenConns: 10
-      maxIdleConns: 3
+      dbPath: "/data/events.db"
+      maxConnections: 5
+      walMode: true
 
   - name: broker
     type: messaging.broker
     config:
-      topics:
-        - "events.published"
-        - "events.processed"
+      maxQueueSize: 1000
+      deliveryTimeout: "30s"
 
-  - name: event-bus
-    type: messaging.event-bus
-    dependsOn: [broker]
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
 
 pipelines:
   health:
@@ -35,11 +35,42 @@ pipelines:
         path: /healthz
         method: GET
     steps:
-      - type: step.json_response
+      - name: respond
+        type: step.json_response
         config:
           status: 200
           body:
             status: ok
+
+  init-db:
+    trigger:
+      type: http
+      config:
+        path: /internal/init-db
+        method: POST
+    steps:
+      - name: create-table
+        type: step.db_exec
+        config:
+          database: db
+          query: "CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}', processed INTEGER NOT NULL DEFAULT 0, processed_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+      - name: create-index-type
+        type: step.db_exec
+        config:
+          database: db
+          query: "CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)"
+      - name: create-index-processed
+        type: step.db_exec
+        config:
+          database: db
+          query: "CREATE INDEX IF NOT EXISTS idx_events_processed ON events(processed)"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            message: database initialized
 
   publish-event:
     trigger:
@@ -48,22 +79,36 @@ pipelines:
         path: /api/events
         method: POST
     steps:
-      - type: step.validate_body
+      - name: parse-body
+        type: step.request_parse
         config:
-          required: [type, payload]
-      - type: step.store_record
+          parse_body: true
+      - name: validate-body
+        type: step.validate
         config:
-          table: events
-          fields: [type, payload, created_at]
-      - type: step.publish_event
+          strategy: required_fields
+          required_fields: [type, payload]
+          source: "steps.parse-body.body"
+      - name: store-event
+        type: step.db_exec
         config:
-          topic: "events.published"
-          payload_from: body
-      - type: step.json_response
+          database: db
+          query: "INSERT INTO events (event_type, payload, created_at) VALUES (?, ?, datetime('now'))"
+          params:
+            - "{{ .body.type }}"
+            - "{{ json .body.payload }}"
+      - name: publish-to-broker
+        type: step.publish
+        config:
+          topic: "orders"
+          broker: broker
+      - name: respond
+        type: step.json_response
         config:
           status: 202
           body:
             status: accepted
+            message: event published
 
   list-events:
     trigger:
@@ -72,34 +117,36 @@ pipelines:
         path: /api/events
         method: GET
     steps:
-      - type: step.query_records
+      - name: get-events
+        type: step.db_query
         config:
-          table: events
-          order_by: created_at DESC
-          limit: 100
-      - type: step.json_response
+          database: db
+          query: "SELECT id, event_type, payload, processed, created_at FROM events ORDER BY created_at DESC LIMIT 100"
+          mode: list
+      - name: respond
+        type: step.json_response
         config:
           status: 200
-          body_from: records
+          body_from: "steps.get-events.rows"
 
   process-event:
-    trigger:
-      type: event
-      config:
-        topic: "events.published"
     steps:
-      - type: step.log
+      - name: log-event
+        type: step.log
         config:
-          message: "Processing event: ${event.type}"
-      - type: step.update_record
+          level: info
+          message: "Processing event from broker"
+      - name: mark-processed
+        type: step.db_exec
         config:
-          table: events
-          set:
-            processed: true
-            processed_at: now()
-          where:
-            id: "${event.id}"
-      - type: step.publish_event
-        config:
-          topic: "events.processed"
-          payload_from: event
+          database: db
+          query: "UPDATE events SET processed = 1, processed_at = datetime('now') WHERE event_type = ? AND processed = 0"
+          params:
+            - "{{ .type }}"
+
+triggers:
+  event:
+    subscriptions:
+      - topic: "orders"
+        workflow: "pipeline:process-event"
+        action: "process"

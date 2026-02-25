@@ -4,11 +4,14 @@ set -euo pipefail
 echo "Seeding scenario 02-event-driven..."
 
 echo "Waiting for workflow-server to be ready..."
-kubectl wait --for=condition=ready pod -l app=workflow-server -n "$NAMESPACE" --timeout=60s
+kubectl wait --for=condition=ready pod -l app=workflow-server -n "$NAMESPACE" --timeout=120s
 
 kubectl port-forward svc/workflow-server 18080:8080 -n "$NAMESPACE" &
 PF_PID=$!
 sleep 3
+
+echo "Initializing database schema..."
+curl -sf -X POST http://localhost:18080/internal/init-db || echo "DB init may have already run"
 
 echo "Publishing seed events..."
 curl -sf -X POST http://localhost:18080/api/events \
