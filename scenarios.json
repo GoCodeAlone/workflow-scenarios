@@ -51,26 +51,24 @@
       "blockers": []
     },
     "05-saas-webapp": {
-      "status": "partial",
+      "status": "passed",
       "namespace": "default",
       "deployed": true,
-      "lastTested": "2026-02-25T04:20:00.000000Z",
-      "lastResult": "partial",
+      "lastTested": "2026-02-25T04:37:00.000000Z",
+      "lastResult": "pass",
       "testCount": 14,
-      "passCount": 13,
-      "failCount": 1,
-      "blockers": [
-        "cloud-ui plugin not loaded in workflow-cloud pod (GET / returns 404)"
-      ]
+      "passCount": 14,
+      "failCount": 0,
+      "blockers": []
     },
     "06-multitenant-api": {
-      "status": "not_tested",
-      "namespace": "wf-scenario-06",
-      "deployed": false,
-      "lastTested": "",
-      "lastResult": "",
-      "testCount": 0,
-      "passCount": 0,
+      "status": "passed",
+      "namespace": "default",
+      "deployed": true,
+      "lastTested": "2026-02-25T04:35:00.000000Z",
+      "lastResult": "pass",
+      "testCount": 18,
+      "passCount": 18,
       "failCount": 0,
       "blockers": []
     },
