@@ -1,0 +1,42 @@
+name: Distributed Tracing Propagation
+id: "39-distributed-tracing"
+category: B
+description: |
+  Demonstrates distributed trace context propagation across asynchronous messaging
+  boundaries via the tracing.propagation module and pipeline trace steps.
+
+  Key capabilities:
+  - Propagate W3C TraceContext headers across HTTP, Kafka, EventBridge, and webhook boundaries
+  - Start new trace spans with custom attributes (step.trace_start)
+  - Inject trace context into outbound messages/requests (step.trace_inject)
+  - Extract trace context from inbound messages (step.trace_extract)
+  - Annotate the current span with events and attributes (step.trace_annotate)
+  - Link current trace to a parent trace across service boundaries (step.trace_link)
+  - PipelineTracingMiddleware wraps any step with automatic OTEL span creation
+
+  Propagator types (all use the global OTEL TextMapPropagator):
+    HTTPTracePropagator        — W3C traceparent/tracestate via HTTP headers
+    KafkaTracePropagator       — W3C headers stored as Kafka message header map
+    EventBridgeTracePropagator — W3C headers stored in EventBridge detail map
+    WebhookTracePropagator     — W3C headers injected into outbound webhook requests
+
+  Pipeline steps:
+    step.trace_start    — start a new span; outputs trace_id, span_id
+    step.trace_inject   — inject current trace context into a carrier map output field
+    step.trace_extract  — extract trace context from a carrier map in the pipeline context
+    step.trace_annotate — add events/attributes to the current span
+    step.trace_link     — link current span to a remote parent span via carrier headers
+
+  Test coverage:
+    - HTTP header inject/extract round-trip
+    - Kafka header inject/extract round-trip
+    - EventBridge detail inject/extract
+    - Webhook outbound header injection
+    - Span creation and attribute setting
+    - Cross-service trace linking
+
+components:
+  - observability plugin (tracing.propagation module, trace pipeline steps)
+  - module/tracing_propagation.go (propagator interfaces and implementations)
+  - module/pipeline_step_tracing.go (pipeline step factories)
+status: testable
