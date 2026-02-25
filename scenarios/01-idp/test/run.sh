@@ -24,30 +24,20 @@ else
     echo "FAIL: Health check failed: $RESPONSE"
 fi
 
-# Test 2: Register a new user
-REGISTER_RESPONSE=$(curl -sf -X POST "$BASE/api/auth/register" \
-    -H "Content-Type: application/json" \
-    -d "{\"email\":\"test-$(date +%s)@example.com\",\"password\":\"TestPass123!\"}" 2>/dev/null || echo "ERROR")
-if [ "$REGISTER_RESPONSE" != "ERROR" ]; then
-    echo "PASS: User registration succeeds"
-else
-    echo "FAIL: User registration failed"
-fi
-
-# Test 3: Login with existing user
+# Test 2: Login with seeded admin user
 TOKEN=$(curl -sf -X POST "$BASE/api/auth/login" \
     -H "Content-Type: application/json" \
     -d '{"email":"admin@example.com","password":"TestPassword123!"}' 2>/dev/null || echo "")
-# Clean token (may be quoted)
-TOKEN=$(echo "$TOKEN" | tr -d '"' | tr -d '\n')
-if [ -n "$TOKEN" ] && [ "$TOKEN" != "ERROR" ]; then
+# Clean token (may be wrapped in {"token":"..."})
+TOKEN=$(echo "$TOKEN" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('token',''))" 2>/dev/null || echo "")
+if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
     echo "PASS: Login returns JWT token"
 else
-    echo "FAIL: Login failed, no token returned"
+    echo "FAIL: Login failed, no token returned. Response: $TOKEN"
 fi
 
-# Test 4: Access profile with valid token
-if [ -n "$TOKEN" ]; then
+# Test 3: Access profile with valid token
+if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
     PROFILE=$(curl -sf "$BASE/api/auth/profile" \
         -H "Authorization: Bearer $TOKEN" 2>/dev/null || echo "ERROR")
     if echo "$PROFILE" | grep -q "admin@example.com"; then
@@ -59,30 +49,45 @@ else
     echo "FAIL: Cannot test profile (no token from login)"
 fi
 
-# Test 5: Access profile without token returns 401
-HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" "$BASE/api/auth/profile" 2>/dev/null || echo "000")
+# Test 4: Access profile without token returns 401
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/auth/profile" 2>/dev/null)
 if [ "$HTTP_CODE" = "401" ]; then
     echo "PASS: Unauthenticated profile request returns 401"
 else
     echo "FAIL: Unauthenticated profile request returned $HTTP_CODE (expected 401)"
 fi
 
-# Test 6: Duplicate registration fails
-DUP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" -X POST "$BASE/api/auth/register" \
+# Test 5: Setup endpoint returns 403 when users already exist
+SETUP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/auth/setup" \
     -H "Content-Type: application/json" \
-    -d '{"email":"admin@example.com","password":"TestPassword123!"}' 2>/dev/null || echo "000")
-if [ "$DUP_CODE" = "409" ] || [ "$DUP_CODE" = "400" ]; then
-    echo "PASS: Duplicate registration returns error ($DUP_CODE)"
+    -d '{"email":"new@example.com","password":"TestPassword123!"}' 2>/dev/null)
+if [ "$SETUP_CODE" = "403" ]; then
+    echo "PASS: Setup endpoint returns 403 when users already exist"
 else
-    echo "FAIL: Duplicate registration returned $DUP_CODE (expected 400 or 409)"
+    echo "FAIL: Setup endpoint returned $SETUP_CODE (expected 403 after setup)"
 fi
 
-# Test 7: Login with wrong password fails
-WRONG_CODE=$(curl -sf -o /dev/null -w "%{http_code}" -X POST "$BASE/api/auth/login" \
+# Test 6: Login with wrong password fails
+WRONG_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/auth/login" \
     -H "Content-Type: application/json" \
-    -d '{"email":"admin@example.com","password":"wrongpassword"}' 2>/dev/null || echo "000")
+    -d '{"email":"admin@example.com","password":"wrongpassword"}' 2>/dev/null)
 if [ "$WRONG_CODE" = "401" ]; then
     echo "PASS: Wrong password returns 401"
 else
     echo "FAIL: Wrong password returned $WRONG_CODE (expected 401)"
+fi
+
+# Test 7: Admin can create a new user
+if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
+    NEW_USER_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/auth/users" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $TOKEN" \
+        -d "{\"email\":\"newuser-$(date +%s)@example.com\",\"password\":\"TestPass123!\",\"name\":\"New User\"}" 2>/dev/null || echo "000")
+    if [ "$NEW_USER_CODE" = "201" ]; then
+        echo "PASS: Admin can create new users"
+    else
+        echo "FAIL: Admin user creation returned $NEW_USER_CODE (expected 201)"
+    fi
+else
+    echo "FAIL: Cannot test user creation (no token from login)"
 fi

@@ -8,24 +8,19 @@ modules:
     type: http.router
     dependsOn: [server]
 
-  - name: db
-    type: database.workflow
-    config:
-      driver: "pgx"
-      dsn: "${DATABASE_URL}"
-      maxOpenConns: 10
-      maxIdleConns: 3
-
   - name: jwt
     type: auth.jwt
     config:
       secret: "${JWT_SECRET}"
       issuer: "scenario-01-idp"
-      expirationMinutes: 60
+      tokenExpiry: "1h"
+    dependsOn: [router]
 
-  - name: users
-    type: auth.user-store
-    dependsOn: [db]
+  - name: auth-middleware
+    type: http.middleware.auth
+    config:
+      authType: Bearer
+    dependsOn: [jwt]
 
 pipelines:
   health:
@@ -41,46 +36,35 @@ pipelines:
           body:
             status: ok
 
-  register:
-    trigger:
-      type: http
-      config:
-        path: /api/auth/register
-        method: POST
-    steps:
-      - type: step.user_register
-        config: {}
-      - type: step.json_response
-        config:
-          status: 201
-          body_from: user_id
+workflows:
+  http:
+    router: router
+    server: server
+    routes:
+      # Auth setup (first-user registration, creates admin)
+      - method: POST
+        path: /api/auth/setup
+        handler: jwt
 
-  login:
-    trigger:
-      type: http
-      config:
+      - method: GET
+        path: /api/auth/setup-status
+        handler: jwt
+
+      # Login
+      - method: POST
         path: /api/auth/login
-        method: POST
-    steps:
-      - type: step.user_login
-        config: {}
-      - type: step.json_response
-        config:
-          status: 200
-          body_from: token
+        handler: jwt
 
-  profile:
-    trigger:
-      type: http
-      config:
+      # Profile (requires auth)
+      - method: GET
         path: /api/auth/profile
-        method: GET
-    steps:
-      - type: step.auth_required
-        config: {}
-      - type: step.user_profile
-        config: {}
-      - type: step.json_response
-        config:
-          status: 200
-          body_from: profile
+        handler: jwt
+        middlewares:
+          - auth-middleware
+
+      # Admin creates additional users
+      - method: POST
+        path: /api/auth/users
+        handler: jwt
+        middlewares:
+          - auth-middleware

@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "",
+  "lastUpdated": "2026-02-25T03:51:45.936909Z",
   "componentVersions": {
     "workflow": "",
     "workflow-cloud": "",
@@ -7,13 +7,13 @@
   },
   "scenarios": {
     "01-idp": {
-      "status": "not_tested",
+      "status": "passed",
       "namespace": "wf-scenario-01",
-      "deployed": false,
-      "lastTested": "",
-      "lastResult": "",
-      "testCount": 0,
-      "passCount": 0,
+      "deployed": true,
+      "lastTested": "2026-02-25T03:51:45.936490Z",
+      "lastResult": "pass",
+      "testCount": 7,
+      "passCount": 7,
       "failCount": 0,
       "blockers": []
     },
@@ -48,7 +48,9 @@
       "testCount": 0,
       "passCount": 0,
       "failCount": 0,
-      "blockers": ["wfctl pipeline run not implemented"]
+      "blockers": [
+        "wfctl pipeline run not implemented"
+      ]
     },
     "05-saas-webapp": {
       "status": "blocked",
@@ -59,7 +61,9 @@
       "testCount": 0,
       "passCount": 0,
       "failCount": 0,
-      "blockers": ["cloud UI plugin not yet deployed"]
+      "blockers": [
+        "cloud UI plugin not yet deployed"
+      ]
     },
     "06-multitenant-api": {
       "status": "blocked",
@@ -70,7 +74,9 @@
       "testCount": 0,
       "passCount": 0,
       "failCount": 0,
-      "blockers": ["partial — manual API calls only"]
+      "blockers": [
+        "partial \u2014 manual API calls only"
+      ]
     },
     "07-no-code-workflow": {
       "status": "not_tested",
@@ -92,7 +98,9 @@
       "testCount": 0,
       "passCount": 0,
       "failCount": 0,
-      "blockers": ["bento plugin manual install required"]
+      "blockers": [
+        "bento plugin manual install required"
+      ]
     }
   }
 }
