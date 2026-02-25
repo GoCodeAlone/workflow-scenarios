@@ -5,11 +5,14 @@
 ratchet:
   namespace: default
   service: ratchet
-  port: 8080
+  port: 9090
 
-# Test targets
+# Test targets (ratchet uses workflow HTTP pipeline — no /api/v1 prefix)
 endpoints:
-  health: /health
-  providers: /api/v1/providers
-  agents: /api/v1/agents
-  workspaces: /api/v1/workspaces
+  status: /api/status
+  login: /api/auth/login
+  providers: /api/providers
+  agents: /api/agents
+  tasks: /api/tasks
+  # Auth: POST /api/auth/login with {"username":"admin","password":"admin"}
+  # Returns Bearer token for protected routes
