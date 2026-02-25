@@ -1,0 +1,206 @@
+# ============================================================
+# Scenario 25 — Cloud Account
+#
+# Demonstrates cloud.account module with mock provider.
+# Pipelines expose credential validation and account listing.
+#
+# Endpoints:
+#   POST /api/v1/cloud/validate         — validate account credentials
+#   GET  /api/v1/cloud/accounts         — list all accounts
+#   GET  /api/v1/cloud/accounts/{name}  — get account details
+#   GET  /healthz                       — health check
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Mock cloud account — primary AWS-like account
+  - name: aws-production
+    type: cloud.account
+    config:
+      provider: mock
+      region: us-east-1
+      credentials:
+        type: static
+        accessKey: "test-access-key"
+        secretKey: "test-secret-key"
+
+  # Mock cloud account — secondary account in a different region
+  - name: aws-staging
+    type: cloud.account
+    config:
+      provider: mock
+      region: us-west-2
+      credentials:
+        type: static
+        accessKey: "staging-access-key"
+        secretKey: "staging-secret-key"
+
+  # Mock Kubernetes account
+  - name: local-k8s
+    type: cloud.account
+    config:
+      provider: kubernetes
+      region: ""
+      credentials:
+        type: static
+        kubeconfig: |
+          apiVersion: v1
+          kind: Config
+          clusters:
+          - cluster:
+              server: https://minikube:6443
+            name: minikube
+          contexts:
+          - context:
+              cluster: minikube
+              user: minikube
+            name: minikube
+          current-context: minikube
+          users:
+          - name: minikube
+            user:
+              token: fake-token-for-demo
+        context: minikube
+
+pipelines:
+  health:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "25-cloud-account"
+
+  # POST /api/v1/cloud/validate
+  # Body: {"account": "aws-production"}
+  validate-cloud:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/cloud/validate
+        method: POST
+    steps:
+      - name: parse-body
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: set-default-account
+        type: step.set
+        config:
+          field: account
+          value: "aws-production"
+          only_if_missing: true
+      - name: validate-aws-production
+        type: step.cloud_validate
+        config:
+          account: "aws-production"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # GET /api/v1/cloud/accounts
+  list-accounts:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/cloud/accounts
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            accounts:
+              - name: aws-production
+                provider: mock
+                region: us-east-1
+              - name: aws-staging
+                provider: mock
+                region: us-west-2
+              - name: local-k8s
+                provider: kubernetes
+                region: ""
+
+  # GET /api/v1/cloud/accounts/aws-production
+  get-account-aws-production:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/cloud/accounts/aws-production
+        method: GET
+    steps:
+      - name: validate
+        type: step.cloud_validate
+        config:
+          account: "aws-production"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            name: aws-production
+            provider: mock
+            region: us-east-1
+            valid: "{{.valid}}"
+
+  # GET /api/v1/cloud/accounts/aws-staging
+  get-account-aws-staging:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/cloud/accounts/aws-staging
+        method: GET
+    steps:
+      - name: validate
+        type: step.cloud_validate
+        config:
+          account: "aws-staging"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            name: aws-staging
+            provider: mock
+            region: us-west-2
+            valid: "{{.valid}}"
+
+  # GET /api/v1/cloud/accounts/local-k8s
+  get-account-local-k8s:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/cloud/accounts/local-k8s
+        method: GET
+    steps:
+      - name: validate
+        type: step.cloud_validate
+        config:
+          account: "local-k8s"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            name: local-k8s
+            provider: kubernetes
+            region: ""
+            valid: "{{.valid}}"

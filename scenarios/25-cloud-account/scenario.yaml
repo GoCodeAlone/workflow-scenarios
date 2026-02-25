@@ -1,0 +1,30 @@
+name: Cloud Account — Cloud Provider Credentials
+id: "25-cloud-account"
+category: infrastructure
+description: |
+  Demonstrates the cloud.account module — the foundation for Infrastructure-as-Config.
+  Uses a mock cloud provider so no real credentials are required.
+
+  Endpoints:
+    POST /api/v1/cloud/validate              — Validate cloud credentials for an account
+    GET  /api/v1/cloud/accounts             — List configured accounts (name + provider)
+    GET  /api/v1/cloud/accounts/{name}      — Get account info (provider, region; no secrets)
+    GET  /healthz                           — Health check
+
+components:
+  - workflow (engine)
+  - cloud.account module (mock provider)
+  - step.cloud_validate pipeline step
+
+tags:
+  - cloud
+  - infrastructure
+  - credentials
+  - iac
+  - mock
+
+status: pending
+notes: |
+  Port-forward uses 18025.
+  All credentials use the mock provider — no real cloud account needed.
+  The cloud.account module is the foundation for platform.kubernetes, platform.ecs, etc.
