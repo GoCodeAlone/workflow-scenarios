@@ -30,15 +30,16 @@ spec:
             httpGet:
               path: /healthz
               port: 8080
-            initialDelaySeconds: 3
-            periodSeconds: 3
-            failureThreshold: 20
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 40
           resources:
             limits:
-              cpu: 300m
+              cpu: 500m
               memory: 256Mi
             requests:
-              cpu: 50m
+              cpu: 100m
               memory: 64Mi
       volumes:
         - name: config

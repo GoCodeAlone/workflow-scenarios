@@ -1,16 +1,1 @@
-Forwarding from 127.0.0.1:18080 -> 8080
-Forwarding from [::1]:18080 -> 8080
-Handling connection for 18080
-PASS: Health check returns ok
-Handling connection for 18080
-PASS: Login returns JWT token
-Handling connection for 18080
-PASS: Profile returns user data
-Handling connection for 18080
-PASS: Unauthenticated profile request returns 401
-Handling connection for 18080
-PASS: Setup endpoint returns 403 when users already exist
-Handling connection for 18080
-PASS: Wrong password returns 401
-Handling connection for 18080
-PASS: Admin can create new users
+

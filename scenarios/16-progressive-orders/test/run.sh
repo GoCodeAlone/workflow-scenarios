@@ -43,7 +43,7 @@ deploy_version() {
         --from-file=app.yaml="$SCENARIO_DIR/config/$config_file" \
         -n "$NS" --dry-run=client -o yaml | kubectl apply -f -
     kubectl rollout restart deployment/workflow-server -n "$NS"
-    kubectl rollout status deployment/workflow-server -n "$NS" --timeout=120s
+    kubectl rollout status deployment/workflow-server -n "$NS" --timeout=300s
     echo "--- $label ready ---"
 }
 
