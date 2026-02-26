@@ -20,10 +20,12 @@ V2_CONFIG="$CONFIGS_DIR/v2-extended-api.yaml"
 V3_CONFIG="$CONFIGS_DIR/v3-breaking-api.yaml"
 
 # Locate wfctl binary
+WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$SCENARIO_DIR/../../.." && pwd)/workflow}"
+
 WFCTL=""
 for candidate in \
     "$(which wfctl 2>/dev/null)" \
-    "/Users/jon/workspace/workflow/bin/wfctl" \
+    "$WORKFLOW_REPO/bin/wfctl" \
     "${WFCTL_BIN:-}"; do
     if [ -n "$candidate" ] && [ -x "$candidate" ]; then
         WFCTL="$candidate"

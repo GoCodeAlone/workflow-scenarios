@@ -15,10 +15,14 @@ SCENARIO="18-template-validation"
 WORK_DIR="/tmp/scenario-18"
 
 # Locate wfctl binary
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCENARIO_DIR="$(dirname "$SCRIPT_DIR")"
+WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$SCENARIO_DIR/../../.." && pwd)/workflow}"
+
 WFCTL=""
 for candidate in \
     "$(which wfctl 2>/dev/null)" \
-    "/Users/jon/workspace/workflow/bin/wfctl" \
+    "$WORKFLOW_REPO/bin/wfctl" \
     "${WFCTL_BIN:-}"; do
     if [ -n "$candidate" ] && [ -x "$candidate" ]; then
         WFCTL="$candidate"

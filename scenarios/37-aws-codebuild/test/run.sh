@@ -12,7 +12,7 @@ FAIL_COUNT=0
 pass() { echo "PASS: $1"; PASS_COUNT=$((PASS_COUNT + 1)); }
 fail() { echo "FAIL: $1"; FAIL_COUNT=$((FAIL_COUNT + 1)); }
 
-WORKFLOW_DIR="${WORKFLOW_DIR:-/Users/jon/workspace/workflow}"
+WORKFLOW_DIR="${WORKFLOW_DIR:-$(cd "$(dirname "$0")/../../.." && pwd)/../workflow}"
 
 echo ""
 echo "=== Scenario 37: AWS CodeBuild ==="
