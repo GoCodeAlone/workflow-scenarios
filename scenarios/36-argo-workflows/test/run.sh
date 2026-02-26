@@ -46,20 +46,20 @@ PF_PID=$!
 trap "kill $PF_PID 2>/dev/null || true" EXIT
 
 # Wait for server to be reachable
-for i in $(seq 1 20); do
-    if curl -sf "${BASE_URL}/healthz" &>/dev/null; then break; fi
-    sleep 1
+for i in $(seq 1 30); do
+    if curl -sf --max-time 10 "${BASE_URL}/healthz" &>/dev/null; then break; fi
+    sleep 2
 done
 
 # Health check
-if curl -sf "${BASE_URL}/healthz" | grep -q '"status":"ok"'; then
+if curl -sf --max-time 15 "${BASE_URL}/healthz" | grep -q '"status":"ok"'; then
     pass "healthz"
 else
     fail "healthz"
 fi
 
 # Submit a workflow (mock returns 500 with error text when argo is not running)
-SUBMIT=$(curl -s -X POST "${BASE_URL}/api/v1/workflows/submit" -H "Content-Type: application/json" -d '{}' 2>&1) || true
+SUBMIT=$(curl -s --max-time 15 -X POST "${BASE_URL}/api/v1/workflows/submit" -H "Content-Type: application/json" -d '{}' 2>&1) || true
 if echo "$SUBMIT" | grep -qiE '"workflow_name"|"run_name"|"status"|error|workflow'; then
     pass "argo_submit"
 else
@@ -67,7 +67,7 @@ else
 fi
 
 # Get workflow status (mock returns 500 with error text)
-STATUS=$(curl -s "${BASE_URL}/api/v1/workflows/status" 2>&1) || true
+STATUS=$(curl -s --max-time 15 "${BASE_URL}/api/v1/workflows/status" 2>&1) || true
 if echo "$STATUS" | grep -qiE '"status"|"phase"|error|workflow'; then
     pass "argo_status"
 else
@@ -75,7 +75,7 @@ else
 fi
 
 # Get workflow logs (mock returns 500 with error text)
-LOGS=$(curl -s "${BASE_URL}/api/v1/workflows/logs" 2>&1) || true
+LOGS=$(curl -s --max-time 15 "${BASE_URL}/api/v1/workflows/logs" 2>&1) || true
 if echo "$LOGS" | grep -qiE '"logs"|"lines"|error|workflow'; then
     pass "argo_logs"
 else
@@ -83,14 +83,14 @@ else
 fi
 
 # List workflows (mock returns 200 with empty body)
-if curl -sf "${BASE_URL}/api/v1/workflows" >/dev/null 2>&1; then
+if curl -sf --max-time 15 "${BASE_URL}/api/v1/workflows" >/dev/null 2>&1; then
     pass "argo_list"
 else
     fail "argo_list"
 fi
 
 # Delete workflow (mock returns 500 with error text)
-DELETE=$(curl -s -X DELETE "${BASE_URL}/api/v1/workflows" 2>&1) || true
+DELETE=$(curl -s --max-time 15 -X DELETE "${BASE_URL}/api/v1/workflows" 2>&1) || true
 if echo "$DELETE" | grep -qiE '"deleted"|"status"|error|workflow'; then
     pass "argo_delete"
 else

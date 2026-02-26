@@ -56,13 +56,13 @@ PF_PID=$!
 trap "kill $PF_PID 2>/dev/null || true" EXIT
 
 # Wait for server to be reachable
-for i in $(seq 1 20); do
-    if curl -sf "${BASE_URL}/healthz" &>/dev/null; then break; fi
-    sleep 1
+for i in $(seq 1 30); do
+    if curl -sf --max-time 10 "${BASE_URL}/healthz" &>/dev/null; then break; fi
+    sleep 2
 done
 
 # Health check
-if curl -sf "${BASE_URL}/healthz" | grep -q '"status":"ok"'; then
+if curl -sf --max-time 15 "${BASE_URL}/healthz" | grep -q '"status":"ok"'; then
     pass "healthz"
 else
     fail "healthz"
