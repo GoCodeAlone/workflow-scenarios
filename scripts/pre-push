@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Pre-push hook: validate all scenario configs before pushing.
+set -euo pipefail
+
+echo "=== Pre-push scenario config validation ==="
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+WORKFLOW_DIR="${WORKFLOW_DIR:-$(dirname "$REPO_ROOT")/workflow}"
+WFCTL="$WORKFLOW_DIR/bin/wfctl"
+
+# Check wfctl exists
+if [ ! -f "$WFCTL" ]; then
+    echo "WARNING: wfctl not found at $WFCTL"
+    echo "  Build it: cd $WORKFLOW_DIR && go build -o bin/wfctl ./cmd/wfctl"
+    echo "  Or set WORKFLOW_DIR to the workflow repo root."
+    echo "  Skipping config validation."
+    exit 0
+fi
+
+PASSED=0
+FAILED=0
+TOTAL=0
+
+for scenario_dir in "$REPO_ROOT"/scenarios/*/; do
+    config="$scenario_dir/config/app.yaml"
+    [ -f "$config" ] || continue
+
+    TOTAL=$((TOTAL + 1))
+    scenario=$(basename "$scenario_dir")
+
+    if "$WFCTL" validate -skip-unknown-types "$config" 2>/dev/null; then
+        PASSED=$((PASSED + 1))
+    else
+        echo "  FAIL: $scenario"
+        FAILED=$((FAILED + 1))
+    fi
+done
+
+echo ""
+echo "Validation: $PASSED/$TOTAL passed, $FAILED failed"
+
+if [ "$FAILED" -gt 0 ]; then
+    echo "ERROR: Config validation failed. Fix the above configs before pushing."
+    exit 1
+fi
+
+echo "All scenario configs valid. Push allowed."

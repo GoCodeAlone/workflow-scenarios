@@ -1,4 +1,4 @@
-.PHONY: deploy test status teardown upgrade list test-all verify-persistence verify-all-persistence
+.PHONY: deploy test status teardown upgrade list test-all verify-persistence verify-all-persistence validate
 
 SCENARIO ?=
 COMPONENT ?=
@@ -44,3 +44,7 @@ test-all:
 			./scripts/test.sh $$s || true; \
 		fi; \
 	done
+
+validate:
+	@echo "Validating all scenario configs..."
+	@./scripts/pre-push
