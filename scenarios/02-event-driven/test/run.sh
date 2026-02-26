@@ -4,7 +4,8 @@ set -euo pipefail
 # Test script for Scenario 02: Event-Driven Microservice
 # Outputs PASS: or FAIL: lines for each test
 
-kubectl port-forward svc/workflow-server 18080:8080 -n "$NAMESPACE" &
+LOCAL_PORT=18002
+kubectl port-forward svc/workflow-server ${LOCAL_PORT}:8080 -n "$NAMESPACE" &
 PF_PID=$!
 sleep 3
 
@@ -13,7 +14,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-BASE="http://localhost:18080"
+BASE="http://localhost:${LOCAL_PORT}"
 
 # Test 1: Health check
 RESPONSE=$(curl -sf "$BASE/healthz" 2>/dev/null)

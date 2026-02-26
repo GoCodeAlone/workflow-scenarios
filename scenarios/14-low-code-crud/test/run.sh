@@ -5,7 +5,8 @@ set -euo pipefail
 # Validates the backend API defined entirely in app.yaml — no custom Go code.
 # Outputs PASS: or FAIL: lines for each test.
 
-kubectl port-forward svc/workflow-server 18080:8080 -n "$NAMESPACE" &
+LOCAL_PORT=18014
+kubectl port-forward svc/workflow-server ${LOCAL_PORT}:8080 -n "$NAMESPACE" &
 PF_PID=$!
 
 cleanup() {
@@ -13,7 +14,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-BASE="http://localhost:18080"
+BASE="http://localhost:${LOCAL_PORT}"
 TOKEN=""
 TASK_ID=""
 CAT_ID=""
