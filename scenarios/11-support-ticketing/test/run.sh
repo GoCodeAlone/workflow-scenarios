@@ -4,7 +4,8 @@ set -euo pipefail
 # Test script for Scenario 11: Customer Support Ticketing
 # Outputs PASS: or FAIL: lines for each test
 
-kubectl port-forward svc/workflow-server 18080:8080 -n "$NAMESPACE" &
+LOCAL_PORT=18011
+kubectl port-forward svc/workflow-server ${LOCAL_PORT}:8080 -n "$NAMESPACE" &
 PF_PID=$!
 sleep 3
 
@@ -13,7 +14,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-BASE="http://localhost:18080"
+BASE="http://localhost:${LOCAL_PORT}"
 PASS=0
 FAIL=0
 

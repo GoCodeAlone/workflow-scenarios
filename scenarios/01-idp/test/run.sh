@@ -5,7 +5,8 @@ set -euo pipefail
 # Outputs PASS: or FAIL: lines for each test
 
 # Port-forward
-kubectl port-forward svc/workflow-server 18080:8080 -n "$NAMESPACE" &
+LOCAL_PORT=18001
+kubectl port-forward svc/workflow-server ${LOCAL_PORT}:8080 -n "$NAMESPACE" &
 PF_PID=$!
 
 cleanup() {
@@ -13,7 +14,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-BASE="http://localhost:18080"
+BASE="http://localhost:${LOCAL_PORT}"
 
 # Wait for port-forward to be ready (up to 60 seconds)
 for i in $(seq 1 30); do

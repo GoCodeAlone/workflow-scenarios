@@ -20,10 +20,12 @@ V2_CONFIG="$CONFIGS_DIR/v2-extended-api.yaml"
 V3_CONFIG="$CONFIGS_DIR/v3-breaking-api.yaml"
 
 # Locate wfctl binary
+WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$SCENARIO_DIR/../../.." && pwd)/workflow}"
+
 WFCTL=""
 for candidate in \
     "$(which wfctl 2>/dev/null)" \
-    "/Users/jon/workspace/workflow/bin/wfctl" \
+    "$WORKFLOW_REPO/bin/wfctl" \
     "${WFCTL_BIN:-}"; do
     if [ -n "$candidate" ] && [ -x "$candidate" ]; then
         WFCTL="$candidate"
@@ -54,9 +56,11 @@ pass() { echo "PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
 skip() { echo "SKIP: $1"; SKIP=$((SKIP + 1)); }
 
-# Check whether a wfctl sub-command exists
+# Check whether a wfctl sub-command exists.
+# wfctl contract --help exits with code 1 (requires arguments), so we check
+# that wfctl itself is available instead of probing individual subcommands.
 cmd_available() {
-    "$WFCTL" "$1" --help >/dev/null 2>&1
+    command -v "$WFCTL" >/dev/null 2>&1
 }
 
 # -----------------------------------------------------------------------

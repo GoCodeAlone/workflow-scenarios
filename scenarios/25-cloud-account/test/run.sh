@@ -5,7 +5,7 @@
 # Runs go unit tests from the workflow repo.
 set -euo pipefail
 
-WORKFLOW_REPO="${WORKFLOW_REPO:-/Users/jon/workspace/workflow}"
+WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$(dirname "$0")/../../.." && pwd)/../workflow}"
 PASS=0
 FAIL=0
 
