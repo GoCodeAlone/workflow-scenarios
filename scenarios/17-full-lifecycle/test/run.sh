@@ -19,10 +19,14 @@ fail() { echo "FAIL: $1"; FAIL_COUNT=$((FAIL_COUNT + 1)); }
 
 start_pf() {
     pkill -f "port-forward.*$PORT" 2>/dev/null || true
-    sleep 1
+    sleep 2
     kubectl port-forward svc/workflow-server "$PORT":8080 -n "$NS" &
     PF_PID=$!
-    sleep 4
+    # Wait for port-forward to be ready (up to 60 seconds)
+    for i in $(seq 1 30); do
+        if curl -sf --max-time 2 "$BASE/healthz" >/dev/null 2>&1; then break; fi
+        sleep 2
+    done
 }
 
 cleanup() {
