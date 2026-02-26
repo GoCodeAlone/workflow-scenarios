@@ -85,7 +85,7 @@ jobs:
         failed=0
         for config in scenarios/*/config/app.yaml; do
           scenario=$(echo "$config" | cut -d/ -f2)
-          if workflow/bin/wfctl validate "$config" --skip-unknown-types 2>/dev/null; then
+          if workflow/bin/wfctl validate --skip-unknown-types "$config" 2>/dev/null; then
             passed=$((passed + 1))
           else
             echo "  FAIL: $scenario"
