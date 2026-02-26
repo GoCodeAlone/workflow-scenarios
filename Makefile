@@ -1,4 +1,4 @@
-.PHONY: deploy test status teardown upgrade list test-all verify-persistence verify-all-persistence validate
+.PHONY: deploy test status teardown upgrade list test-all verify-persistence verify-all-persistence validate playwright-test playwright-test-all
 
 SCENARIO ?=
 COMPONENT ?=
@@ -48,3 +48,12 @@ test-all:
 validate:
 	@echo "Validating all scenario configs..."
 	@./scripts/pre-push
+
+playwright-test:
+	@test -n "$(SCENARIO)" || (echo "Usage: make playwright-test SCENARIO=20-auth-service" && exit 1)
+	@cd e2e && ./run-scenario-tests.sh $(SCENARIO)
+
+playwright-test-all:
+	@cd e2e && ./run-scenario-tests.sh 20-auth-service; \
+	 ./run-scenario-tests.sh 21-payment-service; \
+	 ./run-scenario-tests.sh 22-ecommerce-app

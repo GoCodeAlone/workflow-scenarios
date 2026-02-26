@@ -1,0 +1,14 @@
+{
+  "name": "workflow-scenarios-e2e",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:scenario-20": "SCENARIO_URL=http://localhost:18020 playwright test tests/scenario-20-auth.spec.ts",
+    "test:scenario-21": "SCENARIO_URL=http://localhost:18021 playwright test tests/scenario-21-payment.spec.ts",
+    "test:scenario-22": "SCENARIO_URL=http://localhost:18022 playwright test tests/scenario-22-ecommerce.spec.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}
