@@ -1,0 +1,160 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  yaml-syntax:
+    name: YAML Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out scenarios
+      uses: actions/checkout@v4
+
+    - name: Validate YAML syntax
+      run: |
+        pip install pyyaml
+        passed=0
+        failed=0
+        for config in scenarios/*/config/app.yaml; do
+          scenario=$(echo "$config" | cut -d/ -f2)
+          if python3 -c "import yaml; yaml.safe_load(open('$config'))" 2>/dev/null; then
+            passed=$((passed + 1))
+          else
+            echo "FAIL: $scenario — invalid YAML"
+            failed=$((failed + 1))
+          fi
+        done
+        echo ""
+        echo "YAML syntax: $passed passed, $failed failed"
+        [ "$failed" -eq 0 ]
+
+  validate-configs:
+    name: Validate Scenario Configs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      GOPRIVATE: github.com/GoCodeAlone/*
+      GONOSUMCHECK: github.com/GoCodeAlone/*
+
+    steps:
+    - name: Check out scenarios
+      uses: actions/checkout@v4
+
+    - name: Check out workflow engine
+      uses: actions/checkout@v4
+      with:
+        repository: GoCodeAlone/workflow
+        path: workflow
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.26'
+        cache: true
+        cache-dependency-path: workflow/go.sum
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        registry-url: 'https://npm.pkg.github.com'
+        cache: 'npm'
+        cache-dependency-path: workflow/ui/package-lock.json
+
+    - name: Build UI assets
+      run: cd workflow/ui && npm ci && npm run build
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build wfctl
+      run: cd workflow && go build -o bin/wfctl ./cmd/wfctl
+
+    - name: Schema validation — all scenario configs
+      run: |
+        passed=0
+        failed=0
+        for config in scenarios/*/config/app.yaml; do
+          scenario=$(echo "$config" | cut -d/ -f2)
+          if workflow/bin/wfctl validate "$config" --skip-unknown-types 2>/dev/null; then
+            passed=$((passed + 1))
+          else
+            echo "  FAIL: $scenario"
+            failed=$((failed + 1))
+          fi
+        done
+        echo ""
+        echo "Schema validation: $passed passed, $failed failed"
+        [ "$failed" -eq 0 ]
+
+    - name: Type registry validation — all scenario configs
+      run: |
+        passed=0
+        warned=0
+        for config in scenarios/*/config/app.yaml; do
+          scenario=$(echo "$config" | cut -d/ -f2)
+          if workflow/bin/wfctl template validate --config "$config" 2>/dev/null; then
+            passed=$((passed + 1))
+          else
+            echo "  WARN: $scenario (unknown types)"
+            warned=$((warned + 1))
+          fi
+        done
+        echo ""
+        echo "Type validation: $passed passed, $warned warnings"
+        # Warnings only — don't fail on unknown types
+
+  scenario-structure:
+    name: Validate Scenario Structure
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out scenarios
+      uses: actions/checkout@v4
+
+    - name: Check required files exist
+      run: |
+        passed=0
+        failed=0
+        for dir in scenarios/*/; do
+          scenario=$(basename "$dir")
+          missing=""
+          [ -f "$dir/config/app.yaml" ] || missing="$missing config/app.yaml"
+          [ -f "$dir/scenario.yaml" ] || missing="$missing scenario.yaml"
+          [ -d "$dir/k8s" ] || missing="$missing k8s/"
+
+          if [ -z "$missing" ]; then
+            passed=$((passed + 1))
+          else
+            echo "  WARN: $scenario missing:$missing"
+            failed=$((failed + 1))
+          fi
+        done
+        echo ""
+        echo "Structure check: $passed complete, $failed incomplete"
+        # Don't fail — some scenarios may have optional components
+
+    - name: Validate scenarios.json consistency
+      run: |
+        python3 -c "
+        import json, os
+        with open('scenarios.json') as f:
+            data = json.load(f)
+        dirs = set(os.listdir('scenarios'))
+        registered = set(data.get('scenarios', {}).keys())
+        missing = dirs - registered
+        extra = registered - dirs
+        if missing:
+            print(f'WARNING: Directories not in scenarios.json: {missing}')
+        if extra:
+            print(f'WARNING: scenarios.json entries without directories: {extra}')
+        print(f'Scenarios: {len(dirs)} directories, {len(registered)} registered')
+        "
