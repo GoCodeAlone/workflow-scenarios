@@ -7,7 +7,6 @@ set -euo pipefail
 # Port-forward
 kubectl port-forward svc/workflow-server 18080:8080 -n "$NAMESPACE" &
 PF_PID=$!
-sleep 3
 
 cleanup() {
     kill $PF_PID 2>/dev/null || true
@@ -15,6 +14,18 @@ cleanup() {
 trap cleanup EXIT
 
 BASE="http://localhost:18080"
+
+# Wait for port-forward to be ready (up to 60 seconds)
+for i in $(seq 1 30); do
+    if curl -sf --max-time 2 "$BASE/healthz" >/dev/null 2>&1; then break; fi
+    sleep 2
+done
+
+# Ensure admin user is seeded (idempotent — returns 403 if already exists)
+echo "Ensuring admin user is seeded..."
+curl -sf -X POST "$BASE/api/auth/setup" \
+    -H "Content-Type: application/json" \
+    -d '{"email":"admin@example.com","password":"TestPassword123!","name":"Admin User"}' 2>/dev/null || true
 
 # Test 1: Health check
 RESPONSE=$(curl -sf "$BASE/healthz" 2>/dev/null)
