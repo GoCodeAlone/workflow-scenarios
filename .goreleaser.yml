@@ -1,0 +1,41 @@
+version: 2
+project_name: workflow-samples
+
+builds:
+  - id: sample-orders
+    main: ./cmd/sample-orders
+    binary: sample-orders
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: sample-orders
+    builds:
+      - sample-orders
+    name_template: "sample-orders_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+
+checksum:
+  name_template: checksums.txt
+
+signs:
+  - cmd: cosign
+    args:
+      - sign-blob
+      - --yes
+      - "--output-signature=${signature}"
+      - "${artifact}"
+    artifacts: checksum
+
+release:
+  github:
+    owner: GoCodeAlone
+    name: workflow-scenarios

@@ -2,3 +2,7 @@ scenarios/*/test/artifacts/
 scenarios/*/ui/node_modules/
 scenarios/*/ui/dist/
 .playwright-cli/
+
+# Go
+/cmd/sample-orders/sample-orders
+dist/
