@@ -539,6 +539,49 @@
       "failCount": 0,
       "notes": "DigitalOcean cloud provider. DOKS, VPC/firewalls, DNS, App Platform with real godo client + mock backends. Unit tests pass; HTTP integration tests have expected failures.",
       "blockers": []
+    },
+    "43-agent-plugin-basic": {
+      "status": "testable",
+      "namespace": "wf-scenario-43",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 10,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Agent plugin basic integration. agent.provider (mock), step.agent_execute, step.provider_models. Requires workflow-server:agent-local image with workflow-plugin-agent registered.",
+      "blockers": [
+        "requires-custom-server-image"
+      ]
+    },
+    "44-agent-self-healing": {
+      "status": "testable",
+      "namespace": "wf-scenario-44",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 9,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Scripted multi-turn agent simulating self-healing infrastructure. test provider in scripted mode with 6-step CrashLoopBackOff remediation sequence. Tests iteration counting and max_iterations enforcement. Requires workflow-server:agent-local image.",
+      "blockers": [
+        "requires-custom-server-image"
+      ]
+    },
+    "45-agent-operator-mode": {
+      "status": "manual",
+      "namespace": "wf-scenario-45",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Manual QA only. test provider in HTTP mode routes agent turns to an external Claude operator process. See README.md for setup. Requires workflow-server:agent-local image.",
+      "blockers": [
+        "manual-only",
+        "requires-custom-server-image"
+      ]
     }
   }
 }

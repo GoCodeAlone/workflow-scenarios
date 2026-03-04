@@ -1,0 +1,56 @@
+name: Agent Plugin Basic Integration
+id: "43-agent-plugin-basic"
+category: C
+description: |
+  Demonstrates the workflow-plugin-agent AI agent primitives using the mock provider.
+  Exercises three module and step types introduced by the agent plugin:
+    - agent.provider: wraps a mock AI backend that returns scripted responses
+    - step.agent_execute: runs the autonomous agent loop with a given task
+    - step.provider_models: lists available models from a provider type
+
+  No real AI API calls are made — all responses are scripted via the mock provider,
+  making the scenario fully runnable without any API credentials.
+
+  IMPORTANT: This scenario requires a custom workflow-server binary that includes the
+  agent plugin (workflow-plugin-agent). The standard workflow-server:local image does
+  NOT include this plugin. To deploy:
+    1. Build a custom image with agent.New() registered in defaultEnginePlugins().
+    2. Tag it as workflow-server:agent-local and update k8s/deployment.yaml accordingly.
+
+  Until the agent plugin is merged into the default server, HTTP integration tests
+  require the custom image. Unit-level tests (no server) run against the workflow
+  repo directly.
+
+components:
+  - workflow (engine)
+  - agent plugin (agent.provider module, step.agent_execute, step.provider_models)
+
+status: testable
+
+modules:
+  agent.provider:
+    provider: mock
+    responses:
+      - "I have completed the task. The answer is 42."
+
+pipelines:
+  agent-run:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/agent/run
+        method: POST
+    steps:
+      - type: step.agent_execute
+        config:
+          provider_service: agent-ai
+          max_iterations: 5
+
+  provider-models:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/provider/models
+        method: POST
+    steps:
+      - type: step.provider_models

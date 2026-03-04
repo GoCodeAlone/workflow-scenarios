@@ -1,0 +1,88 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Test provider in HTTP mode: routes each LLM call to an external HTTP endpoint.
+  # The external operator (e.g., a Claude agent process) receives an Interaction JSON
+  # payload and returns an InteractionResponse JSON.
+  #
+  # Default endpoint: http://localhost:9090/respond
+  # Override by setting AGENT_HTTP_SOURCE_URL environment variable (not supported here —
+  # configure directly in this file or patch with a ConfigMap).
+  - name: agent-operator
+    type: agent.provider
+    config:
+      provider: test
+      test_mode: http
+      timeout: 5m
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "45-agent-operator-mode"
+            plugin: agent
+            mode: http
+
+  # Trigger an operator-driven agent run.
+  # Input: {"task": "...", "agent_id": "..."}
+  # The test provider HTTP source will forward each turn to the external operator.
+  # Output: {"result": "...", "status": "...", "iterations": N}
+  operate:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/agent/operate
+        method: POST
+    steps:
+      - name: parse-request
+        type: step.request_parse
+        config:
+          fields:
+            - name: task
+              source: body
+            - name: agent_id
+              source: body
+            - name: system_prompt
+              source: body
+
+      - name: execute-agent
+        type: step.agent_execute
+        config:
+          provider_service: agent-operator
+          max_iterations: 20
+        input:
+          task: "{{ .steps.parse-request.task | default \"Perform the assigned infrastructure task.\" }}"
+          agent_id: "{{ .steps.parse-request.agent_id | default \"operator-agent\" }}"
+          system_prompt: "{{ .steps.parse-request.system_prompt | default \"You are an expert infrastructure operator. Use the available tools to complete the given task safely and efficiently.\" }}"
+
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            result: "{{ index .steps \"execute-agent\" \"result\" }}"
+            status: "{{ index .steps \"execute-agent\" \"status\" }}"
+            iterations: "{{ index .steps \"execute-agent\" \"iterations\" }}"

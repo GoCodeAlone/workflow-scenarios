@@ -1,0 +1,148 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Test provider in scripted mode simulates a 6-step self-healing agent conversation.
+  # Steps cycle through: diagnose → inspect events → restart pod → verify → record → summarize.
+  # No real k8s or AI API calls are made.
+  - name: agent-scripted
+    type: agent.provider
+    config:
+      provider: test
+      test_mode: scripted
+      steps:
+        - content: "I'll diagnose the infrastructure issue. Let me start by checking pod health."
+          tool_calls:
+            - name: k8s_get_pods
+              arguments:
+                namespace: production
+        - content: "Pod web-app-xxx is in CrashLoopBackOff. Let me check the events for root cause."
+          tool_calls:
+            - name: k8s_get_events
+              arguments:
+                namespace: production
+                pod: web-app-xxx
+        - content: "OOMKilled due to memory limit exceeded. I will restart the pod to restore service immediately."
+          tool_calls:
+            - name: k8s_restart_pod
+              arguments:
+                namespace: production
+                pod: web-app-xxx
+        - content: "Restart issued. Verifying pod recovery."
+          tool_calls:
+            - name: k8s_get_pods
+              arguments:
+                namespace: production
+        - content: "All pods are Running. Recording the remediation outcome for future reference."
+          tool_calls:
+            - name: memory_save
+              arguments:
+                category: remediation
+                content: "web-app-xxx restarted after OOMKill — memory limit may need tuning"
+        - content: "Remediation complete. The web-app-xxx pod was OOMKilled and has been restarted successfully. All pods are now healthy. I recommend reviewing the memory limits for this deployment to prevent recurrence."
+
+  # Iteration-limit scenario: provider loops the same content to exhaust max_iterations.
+  - name: agent-loop
+    type: agent.provider
+    config:
+      provider: test
+      test_mode: scripted
+      loop: true
+      steps:
+        - content: "Still working..."
+          tool_calls:
+            - name: k8s_get_pods
+              arguments:
+                namespace: production
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "44-agent-self-healing"
+            plugin: agent
+
+  # Scripted multi-turn self-healing agent run.
+  # Input: {"task": "...", "agent_id": "..."}
+  # Output: {"result": "...", "status": "completed", "iterations": N}
+  self-healing-run:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/agent/self-healing
+        method: POST
+    steps:
+      - name: parse-request
+        type: step.request_parse
+        config:
+          fields:
+            - name: task
+              source: body
+            - name: agent_id
+              source: body
+
+      - name: execute-agent
+        type: step.agent_execute
+        config:
+          provider_service: agent-scripted
+          max_iterations: 10
+        input:
+          task: "{{ .steps.parse-request.task | default \"Diagnose and remediate any unhealthy pods in the production namespace.\" }}"
+          agent_id: "{{ .steps.parse-request.agent_id | default \"infra-agent\" }}"
+          system_prompt: "You are an autonomous infrastructure agent. Diagnose issues and take remediation actions using the available tools."
+
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            result: "{{ index .steps \"execute-agent\" \"result\" }}"
+            status: "{{ index .steps \"execute-agent\" \"status\" }}"
+            iterations: "{{ index .steps \"execute-agent\" \"iterations\" }}"
+
+  # Verify iteration limit: agent-loop loops indefinitely, max_iterations=3 caps it.
+  iteration-limit:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/agent/iteration-limit
+        method: POST
+    steps:
+      - name: execute-limited
+        type: step.agent_execute
+        config:
+          provider_service: agent-loop
+          max_iterations: 3
+        input:
+          task: "Loop until stopped"
+          agent_id: "loop-test-agent"
+
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: "{{ index .steps \"execute-limited\" \"status\" }}"
+            iterations: "{{ index .steps \"execute-limited\" \"iterations\" }}"

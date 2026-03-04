@@ -1,0 +1,79 @@
+name: Agent Self-Healing Infrastructure (Scripted)
+id: "44-agent-self-healing"
+category: C
+description: |
+  Demonstrates a scripted multi-turn agent conversation simulating an autonomous
+  self-healing infrastructure scenario using the test provider in scripted mode.
+
+  The scripted provider steps through a pre-defined sequence of responses that
+  simulate an agent diagnosing and remediating a CrashLoopBackOff pod:
+    Step 1: Agent asks to check pod status (tool call: k8s_get_pods)
+    Step 2: Agent inspects pod events for crash details (tool call: k8s_get_events)
+    Step 3: Agent triggers pod restart (tool call: k8s_restart_pod)
+    Step 4: Agent verifies recovery (tool call: k8s_get_pods — healthy)
+    Step 5: Agent records the remediation outcome
+    Step 6: Agent provides a final summary
+
+  Because no tool registry is configured in this scenario, tool call results are
+  handled by the executor's "tool execution not available" fallback. The scenario
+  validates that the agent loop processes scripted tool calls correctly, advances
+  through all steps, and terminates cleanly with a final summary.
+
+  To enable actual tool execution, configure a tool registry with mock k8s tools
+  and register it as "agent-tool-registry" in the service registry.
+
+  IMPORTANT: Requires a custom workflow-server binary that includes workflow-plugin-agent.
+
+components:
+  - workflow (engine)
+  - agent plugin (agent.provider in test/scripted mode, step.agent_execute)
+
+status: testable
+
+modules:
+  agent.provider:
+    provider: test
+    test_mode: scripted
+    steps:
+      - content: "I'll diagnose the infrastructure issue. Let me start by checking pod health."
+        tool_calls:
+          - name: k8s_get_pods
+            arguments:
+              namespace: production
+      - content: "Pod web-app-xxx is in CrashLoopBackOff. Let me check the events."
+        tool_calls:
+          - name: k8s_get_events
+            arguments:
+              namespace: production
+              pod: web-app-xxx
+      - content: "OOMKilled due to memory limit. I'll restart the pod to restore service."
+        tool_calls:
+          - name: k8s_restart_pod
+            arguments:
+              namespace: production
+              pod: web-app-xxx
+      - content: "Pod restarted. Verifying recovery."
+        tool_calls:
+          - name: k8s_get_pods
+            arguments:
+              namespace: production
+      - content: "All pods healthy. Recording remediation outcome."
+        tool_calls:
+          - name: memory_save
+            arguments:
+              category: remediation
+              content: "web-app-xxx restarted after OOMKill — memory limit may need tuning"
+      - content: "Remediation complete. The web-app-xxx pod was OOMKilled and has been restarted. All pods are now healthy. Recommend reviewing memory limits."
+
+pipelines:
+  self-healing-run:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/agent/self-healing
+        method: POST
+    steps:
+      - type: step.agent_execute
+        config:
+          provider_service: agent-scripted
+          max_iterations: 10

@@ -1,0 +1,35 @@
+name: Agent Operator Mode (Manual QA)
+id: "45-agent-operator-mode"
+category: C
+description: |
+  Placeholder scenario for exploratory manual QA with Claude sub-agents acting as
+  operators. Uses the test provider in HTTP mode to route LLM interactions through
+  an external HTTP endpoint, enabling a Claude agent running outside the workflow
+  server to respond to the agent execution loop in real-time.
+
+  This scenario is NOT meant for automated regression testing. It exists to enable
+  developers to manually QA the agent execution pipeline with real AI reasoning
+  and live tool invocations.
+
+  How it works:
+    1. Start the workflow server with this config.
+    2. Run a Claude agent process that listens at the configured HTTP source endpoint.
+    3. Trigger a pipeline via HTTP (e.g., POST /api/v1/agent/operate).
+    4. The workflow agent loop calls the external Claude process for each turn.
+    5. Claude issues tool calls; the loop executes them and returns results.
+    6. Observe the multi-turn conversation until the agent completes the task.
+
+  The HTTP source endpoint defaults to http://localhost:9090/respond. The external
+  operator (Claude) receives interaction JSON and returns InteractionResponse JSON.
+
+  See README.md for detailed setup instructions.
+
+components:
+  - workflow (engine)
+  - agent plugin (agent.provider in test/http mode, step.agent_execute)
+
+status: manual
+
+notes: |
+  No automated tests. Requires custom workflow-server:agent-local image.
+  For manual QA only — see README.md in this directory.

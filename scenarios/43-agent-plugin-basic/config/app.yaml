@@ -1,0 +1,98 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Mock AI provider — returns scripted responses without any real API calls.
+  # Cycles through the responses list on each Chat() call.
+  - name: agent-ai
+    type: agent.provider
+    config:
+      provider: mock
+      responses:
+        - "I have completed the task. The answer is 42."
+        - "Task complete. All systems operational."
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "43-agent-plugin-basic"
+            plugin: agent
+
+  # Run the agent loop with a task from the request body.
+  # Input: {"task": "...", "agent_id": "..."}
+  # Output: {"result": "...", "status": "completed", "iterations": N}
+  agent-run:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/agent/run
+        method: POST
+    steps:
+      - name: parse-request
+        type: step.request_parse
+        config:
+          fields:
+            - name: task
+              source: body
+            - name: agent_id
+              source: body
+
+      - name: execute-agent
+        type: step.agent_execute
+        config:
+          provider_service: agent-ai
+          max_iterations: 5
+        input:
+          task: "{{ .steps.parse-request.task | default \"Complete the assigned task.\" }}"
+          agent_id: "{{ .steps.parse-request.agent_id | default \"test-agent\" }}"
+
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            result: "{{ index .steps \"execute-agent\" \"result\" }}"
+            status: "{{ index .steps \"execute-agent\" \"status\" }}"
+            iterations: "{{ index .steps \"execute-agent\" \"iterations\" }}"
+
+  # List models available from a provider type.
+  # Input: {"type": "mock"}
+  # Output: {"success": true, "models": [...]}
+  provider-models:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/provider/models
+        method: POST
+    steps:
+      - name: list-models
+        type: step.provider_models
+
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
