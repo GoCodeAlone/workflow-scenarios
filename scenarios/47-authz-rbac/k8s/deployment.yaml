@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scenario-47
+  namespace: wf-scenario-47
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scenario-47
+  template:
+    metadata:
+      labels:
+        app: scenario-47
+    spec:
+      containers:
+        - name: workflow
+          image: workflow-server:local
+          args: ["-config", "/config/app.yaml", "-data-dir", "/data"]
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: config
+          configMap:
+            name: app
+        - name: data
+          emptyDir: {}

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: workflow-server
+  namespace: wf-scenario-47
+spec:
+  selector:
+    app: scenario-47
+  ports:
+    - port: 8080
+      targetPort: 8080

@@ -1,0 +1,22 @@
+name: Authz RBAC
+id: "47-authz-rbac"
+category: C
+description: |
+  Simulates RBAC (Role-Based Access Control) enforcement using core engine steps
+  and SQLite (no external authz gRPC plugin required). Demonstrates:
+  - Policy management: add/remove role-resource-action policies
+  - Access check: query policies and return allow/deny
+  - User-role assignment and lookup
+  - Full lifecycle: add policy → check (allowed) → remove → check (denied)
+  All state is stored in SQLite via step.db_exec / step.db_query.
+components:
+  - workflow (engine)
+  - SQLite (state storage)
+  - step.set, step.db_exec, step.db_query, step.conditional, step.json_response
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh
