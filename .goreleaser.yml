@@ -18,10 +18,10 @@ builds:
 
 archives:
   - id: sample-orders
-    builds:
+    ids:
       - sample-orders
     name_template: "sample-orders_{{ .Os }}_{{ .Arch }}"
-    format: tar.gz
+    formats: [tar.gz]
 
 checksum:
   name_template: checksums.txt
