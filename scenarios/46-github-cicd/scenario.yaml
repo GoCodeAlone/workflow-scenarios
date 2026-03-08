@@ -1,0 +1,23 @@
+name: GitHub CI/CD Integration
+id: "46-github-cicd"
+category: C
+description: |
+  Simulates a GitHub CI/CD integration using core engine steps (no external
+  github gRPC plugin required). Demonstrates:
+  - Webhook receipt with signature validation (via header check)
+  - Workflow dispatch trigger: POST stores a run record and returns a run ID
+  - Status polling: GET returns stored run status
+  - State transitions: pending → running → success/failure
+  All state is stored in SQLite via step.db_exec / step.db_query.
+  Tests verify the full lifecycle from webhook to status polling.
+components:
+  - workflow (engine)
+  - SQLite (state storage)
+  - step.set, step.db_exec, step.db_query, step.conditional, step.json_response
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh
