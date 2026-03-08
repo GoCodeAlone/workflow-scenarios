@@ -1,0 +1,22 @@
+name: actor-model
+version: "1.0"
+description: |
+  Exercises the goakt actor model integration: actor.system, actor.pool
+  (auto-managed + permanent), step.actor_ask, and step.actor_send.
+
+  Tests:
+    - Auto-managed actor pool (sticky routing, identity-based activation)
+    - Permanent actor pool (round-robin routing, fixed size)
+    - Actor state persistence across messages
+    - Request-response (Ask) and fire-and-forget (Send) patterns
+    - Order lifecycle: create → get → cancel
+
+port: 19050
+status: not-deployed
+tests: 0
+pass: 0
+fail: 0
+
+references:
+  - workflow/plugins/actors/
+  - workflow/example/actor-system-config.yaml

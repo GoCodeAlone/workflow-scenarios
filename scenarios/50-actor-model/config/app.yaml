@@ -1,0 +1,292 @@
+# ============================================================
+# Scenario 50 — Actor Model (goakt)
+#
+# Exercises the goakt actor model with two pool types:
+#   - Auto-managed pool (order-processors): actors activate per
+#     order_id, maintain state across messages, deactivate on idle.
+#   - Permanent pool (workers): fixed-size pool with round-robin
+#     routing for stateless background job processing.
+#
+# Endpoints:
+#   GET  /healthz                — health check
+#   POST /api/orders             — create an order (Ask → auto-managed)
+#   GET  /api/orders/{id}        — get order status (Ask → auto-managed)
+#   DELETE /api/orders/{id}      — cancel an order (Ask → auto-managed)
+#   POST /api/jobs               — submit a job (Ask → permanent)
+#   POST /api/events             — fire-and-forget event (Send → permanent)
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Actor runtime — single-node mode (no clustering for scenario test)
+  - name: actors
+    type: actor.system
+    config:
+      shutdownTimeout: 15s
+
+  # Auto-managed pool: one actor per order_id, sticky routing
+  - name: order-processors
+    type: actor.pool
+    config:
+      system: actors
+      mode: auto-managed
+      idleTimeout: 10m
+      routing: sticky
+      routingKey: order_id
+      recovery:
+        failureScope: isolated
+        action: restart
+        maxRetries: 3
+        retryWindow: 10s
+
+  # Permanent pool: fixed workers with round-robin distribution
+  - name: workers
+    type: actor.pool
+    config:
+      system: actors
+      mode: permanent
+      poolSize: 4
+      routing: round-robin
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+  # Actor message handlers — define what each pool does when it receives messages
+  actors:
+    pools:
+      order-processors:
+        receive:
+          CreateOrder:
+            description: "Initialize a new order"
+            steps:
+              - type: step.set
+                name: result
+                config:
+                  values:
+                    order_id: "{{ .message.payload.order_id }}"
+                    customer: "{{ .message.payload.customer }}"
+                    status: "confirmed"
+                    items: "{{ json .message.payload.items }}"
+                    created_at: '{{ now "2006-01-02T15:04:05Z" }}'
+
+          GetStatus:
+            description: "Return current order state"
+            steps:
+              - type: step.set
+                name: result
+                config:
+                  values:
+                    order_id: "{{ .actor.identity }}"
+                    status: "{{ .state.status | default \"unknown\" }}"
+                    customer: "{{ .state.customer | default \"\" }}"
+                    items: "{{ .state.items | default \"[]\" }}"
+
+          CancelOrder:
+            description: "Cancel the order"
+            steps:
+              - type: step.set
+                name: result
+                config:
+                  values:
+                    order_id: "{{ .actor.identity }}"
+                    status: "cancelled"
+                    cancelled_at: '{{ now "2006-01-02T15:04:05Z" }}'
+
+      workers:
+        receive:
+          ProcessJob:
+            description: "Process a background job"
+            steps:
+              - type: step.set
+                name: result
+                config:
+                  values:
+                    job_id: "{{ .message.payload.job_id }}"
+                    task: "{{ .message.payload.task | default \"unknown\" }}"
+                    status: "completed"
+                    worker: "{{ .actor.identity }}"
+
+          HandleEvent:
+            description: "Handle a fire-and-forget event"
+            steps:
+              - type: step.set
+                name: result
+                config:
+                  values:
+                    event_type: "{{ .message.payload.event_type }}"
+                    processed: "true"
+
+pipelines:
+  # ----------------------------------------------------------------
+  # Health check
+  # ----------------------------------------------------------------
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "50-actor-model"
+
+  # ----------------------------------------------------------------
+  # Create order — POST /api/orders
+  # ----------------------------------------------------------------
+  create-order:
+    trigger:
+      type: http
+      config:
+        path: /api/orders
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config: {}
+
+      - name: process
+        type: step.actor_ask
+        config:
+          pool: order-processors
+          identity: "{{ .body.order_id }}"
+          timeout: 10s
+          message:
+            type: CreateOrder
+            payload:
+              order_id: "{{ .body.order_id }}"
+              customer: "{{ .body.customer }}"
+              items: "{{ .body.items }}"
+
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body_from: "steps.process"
+
+  # ----------------------------------------------------------------
+  # Get order status — GET /api/orders/{id}
+  # ----------------------------------------------------------------
+  get-order:
+    trigger:
+      type: http
+      config:
+        path: /api/orders/{id}
+        method: GET
+    steps:
+      - name: status
+        type: step.actor_ask
+        config:
+          pool: order-processors
+          identity: "{{ .id }}"
+          timeout: 5s
+          message:
+            type: GetStatus
+
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.status"
+
+  # ----------------------------------------------------------------
+  # Cancel order — DELETE /api/orders/{id}
+  # ----------------------------------------------------------------
+  cancel-order:
+    trigger:
+      type: http
+      config:
+        path: /api/orders/{id}
+        method: DELETE
+    steps:
+      - name: cancel
+        type: step.actor_ask
+        config:
+          pool: order-processors
+          identity: "{{ .id }}"
+          timeout: 5s
+          message:
+            type: CancelOrder
+
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.cancel"
+
+  # ----------------------------------------------------------------
+  # Submit job — POST /api/jobs (round-robin to permanent workers)
+  # ----------------------------------------------------------------
+  submit-job:
+    trigger:
+      type: http
+      config:
+        path: /api/jobs
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config: {}
+
+      - name: process
+        type: step.actor_ask
+        config:
+          pool: workers
+          timeout: 10s
+          message:
+            type: ProcessJob
+            payload:
+              job_id: "{{ .body.job_id }}"
+              task: "{{ .body.task }}"
+
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.process"
+
+  # ----------------------------------------------------------------
+  # Fire event — POST /api/events (fire-and-forget to workers)
+  # ----------------------------------------------------------------
+  fire-event:
+    trigger:
+      type: http
+      config:
+        path: /api/events
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config: {}
+
+      - name: send
+        type: step.actor_send
+        config:
+          pool: workers
+          message:
+            type: HandleEvent
+            payload:
+              event_type: "{{ .body.event_type }}"
+
+      - name: respond
+        type: step.json_response
+        config:
+          status: 202
+          body:
+            accepted: true
+            message: "Event dispatched"

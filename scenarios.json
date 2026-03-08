@@ -582,6 +582,48 @@
         "manual-only",
         "requires-custom-server-image"
       ]
+    },
+    "46-github-cicd": {
+      "status": "not-deployed",
+      "namespace": "wf-scenario-46",
+      "deployed": false,
+      "testCount": 18,
+      "passCount": 0,
+      "failCount": 0
+    },
+    "47-authz-rbac": {
+      "status": "not-deployed",
+      "namespace": "wf-scenario-47",
+      "deployed": false,
+      "testCount": 20,
+      "passCount": 0,
+      "failCount": 0
+    },
+    "48-payment-processing": {
+      "status": "not-deployed",
+      "namespace": "wf-scenario-48",
+      "deployed": false,
+      "testCount": 20,
+      "passCount": 0,
+      "failCount": 0
+    },
+    "49-security-scanning": {
+      "status": "not-deployed",
+      "namespace": "wf-scenario-49",
+      "deployed": false,
+      "testCount": 15,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Uses built-in security.scanner module in mock mode. Step types: step.scan_sast, step.scan_container, step.scan_deps."
+    },
+    "50-actor-model": {
+      "status": "not-deployed",
+      "namespace": "wf-scenario-50",
+      "deployed": false,
+      "testCount": 22,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Exercises goakt actor model: actor.system, actor.pool (auto-managed + permanent), step.actor_ask, step.actor_send. Order lifecycle with stateful actors + round-robin worker pool."
     }
   }
 }
