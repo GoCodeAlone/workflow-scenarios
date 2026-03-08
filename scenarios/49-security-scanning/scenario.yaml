@@ -1,0 +1,24 @@
+name: Security Scanning
+id: "49-security-scanning"
+category: C
+description: |
+  Exercises the security.scanner module with mock mode to verify
+  SecurityScannerProvider integration with scan steps:
+  - SAST scanning (step.scan_sast) with severity gate
+  - Container image scanning (step.scan_container) with threshold
+  - Dependency scanning (step.scan_deps) with threshold
+  - Custom mock findings to verify gate pass/fail behavior
+  - API endpoint wrapping each scan type for HTTP testing
+  Tests verify findings count, severity summary, and gate pass/fail logic.
+components:
+  - workflow (engine)
+  - security.scanner (mock mode)
+  - step.scan_sast, step.scan_container, step.scan_deps
+  - step.set, step.json_response
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh
