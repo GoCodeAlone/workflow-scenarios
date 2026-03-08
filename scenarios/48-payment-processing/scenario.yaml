@@ -1,0 +1,22 @@
+name: Payment Processing
+id: "48-payment-processing"
+category: C
+description: |
+  Simulates a payment processing lifecycle using core engine steps and SQLite
+  (no external payments gRPC plugin required). Demonstrates:
+  - Charge lifecycle: create (pending) → capture → refund
+  - Subscription lifecycle: create (active) → cancel
+  - Amount and status validation via step.conditional
+  - Full CRUD with persistence and state transitions
+  All state is stored in SQLite via step.db_exec / step.db_query.
+components:
+  - workflow (engine)
+  - SQLite (state storage)
+  - step.set, step.db_exec, step.db_query, step.conditional, step.json_response
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh
