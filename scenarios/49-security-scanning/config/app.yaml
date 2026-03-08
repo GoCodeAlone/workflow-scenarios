@@ -111,6 +111,11 @@ pipelines:
           source_path: /workspace
           fail_on_severity: high
           output_format: json
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.run-scan"
 
   # ----------------------------------------------------------------
   # SAST Scan Strict — threshold "low" → should fail (has medium+low)
@@ -165,6 +170,11 @@ pipelines:
           source_path: /workspace
           fail_on_severity: critical
           output_format: json
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.run-scan"
 
   # ----------------------------------------------------------------
   # Deps Scan Strict — threshold "medium" → should fail (has high+medium)
