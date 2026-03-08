@@ -1,168 +1,157 @@
 modules:
-  - name: server
-    type: http.server
-    config:
-      address: ":8080"
-
-  - name: router
-    type: http.router
-    dependsOn: [server]
-
-  - name: db
-    type: storage.sqlite
-    config:
-      dbPath: "/db/pipeline.db"
-      maxConnections: 5
-      walMode: true
-
-  - name: broker
-    type: messaging.broker
-    config:
-      maxQueueSize: 1000
-      deliveryTimeout: "30s"
-
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: db
+      type: storage.sqlite
+      config:
+        dbPath: "/db/pipeline.db"
+        maxConnections: 5
+        walMode: true
+    - name: broker
+      type: messaging.broker
+      config:
+        maxQueueSize: 1000
+        deliveryTimeout: "30s"
 workflows:
-  http:
-    router: router
-    server: server
-    routes: []
-
+    http:
+        router: router
+        server: server
+        routes: []
 pipelines:
-  health:
-    trigger:
-      type: http
-      config:
-        path: /healthz
-        method: GET
-    steps:
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            scenario: "08-data-pipeline"
-            plugin: bento
-
-  init-db:
-    trigger:
-      type: http
-      config:
-        path: /internal/init-db
-        method: POST
-    steps:
-      - name: create-records-table
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            CREATE TABLE IF NOT EXISTS pipeline_records (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              raw_data TEXT NOT NULL,
-              processed_data TEXT,
-              score REAL DEFAULT 0,
-              status TEXT NOT NULL DEFAULT 'received',
-              created_at TEXT NOT NULL DEFAULT (datetime('now')),
-              processed_at TEXT
-            )
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            message: database initialized
-
-  ingest:
-    trigger:
-      type: http
-      config:
-        path: /api/pipeline/ingest
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: transform
-        type: step.bento
-        config:
-          processors:
-            mapping: "root = this\nroot.score = (this.body.value | 0.0).number() * 1.5\nroot.pipeline_tag = \"scenario-08\""
-      - name: store
-        type: step.db_exec
-        config:
-          database: db
-          query: "INSERT INTO pipeline_records (raw_data, processed_data, score, status, created_at) VALUES (?, ?, ?, 'processed', datetime('now'))"
-          params:
-            - "{{ json .body }}"
-            - "bento-processed"
-            - "0"
-      - name: publish
-        type: step.publish
-        config:
-          topic: "processed-records"
-          broker: broker
-      - name: respond
-        type: step.json_response
-        config:
-          status: 202
-          body:
-            status: accepted
-            message: data ingested and processed via bento
-
-  list-records:
-    trigger:
-      type: http
-      config:
-        path: /api/pipeline/records
-        method: GET
-    steps:
-      - name: get-records
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, raw_data, processed_data, score, status, created_at FROM pipeline_records ORDER BY created_at DESC LIMIT 100"
-          mode: list
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.get-records.rows"
-
-  bento-transform:
-    trigger:
-      type: http
-      config:
-        path: /api/pipeline/transform
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: bloblang-transform
-        type: step.bento
-        config:
-          processors:
-            mapping: "let items = this.body.items\nroot.count = $items.length()\nroot.total = $items.map_each(item -> (item.value | 0).number()).sum()\nroot.items = $items.map_each(item -> {\"name\": item.name.uppercase(), \"value\": (item.value | 0) * 2})"
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.bloblang-transform"
-
-  log-processed:
-    steps:
-      - name: log
-        type: step.log
-        config:
-          level: info
-          message: "Record processed through bento pipeline"
-
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "08-data-pipeline"
+                    plugin: bento
+    init-db:
+        trigger:
+            type: http
+            config:
+                path: /internal/init-db
+                method: POST
+        steps:
+            - name: create_records_table
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    CREATE TABLE IF NOT EXISTS pipeline_records (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      raw_data TEXT NOT NULL,
+                      processed_data TEXT,
+                      score REAL DEFAULT 0,
+                      status TEXT NOT NULL DEFAULT 'received',
+                      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                      processed_at TEXT
+                    )
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    message: database initialized
+    ingest:
+        trigger:
+            type: http
+            config:
+                path: /api/pipeline/ingest
+                method: POST
+        steps:
+            - name: parse_body
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: transform
+              type: step.bento
+              config:
+                processors:
+                    mapping: "root = this\nroot.score = (this.body.value | 0.0).number() * 1.5\nroot.pipeline_tag = \"scenario-08\""
+            - name: store
+              type: step.db_exec
+              config:
+                database: db
+                query: "INSERT INTO pipeline_records (raw_data, processed_data, score, status, created_at) VALUES (?, ?, ?, 'processed', datetime('now'))"
+                params:
+                    - "{{ json .body }}"
+                    - "bento-processed"
+                    - "0"
+            - name: publish
+              type: step.publish
+              config:
+                topic: "processed-records"
+                broker: broker
+            - name: respond
+              type: step.json_response
+              config:
+                status: 202
+                body:
+                    status: accepted
+                    message: data ingested and processed via bento
+    list-records:
+        trigger:
+            type: http
+            config:
+                path: /api/pipeline/records
+                method: GET
+        steps:
+            - name: get_records
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, raw_data, processed_data, score, status, created_at FROM pipeline_records ORDER BY created_at DESC LIMIT 100"
+                mode: list
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get_records.rows"
+    bento-transform:
+        trigger:
+            type: http
+            config:
+                path: /api/pipeline/transform
+                method: POST
+        steps:
+            - name: parse_body
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: bloblang_transform
+              type: step.bento
+              config:
+                processors:
+                    mapping: "let items = this.body.items\nroot.count = $items.length()\nroot.total = $items.map_each(item -> (item.value | 0).number()).sum()\nroot.items = $items.map_each(item -> {\"name\": item.name.uppercase(), \"value\": (item.value | 0) * 2})"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.bloblang_transform"
+    log-processed:
+        steps:
+            - name: log
+              type: step.log
+              config:
+                level: info
+                message: "Record processed through bento pipeline"
 triggers:
-  event:
-    subscriptions:
-      - topic: "processed-records"
-        workflow: "pipeline:log-processed"
-        action: "log"
+    event:
+        subscriptions:
+            - topic: "processed-records"
+              workflow: "pipeline:log-processed"
+              action: "log"

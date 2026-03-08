@@ -17,179 +17,170 @@
 # ============================================================
 
 modules:
-  - name: server
-    type: http.server
-    config:
-      address: ":8080"
-
-  - name: router
-    type: http.router
-    dependsOn: [server]
-
-  - name: scanner
-    type: security.scanner
-    config:
-      mode: mock
-      mockFindings:
-        sast:
-          - rule_id: "SAST-001"
-            severity: "medium"
-            message: "Potential SQL injection in query builder"
-            location: "/src/db/query.go"
-            line: 42
-          - rule_id: "SAST-002"
-            severity: "low"
-            message: "Unused import detected"
-            location: "/src/util.go"
-            line: 3
-        container:
-          - rule_id: "CVE-2024-9999"
-            severity: "critical"
-            message: "Remote code execution in base image library"
-            location: "layer:sha256:abc123def456"
-          - rule_id: "CVE-2024-8888"
-            severity: "high"
-            message: "Privilege escalation via symlink race"
-            location: "layer:sha256:789ghi012"
-          - rule_id: "CVE-2024-7777"
-            severity: "medium"
-            message: "Information disclosure via error messages"
-            location: "layer:sha256:345jkl678"
-        deps:
-          - rule_id: "GHSA-2024-0001"
-            severity: "high"
-            message: "Prototype pollution in lodash < 4.17.21"
-            location: "package-lock.json"
-          - rule_id: "GHSA-2024-0002"
-            severity: "medium"
-            message: "ReDoS in minimatch < 3.0.5"
-            location: "package-lock.json"
-          - rule_id: "GHSA-2024-0003"
-            severity: "low"
-            message: "Deprecated API usage in uuid < 9.0.0"
-            location: "go.sum"
-
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: scanner
+      type: security.scanner
+      config:
+        mode: mock
+        mockFindings:
+            sast:
+                - rule_id: "SAST-001"
+                  severity: "medium"
+                  message: "Potential SQL injection in query builder"
+                  location: "/src/db/query.go"
+                  line: 42
+                - rule_id: "SAST-002"
+                  severity: "low"
+                  message: "Unused import detected"
+                  location: "/src/util.go"
+                  line: 3
+            container:
+                - rule_id: "CVE-2024-9999"
+                  severity: "critical"
+                  message: "Remote code execution in base image library"
+                  location: "layer:sha256:abc123def456"
+                - rule_id: "CVE-2024-8888"
+                  severity: "high"
+                  message: "Privilege escalation via symlink race"
+                  location: "layer:sha256:789ghi012"
+                - rule_id: "CVE-2024-7777"
+                  severity: "medium"
+                  message: "Information disclosure via error messages"
+                  location: "layer:sha256:345jkl678"
+            deps:
+                - rule_id: "GHSA-2024-0001"
+                  severity: "high"
+                  message: "Prototype pollution in lodash < 4.17.21"
+                  location: "package-lock.json"
+                - rule_id: "GHSA-2024-0002"
+                  severity: "medium"
+                  message: "ReDoS in minimatch < 3.0.5"
+                  location: "package-lock.json"
+                - rule_id: "GHSA-2024-0003"
+                  severity: "low"
+                  message: "Deprecated API usage in uuid < 9.0.0"
+                  location: "go.sum"
 workflows:
-  http:
-    router: router
-    server: server
-    routes: []
-
+    http:
+        router: router
+        server: server
+        routes: []
 pipelines:
-  # ----------------------------------------------------------------
-  # Health
-  # ----------------------------------------------------------------
-  health:
-    trigger:
-      type: http
-      config:
-        path: /healthz
-        method: GET
-    steps:
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            scenario: "49-security-scanning"
-
-  # ----------------------------------------------------------------
-  # SAST Scan — threshold "high" → should pass (only medium+low findings)
-  # ----------------------------------------------------------------
-  sast-scan:
-    trigger:
-      type: http
-      config:
-        path: /api/scan/sast
-        method: POST
-    steps:
-      - name: run-scan
-        type: step.scan_sast
-        config:
-          scanner: semgrep
-          source_path: /workspace
-          fail_on_severity: high
-          output_format: json
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.run-scan"
-
-  # ----------------------------------------------------------------
-  # SAST Scan Strict — threshold "low" → should fail (has medium+low)
-  # ----------------------------------------------------------------
-  sast-scan-strict:
-    trigger:
-      type: http
-      config:
-        path: /api/scan/sast-strict
-        method: POST
-    steps:
-      - name: run-scan
-        type: step.scan_sast
-        config:
-          scanner: semgrep
-          source_path: /workspace
-          fail_on_severity: low
-          output_format: json
-
-  # ----------------------------------------------------------------
-  # Container Scan — threshold "high" → should fail (has critical+high)
-  # ----------------------------------------------------------------
-  container-scan:
-    trigger:
-      type: http
-      config:
-        path: /api/scan/container
-        method: POST
-    steps:
-      - name: run-scan
-        type: step.scan_container
-        config:
-          scanner: trivy
-          image: myapp:latest
-          severity_threshold: high
-          output_format: json
-
-  # ----------------------------------------------------------------
-  # Deps Scan — threshold "critical" → should pass (only high+medium+low)
-  # ----------------------------------------------------------------
-  deps-scan:
-    trigger:
-      type: http
-      config:
-        path: /api/scan/deps
-        method: POST
-    steps:
-      - name: run-scan
-        type: step.scan_deps
-        config:
-          scanner: grype
-          source_path: /workspace
-          fail_on_severity: critical
-          output_format: json
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.run-scan"
-
-  # ----------------------------------------------------------------
-  # Deps Scan Strict — threshold "medium" → should fail (has high+medium)
-  # ----------------------------------------------------------------
-  deps-scan-strict:
-    trigger:
-      type: http
-      config:
-        path: /api/scan/deps-strict
-        method: POST
-    steps:
-      - name: run-scan
-        type: step.scan_deps
-        config:
-          scanner: grype
-          source_path: /workspace
-          fail_on_severity: medium
-          output_format: json
+    # ----------------------------------------------------------------
+    # Health
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "49-security-scanning"
+    # ----------------------------------------------------------------
+    # SAST Scan — threshold "high" → should pass (only medium+low findings)
+    # ----------------------------------------------------------------
+    sast-scan:
+        trigger:
+            type: http
+            config:
+                path: /api/scan/sast
+                method: POST
+        steps:
+            - name: run_scan
+              type: step.scan_sast
+              config:
+                scanner: semgrep
+                source_path: /workspace
+                fail_on_severity: high
+                output_format: json
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.run_scan"
+    # ----------------------------------------------------------------
+    # SAST Scan Strict — threshold "low" → should fail (has medium+low)
+    # ----------------------------------------------------------------
+    sast-scan-strict:
+        trigger:
+            type: http
+            config:
+                path: /api/scan/sast-strict
+                method: POST
+        steps:
+            - name: run_scan
+              type: step.scan_sast
+              config:
+                scanner: semgrep
+                source_path: /workspace
+                fail_on_severity: low
+                output_format: json
+    # ----------------------------------------------------------------
+    # Container Scan — threshold "high" → should fail (has critical+high)
+    # ----------------------------------------------------------------
+    container-scan:
+        trigger:
+            type: http
+            config:
+                path: /api/scan/container
+                method: POST
+        steps:
+            - name: run_scan
+              type: step.scan_container
+              config:
+                scanner: trivy
+                image: myapp:latest
+                severity_threshold: high
+                output_format: json
+    # ----------------------------------------------------------------
+    # Deps Scan — threshold "critical" → should pass (only high+medium+low)
+    # ----------------------------------------------------------------
+    deps-scan:
+        trigger:
+            type: http
+            config:
+                path: /api/scan/deps
+                method: POST
+        steps:
+            - name: run_scan
+              type: step.scan_deps
+              config:
+                scanner: grype
+                source_path: /workspace
+                fail_on_severity: critical
+                output_format: json
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.run_scan"
+    # ----------------------------------------------------------------
+    # Deps Scan Strict — threshold "medium" → should fail (has high+medium)
+    # ----------------------------------------------------------------
+    deps-scan-strict:
+        trigger:
+            type: http
+            config:
+                path: /api/scan/deps-strict
+                method: POST
+        steps:
+            - name: run_scan
+              type: step.scan_deps
+              config:
+                scanner: grype
+                source_path: /workspace
+                fail_on_severity: medium
+                output_format: json

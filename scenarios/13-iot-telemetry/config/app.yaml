@@ -1,415 +1,401 @@
 modules:
-  - name: server
-    type: http.server
-    config:
-      address: ":8080"
-
-  - name: router
-    type: http.router
-    dependsOn: [server]
-
-  - name: db
-    type: storage.sqlite
-    config:
-      dbPath: "/data/scenario.db"
-      maxConnections: 5
-      walMode: true
-
-  - name: broker
-    type: messaging.broker
-    config:
-      maxQueueSize: 1000
-      deliveryTimeout: "30s"
-
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: db
+      type: storage.sqlite
+      config:
+        dbPath: "/data/scenario.db"
+        maxConnections: 5
+        walMode: true
+    - name: broker
+      type: messaging.broker
+      config:
+        maxQueueSize: 1000
+        deliveryTimeout: "30s"
 workflows:
-  http:
-    router: router
-    server: server
-    routes: []
-
+    http:
+        router: router
+        server: server
+        routes: []
 pipelines:
-  health:
-    trigger:
-      type: http
-      config:
-        path: /healthz
-        method: GET
-    steps:
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            scenario: "13-iot-telemetry"
-
-  init-db:
-    trigger:
-      type: http
-      config:
-        path: /internal/init-db
-        method: POST
-    steps:
-      - name: create-sensors-table
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            CREATE TABLE IF NOT EXISTS sensors (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              sensor_type TEXT NOT NULL,
-              location TEXT NOT NULL,
-              threshold_value REAL,
-              threshold_operator TEXT DEFAULT 'gt',
-              status TEXT NOT NULL DEFAULT 'active',
-              created_at TEXT NOT NULL DEFAULT (datetime('now')),
-              updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-      - name: create-readings-table
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            CREATE TABLE IF NOT EXISTS sensor_readings (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              sensor_id TEXT NOT NULL,
-              value REAL NOT NULL,
-              unit TEXT,
-              ts TEXT NOT NULL DEFAULT (datetime('now')),
-              alert_triggered INTEGER NOT NULL DEFAULT 0
-            )
-      - name: create-alerts-table
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            CREATE TABLE IF NOT EXISTS sensor_alerts (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              sensor_id TEXT NOT NULL,
-              reading_value REAL NOT NULL,
-              threshold_value REAL NOT NULL,
-              message TEXT NOT NULL,
-              created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            message: database initialized
-
-  register-sensor:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/sensors/register
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: validate-sensor
-        type: step.validate
-        config:
-          strategy: required_fields
-          required_fields: [name, sensor_type, location]
-          source: "steps.parse-body.body"
-      - name: gen-id
-        type: step.set
-        config:
-          values:
-            sensor_id: "sensor-{{ uuidv4 }}"
-      - name: insert-sensor
-        type: step.db_exec
-        config:
-          database: db
-          query: "INSERT INTO sensors (id, name, sensor_type, location, threshold_value, threshold_operator, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'active', datetime('now'), datetime('now'))"
-          params:
-            - "{{ index .steps \"gen-id\" \"sensor_id\" }}"
-            - "{{ .body.name }}"
-            - "{{ .body.sensor_type }}"
-            - "{{ .body.location }}"
-            - "{{ .body.threshold_value | default \"\" }}"
-            - "{{ .body.threshold_operator | default \"gt\" }}"
-      - name: respond
-        type: step.json_response
-        config:
-          status: 201
-          body:
-            id: "{{ index .steps \"gen-id\" \"sensor_id\" }}"
-            status: active
-            message: sensor registered
-
-  ingest-reading:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/sensors/{id}/data
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: validate-reading
-        type: step.validate
-        config:
-          strategy: required_fields
-          required_fields: [value]
-          source: "steps.parse-body.body"
-      - name: fetch-sensor
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, name, sensor_type, threshold_value, threshold_operator FROM sensors WHERE id = ? AND status = 'active'"
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: check-sensor-exists
-        type: step.conditional
-        config:
-          field: steps.fetch-sensor.row.id
-          routes:
-            "": sensor-not-found
-          default: store-reading
-      - name: sensor-not-found
-        type: step.json_response
-        config:
-          status: 404
-          body:
-            error: sensor not found or inactive
-      - name: store-reading
-        type: step.db_exec
-        config:
-          database: db
-          query: "INSERT INTO sensor_readings (sensor_id, value, unit, ts) VALUES (?, ?, ?, datetime('now'))"
-          params:
-            - "{{ .id }}"
-            - "{{ .body.value }}"
-            - "{{ .body.unit | default \"\" }}"
-      - name: check-threshold
-        type: step.conditional
-        config:
-          field: steps.fetch-sensor.row.threshold_value
-          routes:
-            "": respond-ok
-          default: check-alert-db
-      - name: check-alert-db
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT CASE WHEN CAST(? AS REAL) > threshold_value THEN 'true' ELSE 'false' END AS alert_triggered FROM sensors WHERE id = ?"
-          params:
-            - "{{ .body.value }}"
-            - "{{ .id }}"
-          mode: single
-      - name: check-alert
-        type: step.conditional
-        config:
-          field: steps.check-alert-db.row.alert_triggered
-          routes:
-            "true": fire-alert
-          default: respond-ok
-      - name: fire-alert
-        type: step.db_exec
-        config:
-          database: db
-          query: "INSERT INTO sensor_alerts (sensor_id, reading_value, threshold_value, message) VALUES (?, ?, ?, ?)"
-          params:
-            - "{{ .id }}"
-            - "{{ .body.value }}"
-            - "{{ index .steps \"fetch-sensor\" \"row\" \"threshold_value\" }}"
-            - "Threshold exceeded: value {{ .body.value }} > threshold {{ index .steps \"fetch-sensor\" \"row\" \"threshold_value\" }}"
-      - name: publish-alert
-        type: step.publish
-        config:
-          topic: "sensor-alerts"
-          broker: broker
-      - name: respond-alert
-        type: step.json_response
-        config:
-          status: 202
-          body:
-            sensor_id: "{{ .id }}"
-            value: "{{ .body.value }}"
-            alert: true
-            message: reading ingested and alert triggered
-      - name: respond-ok
-        type: step.json_response
-        config:
-          status: 202
-          body:
-            sensor_id: "{{ .id }}"
-            value: "{{ .body.value }}"
-            alert: false
-            message: reading ingested
-
-  get-latest-reading:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/sensors/{id}/latest
-        method: GET
-    steps:
-      - name: fetch-db-latest
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT sensor_id, value, unit, ts, alert_triggered FROM sensor_readings WHERE sensor_id = ? ORDER BY ts DESC LIMIT 1"
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: check-has-reading
-        type: step.conditional
-        config:
-          field: steps.fetch-db-latest.row.sensor_id
-          routes:
-            "": no-readings
-          default: respond-db
-      - name: no-readings
-        type: step.json_response
-        config:
-          status: 404
-          body:
-            error: no readings found for sensor
-      - name: respond-db
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.fetch-db-latest.row"
-
-  get-alerts:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/sensors/{id}/alerts
-        method: GET
-    steps:
-      - name: check-sensor
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id FROM sensors WHERE id = ?"
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: check-exists
-        type: step.conditional
-        config:
-          field: steps.check-sensor.row.id
-          routes:
-            "": not-found
-          default: get-alert-list
-      - name: not-found
-        type: step.json_response
-        config:
-          status: 404
-          body:
-            error: sensor not found
-      - name: get-alert-list
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, sensor_id, reading_value, threshold_value, message, created_at FROM sensor_alerts WHERE sensor_id = ? ORDER BY created_at DESC LIMIT 50"
-          params:
-            - "{{ .id }}"
-          mode: list
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.get-alert-list.rows"
-
-  set-threshold:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/sensors/{id}/threshold
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: validate-threshold
-        type: step.validate
-        config:
-          strategy: required_fields
-          required_fields: [value]
-          source: "steps.parse-body.body"
-      - name: check-sensor
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id FROM sensors WHERE id = ?"
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: check-exists
-        type: step.conditional
-        config:
-          field: steps.check-sensor.row.id
-          routes:
-            "": not-found
-          default: update-threshold
-      - name: not-found
-        type: step.json_response
-        config:
-          status: 404
-          body:
-            error: sensor not found
-      - name: update-threshold
-        type: step.db_exec
-        config:
-          database: db
-          query: "UPDATE sensors SET threshold_value = ?, threshold_operator = ?, updated_at = datetime('now') WHERE id = ?"
-          params:
-            - "{{ .body.value }}"
-            - "{{ .body.operator | default \"gt\" }}"
-            - "{{ .id }}"
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            sensor_id: "{{ .id }}"
-            threshold: "{{ .body.value }}"
-            operator: "{{ .body.operator | default \"gt\" }}"
-            message: threshold updated
-
-  list-sensors:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/sensors
-        method: GET
-    steps:
-      - name: get-sensors
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, name, sensor_type, location, threshold_value, threshold_operator, status, created_at FROM sensors ORDER BY created_at DESC"
-          mode: list
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.get-sensors.rows"
-
-  alert-event-log:
-    steps:
-      - name: log
-        type: step.log
-        config:
-          level: warn
-          message: "Sensor alert triggered"
-
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "13-iot-telemetry"
+    init-db:
+        trigger:
+            type: http
+            config:
+                path: /internal/init-db
+                method: POST
+        steps:
+            - name: create_sensors_table
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    CREATE TABLE IF NOT EXISTS sensors (
+                      id TEXT PRIMARY KEY,
+                      name TEXT NOT NULL,
+                      sensor_type TEXT NOT NULL,
+                      location TEXT NOT NULL,
+                      threshold_value REAL,
+                      threshold_operator TEXT DEFAULT 'gt',
+                      status TEXT NOT NULL DEFAULT 'active',
+                      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    )
+            - name: create_readings_table
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    CREATE TABLE IF NOT EXISTS sensor_readings (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      sensor_id TEXT NOT NULL,
+                      value REAL NOT NULL,
+                      unit TEXT,
+                      ts TEXT NOT NULL DEFAULT (datetime('now')),
+                      alert_triggered INTEGER NOT NULL DEFAULT 0
+                    )
+            - name: create_alerts_table
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    CREATE TABLE IF NOT EXISTS sensor_alerts (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      sensor_id TEXT NOT NULL,
+                      reading_value REAL NOT NULL,
+                      threshold_value REAL NOT NULL,
+                      message TEXT NOT NULL,
+                      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    )
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    message: database initialized
+    register-sensor:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/sensors/register
+                method: POST
+        steps:
+            - name: parse_body
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: validate_sensor
+              type: step.validate
+              config:
+                strategy: required_fields
+                required_fields: [name, sensor_type, location]
+                source: "steps.parse_body.body"
+            - name: gen_id
+              type: step.set
+              config:
+                values:
+                    sensor_id: "sensor-{{ uuidv4 }}"
+            - name: insert_sensor
+              type: step.db_exec
+              config:
+                database: db
+                query: "INSERT INTO sensors (id, name, sensor_type, location, threshold_value, threshold_operator, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'active', datetime('now'), datetime('now'))"
+                params:
+                    - "{{ index .steps \"gen_id\" \"sensor_id\" }}"
+                    - "{{ .body.name }}"
+                    - "{{ .body.sensor_type }}"
+                    - "{{ .body.location }}"
+                    - "{{ .body.threshold_value | default \"\" }}"
+                    - "{{ .body.threshold_operator | default \"gt\" }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 201
+                body:
+                    id: "{{ index .steps \"gen_id\" \"sensor_id\" }}"
+                    status: active
+                    message: sensor registered
+    ingest-reading:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/sensors/{id}/data
+                method: POST
+        steps:
+            - name: parse_body
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: validate_reading
+              type: step.validate
+              config:
+                strategy: required_fields
+                required_fields: [value]
+                source: "steps.parse_body.body"
+            - name: fetch_sensor
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, name, sensor_type, threshold_value, threshold_operator FROM sensors WHERE id = ? AND status = 'active'"
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: check_sensor_exists
+              type: step.conditional
+              config:
+                field: steps.fetch_sensor.row.id
+                routes:
+                    "": sensor-not_found
+                default: store_reading
+            - name: sensor_not_found
+              type: step.json_response
+              config:
+                status: 404
+                body:
+                    error: sensor not found or inactive
+            - name: store_reading
+              type: step.db_exec
+              config:
+                database: db
+                query: "INSERT INTO sensor_readings (sensor_id, value, unit, ts) VALUES (?, ?, ?, datetime('now'))"
+                params:
+                    - "{{ .id }}"
+                    - "{{ .body.value }}"
+                    - "{{ .body.unit | default \"\" }}"
+            - name: check_threshold
+              type: step.conditional
+              config:
+                field: steps.fetch_sensor.row.threshold_value
+                routes:
+                    "": respond_ok
+                default: check_alert_db
+            - name: check_alert_db
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT CASE WHEN CAST(? AS REAL) > threshold_value THEN 'true' ELSE 'false' END AS alert_triggered FROM sensors WHERE id = ?"
+                params:
+                    - "{{ .body.value }}"
+                    - "{{ .id }}"
+                mode: single
+            - name: check_alert
+              type: step.conditional
+              config:
+                field: steps.check_alert_db.row.alert_triggered
+                routes:
+                    "true": fire_alert
+                default: respond_ok
+            - name: fire_alert
+              type: step.db_exec
+              config:
+                database: db
+                query: "INSERT INTO sensor_alerts (sensor_id, reading_value, threshold_value, message) VALUES (?, ?, ?, ?)"
+                params:
+                    - "{{ .id }}"
+                    - "{{ .body.value }}"
+                    - "{{ index .steps \"fetch_sensor\" \"row\" \"threshold_value\" }}"
+                    - "Threshold exceeded: value {{ .body.value }} > threshold {{ index .steps \"fetch_sensor\" \"row\" \"threshold_value\" }}"
+            - name: publish_alert
+              type: step.publish
+              config:
+                topic: "sensor-alerts"
+                broker: broker
+            - name: respond_alert
+              type: step.json_response
+              config:
+                status: 202
+                body:
+                    sensor_id: "{{ .id }}"
+                    value: "{{ .body.value }}"
+                    alert: true
+                    message: reading ingested and alert triggered
+            - name: respond_ok
+              type: step.json_response
+              config:
+                status: 202
+                body:
+                    sensor_id: "{{ .id }}"
+                    value: "{{ .body.value }}"
+                    alert: false
+                    message: reading ingested
+    get-latest-reading:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/sensors/{id}/latest
+                method: GET
+        steps:
+            - name: fetch_db_latest
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT sensor_id, value, unit, ts, alert_triggered FROM sensor_readings WHERE sensor_id = ? ORDER BY ts DESC LIMIT 1"
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: check_has_reading
+              type: step.conditional
+              config:
+                field: steps.fetch_db_latest.row.sensor_id
+                routes:
+                    "": no_readings
+                default: respond_db
+            - name: no_readings
+              type: step.json_response
+              config:
+                status: 404
+                body:
+                    error: no readings found for sensor
+            - name: respond_db
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.fetch_db_latest.row"
+    get-alerts:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/sensors/{id}/alerts
+                method: GET
+        steps:
+            - name: check_sensor
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id FROM sensors WHERE id = ?"
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: check_exists
+              type: step.conditional
+              config:
+                field: steps.check_sensor.row.id
+                routes:
+                    "": not_found
+                default: get_alert_list
+            - name: not_found
+              type: step.json_response
+              config:
+                status: 404
+                body:
+                    error: sensor not found
+            - name: get_alert_list
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, sensor_id, reading_value, threshold_value, message, created_at FROM sensor_alerts WHERE sensor_id = ? ORDER BY created_at DESC LIMIT 50"
+                params:
+                    - "{{ .id }}"
+                mode: list
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get_alert_list.rows"
+    set-threshold:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/sensors/{id}/threshold
+                method: POST
+        steps:
+            - name: parse_body
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: validate_threshold
+              type: step.validate
+              config:
+                strategy: required_fields
+                required_fields: [value]
+                source: "steps.parse_body.body"
+            - name: check_sensor
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id FROM sensors WHERE id = ?"
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: check_exists
+              type: step.conditional
+              config:
+                field: steps.check_sensor.row.id
+                routes:
+                    "": not_found
+                default: update_threshold
+            - name: not_found
+              type: step.json_response
+              config:
+                status: 404
+                body:
+                    error: sensor not found
+            - name: update_threshold
+              type: step.db_exec
+              config:
+                database: db
+                query: "UPDATE sensors SET threshold_value = ?, threshold_operator = ?, updated_at = datetime('now') WHERE id = ?"
+                params:
+                    - "{{ .body.value }}"
+                    - "{{ .body.operator | default \"gt\" }}"
+                    - "{{ .id }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    sensor_id: "{{ .id }}"
+                    threshold: "{{ .body.value }}"
+                    operator: "{{ .body.operator | default \"gt\" }}"
+                    message: threshold updated
+    list-sensors:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/sensors
+                method: GET
+        steps:
+            - name: get_sensors
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, name, sensor_type, location, threshold_value, threshold_operator, status, created_at FROM sensors ORDER BY created_at DESC"
+                mode: list
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get_sensors.rows"
+    alert-event-log:
+        steps:
+            - name: log
+              type: step.log
+              config:
+                level: warn
+                message: "Sensor alert triggered"
 triggers:
-  event:
-    subscriptions:
-      - topic: "sensor-alerts"
-        workflow: "pipeline:alert-event-log"
-        action: "log"
+    event:
+        subscriptions:
+            - topic: "sensor-alerts"
+              workflow: "pipeline:alert-event-log"
+              action: "log"

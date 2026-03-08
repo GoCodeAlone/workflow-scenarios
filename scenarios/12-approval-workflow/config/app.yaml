@@ -1,384 +1,373 @@
 modules:
-  - name: server
-    type: http.server
-    config:
-      address: ":8080"
-
-  - name: router
-    type: http.router
-    dependsOn: [server]
-
-  - name: db
-    type: storage.sqlite
-    config:
-      dbPath: "/data/scenario.db"
-      maxConnections: 5
-      walMode: true
-
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: db
+      type: storage.sqlite
+      config:
+        dbPath: "/data/scenario.db"
+        maxConnections: 5
+        walMode: true
 workflows:
-  http:
-    router: router
-    server: server
-    routes: []
-
+    http:
+        router: router
+        server: server
+        routes: []
 pipelines:
-  health:
-    trigger:
-      type: http
-      config:
-        path: /healthz
-        method: GET
-    steps:
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            scenario: "12-approval-workflow"
-
-  init-db:
-    trigger:
-      type: http
-      config:
-        path: /internal/init-db
-        method: POST
-    steps:
-      - name: create-requests-table
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            CREATE TABLE IF NOT EXISTS approval_requests (
-              id TEXT PRIMARY KEY,
-              description TEXT NOT NULL,
-              category TEXT NOT NULL,
-              amount REAL NOT NULL,
-              requester TEXT NOT NULL,
-              status TEXT NOT NULL DEFAULT 'submitted',
-              approval_level TEXT NOT NULL DEFAULT 'none',
-              required_level TEXT NOT NULL DEFAULT 'none',
-              approved_by TEXT,
-              rejected_by TEXT,
-              rejection_reason TEXT,
-              created_at TEXT NOT NULL DEFAULT (datetime('now')),
-              updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-      - name: create-history-table
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            CREATE TABLE IF NOT EXISTS approval_history (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              request_id TEXT NOT NULL,
-              action TEXT NOT NULL,
-              actor TEXT NOT NULL,
-              level TEXT,
-              notes TEXT,
-              created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            message: database initialized
-
-  submit-request:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/requests
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: validate-request
-        type: step.validate
-        config:
-          strategy: required_fields
-          required_fields: [description, category, amount, requester]
-          source: "steps.parse-body.body"
-      - name: gen-id
-        type: step.set
-        config:
-          values:
-            request_id: "req-{{ uuidv4 }}"
-      - name: insert-request
-        type: step.db_exec
-        config:
-          database: db
-          query: "INSERT INTO approval_requests (id, description, category, amount, requester, status, approval_level, required_level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'submitted', 'none', 'tbd', datetime('now'), datetime('now'))"
-          params:
-            - "{{ index .steps \"gen-id\" \"request_id\" }}"
-            - "{{ .body.description }}"
-            - "{{ .body.category }}"
-            - "{{ .body.amount }}"
-            - "{{ .body.requester }}"
-      - name: log-submitted
-        type: step.db_exec
-        config:
-          database: db
-          query: "INSERT INTO approval_history (request_id, action, actor, notes) VALUES (?, 'submitted', ?, 'Request submitted')"
-          params:
-            - "{{ index .steps \"gen-id\" \"request_id\" }}"
-            - "{{ .body.requester }}"
-      - name: respond
-        type: step.json_response
-        config:
-          status: 201
-          body:
-            id: "{{ index .steps \"gen-id\" \"request_id\" }}"
-            status: submitted
-            amount: "{{ .body.amount }}"
-            message: request submitted for approval
-
-  list-requests:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/requests
-        method: GET
-    steps:
-      - name: get-requests
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, description, category, amount, requester, status, required_level, created_at FROM approval_requests ORDER BY created_at DESC LIMIT 100"
-          mode: list
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.get-requests.rows"
-
-  get-request:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/requests/{id}
-        method: GET
-    steps:
-      - name: fetch-request
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, description, category, amount, requester, status, approval_level, required_level, approved_by, rejected_by, rejection_reason, created_at, updated_at FROM approval_requests WHERE id = ?"
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: check-exists
-        type: step.conditional
-        config:
-          field: steps.fetch-request.row.id
-          routes:
-            "": not-found
-          default: respond-request
-      - name: not-found
-        type: step.json_response
-        config:
-          status: 404
-          body:
-            error: request not found
-      - name: respond-request
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.fetch-request.row"
-
-  approve-request:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/requests/{id}/approve
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: validate-approve
-        type: step.validate
-        config:
-          strategy: required_fields
-          required_fields: [approver, level]
-          source: "steps.parse-body.body"
-      - name: fetch-request
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, amount, status FROM approval_requests WHERE id = ?"
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: check-approvable
-        type: step.conditional
-        config:
-          field: steps.fetch-request.row.status
-          routes:
-            submitted: do-approve
-            approved: already-decided
-            rejected: already-decided
-          default: not-found
-      - name: not-found
-        type: step.json_response
-        config:
-          status: 404
-          body:
-            error: request not found
-      - name: already-decided
-        type: step.json_response
-        config:
-          status: 409
-          body:
-            error: request already has a final decision
-      - name: do-approve
-        type: step.db_exec
-        config:
-          database: db
-          query: "UPDATE approval_requests SET status = 'approved', approval_level = ?, approved_by = ?, updated_at = datetime('now') WHERE id = ?"
-          params:
-            - "{{ .body.level }}"
-            - "{{ .body.approver }}"
-            - "{{ .id }}"
-      - name: log-approved
-        type: step.db_exec
-        config:
-          database: db
-          query: "INSERT INTO approval_history (request_id, action, actor, level, notes) VALUES (?, 'approved', ?, ?, ?)"
-          params:
-            - "{{ .id }}"
-            - "{{ .body.approver }}"
-            - "{{ .body.level }}"
-            - "{{ .body.notes | default \"Approved\" }}"
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            id: "{{ .id }}"
-            status: approved
-            approved_by: "{{ .body.approver }}"
-            level: "{{ .body.level }}"
-            message: request approved
-
-  reject-request:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/requests/{id}/reject
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: validate-reject
-        type: step.validate
-        config:
-          strategy: required_fields
-          required_fields: [rejector, reason]
-          source: "steps.parse-body.body"
-      - name: fetch-request
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, status FROM approval_requests WHERE id = ?"
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: check-rejectable
-        type: step.conditional
-        config:
-          field: steps.fetch-request.row.status
-          routes:
-            submitted: do-reject
-            approved: already-decided
-            rejected: already-decided
-          default: not-found
-      - name: not-found
-        type: step.json_response
-        config:
-          status: 404
-          body:
-            error: request not found
-      - name: already-decided
-        type: step.json_response
-        config:
-          status: 409
-          body:
-            error: request already has a final decision
-      - name: do-reject
-        type: step.db_exec
-        config:
-          database: db
-          query: "UPDATE approval_requests SET status = 'rejected', rejected_by = ?, rejection_reason = ?, updated_at = datetime('now') WHERE id = ?"
-          params:
-            - "{{ .body.rejector }}"
-            - "{{ .body.reason }}"
-            - "{{ .id }}"
-      - name: log-rejected
-        type: step.db_exec
-        config:
-          database: db
-          query: "INSERT INTO approval_history (request_id, action, actor, notes) VALUES (?, 'rejected', ?, ?)"
-          params:
-            - "{{ .id }}"
-            - "{{ .body.rejector }}"
-            - "{{ .body.reason }}"
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            id: "{{ .id }}"
-            status: rejected
-            rejected_by: "{{ .body.rejector }}"
-            reason: "{{ .body.reason }}"
-            message: request rejected
-
-  get-history:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/requests/{id}/history
-        method: GET
-    steps:
-      - name: check-exists
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id FROM approval_requests WHERE id = ?"
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: check-found
-        type: step.conditional
-        config:
-          field: steps.check-exists.row.id
-          routes:
-            "": not-found
-          default: get-history-records
-      - name: not-found
-        type: step.json_response
-        config:
-          status: 404
-          body:
-            error: request not found
-      - name: get-history-records
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, request_id, action, actor, level, notes, created_at FROM approval_history WHERE request_id = ? ORDER BY created_at ASC"
-          params:
-            - "{{ .id }}"
-          mode: list
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.get-history-records.rows"
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "12-approval-workflow"
+    init-db:
+        trigger:
+            type: http
+            config:
+                path: /internal/init-db
+                method: POST
+        steps:
+            - name: create_requests_table
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    CREATE TABLE IF NOT EXISTS approval_requests (
+                      id TEXT PRIMARY KEY,
+                      description TEXT NOT NULL,
+                      category TEXT NOT NULL,
+                      amount REAL NOT NULL,
+                      requester TEXT NOT NULL,
+                      status TEXT NOT NULL DEFAULT 'submitted',
+                      approval_level TEXT NOT NULL DEFAULT 'none',
+                      required_level TEXT NOT NULL DEFAULT 'none',
+                      approved_by TEXT,
+                      rejected_by TEXT,
+                      rejection_reason TEXT,
+                      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    )
+            - name: create_history_table
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    CREATE TABLE IF NOT EXISTS approval_history (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      request_id TEXT NOT NULL,
+                      action TEXT NOT NULL,
+                      actor TEXT NOT NULL,
+                      level TEXT,
+                      notes TEXT,
+                      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    )
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    message: database initialized
+    submit-request:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/requests
+                method: POST
+        steps:
+            - name: parse_body
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: validate_request
+              type: step.validate
+              config:
+                strategy: required_fields
+                required_fields: [description, category, amount, requester]
+                source: "steps.parse_body.body"
+            - name: gen_id
+              type: step.set
+              config:
+                values:
+                    request_id: "req-{{ uuidv4 }}"
+            - name: insert_request
+              type: step.db_exec
+              config:
+                database: db
+                query: "INSERT INTO approval_requests (id, description, category, amount, requester, status, approval_level, required_level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'submitted', 'none', 'tbd', datetime('now'), datetime('now'))"
+                params:
+                    - "{{ index .steps \"gen_id\" \"request_id\" }}"
+                    - "{{ .body.description }}"
+                    - "{{ .body.category }}"
+                    - "{{ .body.amount }}"
+                    - "{{ .body.requester }}"
+            - name: log_submitted
+              type: step.db_exec
+              config:
+                database: db
+                query: "INSERT INTO approval_history (request_id, action, actor, notes) VALUES (?, 'submitted', ?, 'Request submitted')"
+                params:
+                    - "{{ index .steps \"gen_id\" \"request_id\" }}"
+                    - "{{ .body.requester }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 201
+                body:
+                    id: "{{ index .steps \"gen_id\" \"request_id\" }}"
+                    status: submitted
+                    amount: "{{ .body.amount }}"
+                    message: request submitted for approval
+    list-requests:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/requests
+                method: GET
+        steps:
+            - name: get_requests
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, description, category, amount, requester, status, required_level, created_at FROM approval_requests ORDER BY created_at DESC LIMIT 100"
+                mode: list
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get_requests.rows"
+    get-request:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/requests/{id}
+                method: GET
+        steps:
+            - name: fetch_request
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, description, category, amount, requester, status, approval_level, required_level, approved_by, rejected_by, rejection_reason, created_at, updated_at FROM approval_requests WHERE id = ?"
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: check_exists
+              type: step.conditional
+              config:
+                field: steps.fetch_request.row.id
+                routes:
+                    "": not_found
+                default: respond_request
+            - name: not_found
+              type: step.json_response
+              config:
+                status: 404
+                body:
+                    error: request not found
+            - name: respond_request
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.fetch_request.row"
+    approve-request:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/requests/{id}/approve
+                method: POST
+        steps:
+            - name: parse_body
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: validate_approve
+              type: step.validate
+              config:
+                strategy: required_fields
+                required_fields: [approver, level]
+                source: "steps.parse_body.body"
+            - name: fetch_request
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, amount, status FROM approval_requests WHERE id = ?"
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: check_approvable
+              type: step.conditional
+              config:
+                field: steps.fetch_request.row.status
+                routes:
+                    submitted: do_approve
+                    approved: already_decided
+                    rejected: already_decided
+                default: not_found
+            - name: not_found
+              type: step.json_response
+              config:
+                status: 404
+                body:
+                    error: request not found
+            - name: already_decided
+              type: step.json_response
+              config:
+                status: 409
+                body:
+                    error: request already has a final decision
+            - name: do_approve
+              type: step.db_exec
+              config:
+                database: db
+                query: "UPDATE approval_requests SET status = 'approved', approval_level = ?, approved_by = ?, updated_at = datetime('now') WHERE id = ?"
+                params:
+                    - "{{ .body.level }}"
+                    - "{{ .body.approver }}"
+                    - "{{ .id }}"
+            - name: log_approved
+              type: step.db_exec
+              config:
+                database: db
+                query: "INSERT INTO approval_history (request_id, action, actor, level, notes) VALUES (?, 'approved', ?, ?, ?)"
+                params:
+                    - "{{ .id }}"
+                    - "{{ .body.approver }}"
+                    - "{{ .body.level }}"
+                    - "{{ .body.notes | default \"Approved\" }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    id: "{{ .id }}"
+                    status: approved
+                    approved_by: "{{ .body.approver }}"
+                    level: "{{ .body.level }}"
+                    message: request approved
+    reject-request:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/requests/{id}/reject
+                method: POST
+        steps:
+            - name: parse_body
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: validate_reject
+              type: step.validate
+              config:
+                strategy: required_fields
+                required_fields: [rejector, reason]
+                source: "steps.parse_body.body"
+            - name: fetch_request
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, status FROM approval_requests WHERE id = ?"
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: check_rejectable
+              type: step.conditional
+              config:
+                field: steps.fetch_request.row.status
+                routes:
+                    submitted: do_reject
+                    approved: already_decided
+                    rejected: already_decided
+                default: not_found
+            - name: not_found
+              type: step.json_response
+              config:
+                status: 404
+                body:
+                    error: request not found
+            - name: already_decided
+              type: step.json_response
+              config:
+                status: 409
+                body:
+                    error: request already has a final decision
+            - name: do_reject
+              type: step.db_exec
+              config:
+                database: db
+                query: "UPDATE approval_requests SET status = 'rejected', rejected_by = ?, rejection_reason = ?, updated_at = datetime('now') WHERE id = ?"
+                params:
+                    - "{{ .body.rejector }}"
+                    - "{{ .body.reason }}"
+                    - "{{ .id }}"
+            - name: log_rejected
+              type: step.db_exec
+              config:
+                database: db
+                query: "INSERT INTO approval_history (request_id, action, actor, notes) VALUES (?, 'rejected', ?, ?)"
+                params:
+                    - "{{ .id }}"
+                    - "{{ .body.rejector }}"
+                    - "{{ .body.reason }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    id: "{{ .id }}"
+                    status: rejected
+                    rejected_by: "{{ .body.rejector }}"
+                    reason: "{{ .body.reason }}"
+                    message: request rejected
+    get-history:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/requests/{id}/history
+                method: GET
+        steps:
+            - name: check_exists
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id FROM approval_requests WHERE id = ?"
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: check_found
+              type: step.conditional
+              config:
+                field: steps.check_exists.row.id
+                routes:
+                    "": not_found
+                default: get_history_records
+            - name: not_found
+              type: step.json_response
+              config:
+                status: 404
+                body:
+                    error: request not found
+            - name: get_history_records
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, request_id, action, actor, level, notes, created_at FROM approval_history WHERE request_id = ? ORDER BY created_at ASC"
+                params:
+                    - "{{ .id }}"
+                mode: list
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get_history_records.rows"

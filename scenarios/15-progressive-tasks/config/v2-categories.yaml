@@ -9,379 +9,366 @@
 # ============================================================
 
 modules:
-  - name: server
-    type: http.server
-    config:
-      address: ":8080"
-
-  - name: router
-    type: http.router
-    dependsOn: [server]
-
-  - name: db
-    type: storage.sqlite
-    config:
-      dbPath: "/data/tasks.db"
-      maxConnections: 5
-      walMode: true
-
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: db
+      type: storage.sqlite
+      config:
+        dbPath: "/data/tasks.db"
+        maxConnections: 5
+        walMode: true
 workflows:
-  http:
-    router: router
-    server: server
-    routes: []
-
+    http:
+        router: router
+        server: server
+        routes: []
 pipelines:
-  # ----------------------------------------------------------------
-  # Health
-  # ----------------------------------------------------------------
-  health:
-    trigger:
-      type: http
-      config:
-        path: /healthz
-        method: GET
-    steps:
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            scenario: "15-progressive-tasks"
-            phase: "v2-categories"
-
-  # ----------------------------------------------------------------
-  # Internal — idempotent schema init (v2)
-  # Creates tasks table (preserved if exists) + categories table
-  # + adds category_id column to tasks (suppressed if exists)
-  # ----------------------------------------------------------------
-  init-db:
-    trigger:
-      type: http
-      config:
-        path: /internal/init-db
-        method: POST
-    steps:
-      - name: create-tasks-table
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            CREATE TABLE IF NOT EXISTS tasks (
-              id          INTEGER PRIMARY KEY AUTOINCREMENT,
-              title       TEXT    NOT NULL,
-              description TEXT    DEFAULT '',
-              status      TEXT    NOT NULL DEFAULT 'open',
-              created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-              updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
-            )
-      - name: create-categories-table
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            CREATE TABLE IF NOT EXISTS categories (
-              id         INTEGER PRIMARY KEY AUTOINCREMENT,
-              name       TEXT    NOT NULL UNIQUE,
-              color      TEXT    DEFAULT '#6366f1',
-              created_at TEXT    NOT NULL DEFAULT (datetime('now'))
-            )
-      - name: add-category-id-column
-        type: step.db_exec
-        config:
-          database: db
-          # SQLite ignores this if the column already exists (error is swallowed)
-          query: "ALTER TABLE tasks ADD COLUMN category_id INTEGER"
-          ignore_error: true
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            message: "v2 schema initialised"
-
-  # ----------------------------------------------------------------
-  # Tasks CRUD (same as v1 + category_id in queries)
-  # ----------------------------------------------------------------
-  task-create:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/tasks
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: validate
-        type: step.validate
-        config:
-          strategy: required_fields
-          required_fields: [title]
-          source: "steps.parse-body.body"
-      - name: insert
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            INSERT INTO tasks (title, description, status, category_id)
-            VALUES (?, ?, 'open', ?)
-          params:
-            - "{{ .body.title }}"
-            - "{{ .body.description }}"
-            - "{{ .body.category_id }}"
-      - name: fetch-created
-        type: step.db_query
-        config:
-          database: db
-          query: |
-            SELECT t.id, t.title, t.description, t.status, t.category_id,
-                   c.name AS category_name, t.created_at
-            FROM tasks t
-            LEFT JOIN categories c ON c.id = t.category_id
-            WHERE t.id = last_insert_rowid()
-          mode: single
-      - name: respond
-        type: step.json_response
-        config:
-          status: 201
-          body_from: "steps.fetch-created.row"
-
-  task-list:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/tasks
-        method: GET
-    steps:
-      - name: get-tasks
-        type: step.db_query
-        config:
-          database: db
-          query: |
-            SELECT t.id, t.title, t.description, t.status, t.category_id,
-                   c.name AS category_name, t.created_at, t.updated_at
-            FROM tasks t
-            LEFT JOIN categories c ON c.id = t.category_id
-            ORDER BY t.created_at DESC LIMIT 100
-          mode: list
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.get-tasks.rows"
-
-  task-get:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/tasks/{id}
-        method: GET
-    steps:
-      - name: fetch
-        type: step.db_query
-        config:
-          database: db
-          query: |
-            SELECT t.id, t.title, t.description, t.status, t.category_id,
-                   c.name AS category_name, t.created_at, t.updated_at
-            FROM tasks t
-            LEFT JOIN categories c ON c.id = t.category_id
-            WHERE t.id = ?
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: check-exists
-        type: step.conditional
-        config:
-          field: steps.fetch.row.id
-          routes:
-            "": not-found
-          default: respond-task
-      - name: not-found
-        type: step.json_response
-        config:
-          status: 404
-          body:
-            error: task not found
-      - name: respond-task
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.fetch.row"
-
-  task-update:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/tasks/{id}
-        method: PUT
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: update
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            UPDATE tasks
-            SET title       = COALESCE(?, title),
-                description = COALESCE(?, description),
-                status      = COALESCE(?, status),
-                updated_at  = datetime('now')
-            WHERE id = ?
-          params:
-            - "{{ .body.title }}"
-            - "{{ .body.description }}"
-            - "{{ .body.status }}"
-            - "{{ .id }}"
-      - name: fetch-updated
-        type: step.db_query
-        config:
-          database: db
-          query: |
-            SELECT t.id, t.title, t.description, t.status, t.category_id,
-                   c.name AS category_name, t.updated_at
-            FROM tasks t
-            LEFT JOIN categories c ON c.id = t.category_id
-            WHERE t.id = ?
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.fetch-updated.row"
-
-  task-delete:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/tasks/{id}
-        method: DELETE
-    steps:
-      - name: delete
-        type: step.db_exec
-        config:
-          database: db
-          query: "DELETE FROM tasks WHERE id = ?"
-          params:
-            - "{{ .id }}"
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            message: task deleted
-
-  # Assign task to category
-  task-set-category:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/tasks/{id}/category
-        method: PUT
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: validate
-        type: step.validate
-        config:
-          strategy: required_fields
-          required_fields: [category_id]
-          source: "steps.parse-body.body"
-      - name: update
-        type: step.db_exec
-        config:
-          database: db
-          query: "UPDATE tasks SET category_id = ?, updated_at = datetime('now') WHERE id = ?"
-          params:
-            - "{{ .body.category_id }}"
-            - "{{ .id }}"
-      - name: fetch-updated
-        type: step.db_query
-        config:
-          database: db
-          query: |
-            SELECT t.id, t.title, t.category_id, c.name AS category_name, t.updated_at
-            FROM tasks t
-            LEFT JOIN categories c ON c.id = t.category_id
-            WHERE t.id = ?
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.fetch-updated.row"
-
-  # ----------------------------------------------------------------
-  # Categories CRUD
-  # ----------------------------------------------------------------
-  category-create:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/categories
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: validate
-        type: step.validate
-        config:
-          strategy: required_fields
-          required_fields: [name]
-          source: "steps.parse-body.body"
-      - name: insert
-        type: step.db_exec
-        config:
-          database: db
-          query: "INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)"
-          params:
-            - "{{ .body.name }}"
-            - "{{ .body.color }}"
-      - name: fetch-created
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, name, color, created_at FROM categories WHERE name = ?"
-          params:
-            - "{{ .body.name }}"
-          mode: single
-      - name: respond
-        type: step.json_response
-        config:
-          status: 201
-          body_from: "steps.fetch-created.row"
-
-  category-list:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/categories
-        method: GET
-    steps:
-      - name: get-categories
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, name, color, created_at FROM categories ORDER BY name ASC"
-          mode: list
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.get-categories.rows"
+    # ----------------------------------------------------------------
+    # Health
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "15-progressive-tasks"
+                    phase: "v2-categories"
+    # ----------------------------------------------------------------
+    # Internal — idempotent schema init (v2)
+    # Creates tasks table (preserved if exists) + categories table
+    # + adds category_id column to tasks (suppressed if exists)
+    # ----------------------------------------------------------------
+    init-db:
+        trigger:
+            type: http
+            config:
+                path: /internal/init-db
+                method: POST
+        steps:
+            - name: create_tasks_table
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    CREATE TABLE IF NOT EXISTS tasks (
+                      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                      title       TEXT    NOT NULL,
+                      description TEXT    DEFAULT '',
+                      status      TEXT    NOT NULL DEFAULT 'open',
+                      created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+                      updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+                    )
+            - name: create_categories_table
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    CREATE TABLE IF NOT EXISTS categories (
+                      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                      name       TEXT    NOT NULL UNIQUE,
+                      color      TEXT    DEFAULT '#6366f1',
+                      created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+                    )
+            - name: add_category_id_column
+              type: step.db_exec
+              config:
+                database: db
+                # SQLite ignores this if the column already exists (error is swallowed)
+                query: "ALTER TABLE tasks ADD COLUMN category_id INTEGER"
+                ignore_error: true
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    message: "v2 schema initialised"
+    # ----------------------------------------------------------------
+    # Tasks CRUD (same as v1 + category_id in queries)
+    # ----------------------------------------------------------------
+    task-create:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/tasks
+                method: POST
+        steps:
+            - name: parse_body
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: validate
+              type: step.validate
+              config:
+                strategy: required_fields
+                required_fields: [title]
+                source: "steps.parse_body.body"
+            - name: insert
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    INSERT INTO tasks (title, description, status, category_id)
+                    VALUES (?, ?, 'open', ?)
+                params:
+                    - "{{ .body.title }}"
+                    - "{{ .body.description }}"
+                    - "{{ .body.category_id }}"
+            - name: fetch_created
+              type: step.db_query
+              config:
+                database: db
+                query: |
+                    SELECT t.id, t.title, t.description, t.status, t.category_id,
+                           c.name AS category_name, t.created_at
+                    FROM tasks t
+                    LEFT JOIN categories c ON c.id = t.category_id
+                    WHERE t.id = last_insert_rowid()
+                mode: single
+            - name: respond
+              type: step.json_response
+              config:
+                status: 201
+                body_from: "steps.fetch_created.row"
+    task-list:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/tasks
+                method: GET
+        steps:
+            - name: get_tasks
+              type: step.db_query
+              config:
+                database: db
+                query: |
+                    SELECT t.id, t.title, t.description, t.status, t.category_id,
+                           c.name AS category_name, t.created_at, t.updated_at
+                    FROM tasks t
+                    LEFT JOIN categories c ON c.id = t.category_id
+                    ORDER BY t.created_at DESC LIMIT 100
+                mode: list
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get_tasks.rows"
+    task-get:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/tasks/{id}
+                method: GET
+        steps:
+            - name: fetch
+              type: step.db_query
+              config:
+                database: db
+                query: |
+                    SELECT t.id, t.title, t.description, t.status, t.category_id,
+                           c.name AS category_name, t.created_at, t.updated_at
+                    FROM tasks t
+                    LEFT JOIN categories c ON c.id = t.category_id
+                    WHERE t.id = ?
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: check_exists
+              type: step.conditional
+              config:
+                field: steps.fetch.row.id
+                routes:
+                    "": not_found
+                default: respond_task
+            - name: not_found
+              type: step.json_response
+              config:
+                status: 404
+                body:
+                    error: task not found
+            - name: respond_task
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.fetch.row"
+    task-update:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/tasks/{id}
+                method: PUT
+        steps:
+            - name: parse_body
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: update
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    UPDATE tasks
+                    SET title       = COALESCE(?, title),
+                        description = COALESCE(?, description),
+                        status      = COALESCE(?, status),
+                        updated_at  = datetime('now')
+                    WHERE id = ?
+                params:
+                    - "{{ .body.title }}"
+                    - "{{ .body.description }}"
+                    - "{{ .body.status }}"
+                    - "{{ .id }}"
+            - name: fetch_updated
+              type: step.db_query
+              config:
+                database: db
+                query: |
+                    SELECT t.id, t.title, t.description, t.status, t.category_id,
+                           c.name AS category_name, t.updated_at
+                    FROM tasks t
+                    LEFT JOIN categories c ON c.id = t.category_id
+                    WHERE t.id = ?
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.fetch_updated.row"
+    task-delete:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/tasks/{id}
+                method: DELETE
+        steps:
+            - name: delete
+              type: step.db_exec
+              config:
+                database: db
+                query: "DELETE FROM tasks WHERE id = ?"
+                params:
+                    - "{{ .id }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    message: task deleted
+    # Assign task to category
+    task-set-category:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/tasks/{id}/category
+                method: PUT
+        steps:
+            - name: parse_body
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: validate
+              type: step.validate
+              config:
+                strategy: required_fields
+                required_fields: [category_id]
+                source: "steps.parse_body.body"
+            - name: update
+              type: step.db_exec
+              config:
+                database: db
+                query: "UPDATE tasks SET category_id = ?, updated_at = datetime('now') WHERE id = ?"
+                params:
+                    - "{{ .body.category_id }}"
+                    - "{{ .id }}"
+            - name: fetch_updated
+              type: step.db_query
+              config:
+                database: db
+                query: |
+                    SELECT t.id, t.title, t.category_id, c.name AS category_name, t.updated_at
+                    FROM tasks t
+                    LEFT JOIN categories c ON c.id = t.category_id
+                    WHERE t.id = ?
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.fetch_updated.row"
+    # ----------------------------------------------------------------
+    # Categories CRUD
+    # ----------------------------------------------------------------
+    category-create:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/categories
+                method: POST
+        steps:
+            - name: parse_body
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: validate
+              type: step.validate
+              config:
+                strategy: required_fields
+                required_fields: [name]
+                source: "steps.parse_body.body"
+            - name: insert
+              type: step.db_exec
+              config:
+                database: db
+                query: "INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)"
+                params:
+                    - "{{ .body.name }}"
+                    - "{{ .body.color }}"
+            - name: fetch_created
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, name, color, created_at FROM categories WHERE name = ?"
+                params:
+                    - "{{ .body.name }}"
+                mode: single
+            - name: respond
+              type: step.json_response
+              config:
+                status: 201
+                body_from: "steps.fetch_created.row"
+    category-list:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/categories
+                method: GET
+        steps:
+            - name: get_categories
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, name, color, created_at FROM categories ORDER BY name ASC"
+                mode: list
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get_categories.rows"

@@ -15,309 +15,299 @@
 # ============================================================
 
 modules:
-  - name: server
-    type: http.server
-    config:
-      address: ":8080"
-
-  - name: router
-    type: http.router
-    dependsOn: [server]
-
-  - name: db
-    type: storage.sqlite
-    config:
-      dbPath: "/data/github-cicd.db"
-      maxConnections: 5
-      walMode: true
-
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: db
+      type: storage.sqlite
+      config:
+        dbPath: "/data/github-cicd.db"
+        maxConnections: 5
+        walMode: true
 workflows:
-  http:
-    router: router
-    server: server
-    routes: []
-
+    http:
+        router: router
+        server: server
+        routes: []
 pipelines:
-  # ----------------------------------------------------------------
-  # Health
-  # ----------------------------------------------------------------
-  health:
-    trigger:
-      type: http
-      config:
-        path: /healthz
-        method: GET
-    steps:
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            scenario: "46-github-cicd"
-
-  # ----------------------------------------------------------------
-  # Internal — initialize DB schema
-  # ----------------------------------------------------------------
-  init-db:
-    trigger:
-      type: http
-      config:
-        path: /internal/init-db
-        method: POST
-    steps:
-      - name: create-runs-table
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            CREATE TABLE IF NOT EXISTS workflow_runs (
-              id          TEXT PRIMARY KEY,
-              repo        TEXT NOT NULL DEFAULT '',
-              workflow    TEXT NOT NULL DEFAULT '',
-              ref         TEXT NOT NULL DEFAULT 'main',
-              status      TEXT NOT NULL DEFAULT 'pending',
-              conclusion  TEXT NOT NULL DEFAULT '',
-              inputs      TEXT NOT NULL DEFAULT '{}',
-              created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-              updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-          ignore_error: true
-      - name: create-webhooks-table
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            CREATE TABLE IF NOT EXISTS webhook_events (
-              id          TEXT PRIMARY KEY,
-              event_type  TEXT NOT NULL DEFAULT '',
-              action      TEXT NOT NULL DEFAULT '',
-              repo        TEXT NOT NULL DEFAULT '',
-              signature   TEXT NOT NULL DEFAULT '',
-              received_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-          ignore_error: true
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            initialized: true
-            tables: ["workflow_runs", "webhook_events"]
-
-  # ----------------------------------------------------------------
-  # GitHub Webhook Receiver
-  # POST /webhooks/github
-  # Validates X-Hub-Signature-256 header presence, stores event.
-  # ----------------------------------------------------------------
-  github-webhook:
-    trigger:
-      type: http
-      config:
-        path: /webhooks/github
-        method: POST
-    steps:
-      - name: check-signature
-        type: step.conditional
-        config:
-          field: headers.X-Hub-Signature-256
-          routes:
-            "": missing-signature
-          default: gen-event-id
-      - name: missing-signature
-        type: step.json_response
-        config:
-          status: 401
-          body:
-            error: "missing X-Hub-Signature-256 header"
-      - name: gen-event-id
-        type: step.set
-        config:
-          values:
-            event_id: "evt-{{ uuidv4 }}"
-      - name: store-event
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            INSERT INTO webhook_events (id, event_type, action, repo, signature)
-            VALUES (?, ?, ?, ?, ?)
-          params:
-            - "{{ index .steps \"gen-event-id\" \"event_id\" }}"
-            - "{{ default \"push\" .headers.X-GitHub-Event }}"
-            - "{{ default \"\" .body.action }}"
-            - "{{ default \"\" .body.repository.full_name }}"
-            - "{{ .headers.X-Hub-Signature-256 }}"
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_template: |
-            {
-              "received": true,
-              "event_id": "{{ index .steps \"gen-event-id\" \"event_id\" }}",
-              "event": "{{ default \"push\" .headers.X-GitHub-Event }}"
-            }
-
-  # ----------------------------------------------------------------
-  # Dispatch Workflow Run
-  # POST /api/v1/actions/dispatch
-  # Body: { "repo": "owner/repo", "workflow": "ci.yml", "ref": "main", "inputs": {} }
-  # ----------------------------------------------------------------
-  dispatch-run:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/actions/dispatch
-        method: POST
-    steps:
-      - name: gen-run-id
-        type: step.set
-        config:
-          values:
-            run_id: "run-{{ uuidv4 }}"
-      - name: insert-run
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            INSERT INTO workflow_runs (id, repo, workflow, ref, status, inputs)
-            VALUES (?, ?, ?, ?, 'pending', ?)
-          params:
-            - "{{ index .steps \"gen-run-id\" \"run_id\" }}"
-            - "{{ default \"\" .body.repo }}"
-            - "{{ default \"ci.yml\" .body.workflow }}"
-            - "{{ default \"main\" .body.ref }}"
-            - "{}"
-      - name: fetch-run
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, repo, workflow, ref, status, created_at FROM workflow_runs WHERE id = ?"
-          params:
-            - "{{ index .steps \"gen-run-id\" \"run_id\" }}"
-          mode: single
-      - name: respond
-        type: step.json_response
-        config:
-          status: 201
-          body_from: "steps.fetch-run.row"
-
-  # ----------------------------------------------------------------
-  # Get Run Status
-  # GET /api/v1/actions/runs/{id}
-  # ----------------------------------------------------------------
-  get-run:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/actions/runs/{id}
-        method: GET
-    steps:
-      - name: fetch-run
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, repo, workflow, ref, status, conclusion, created_at, updated_at FROM workflow_runs WHERE id = ?"
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: check-found
-        type: step.conditional
-        config:
-          field: steps.fetch-run.found
-          routes:
-            "false": not-found
-          default: respond-run
-      - name: not-found
-        type: step.json_response
-        config:
-          status: 404
-          body:
-            error: "run not found"
-      - name: respond-run
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.fetch-run.row"
-
-  # ----------------------------------------------------------------
-  # Complete Run (test helper)
-  # POST /api/v1/actions/runs/{id}/complete
-  # Body: { "conclusion": "success" | "failure" | "cancelled" }
-  # ----------------------------------------------------------------
-  complete-run:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/actions/runs/{id}/complete
-        method: POST
-    steps:
-      - name: fetch-run
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, status FROM workflow_runs WHERE id = ?"
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: check-found
-        type: step.conditional
-        config:
-          field: steps.fetch-run.found
-          routes:
-            "false": not-found
-          default: update-run
-      - name: not-found
-        type: step.json_response
-        config:
-          status: 404
-          body:
-            error: "run not found"
-      - name: update-run
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            UPDATE workflow_runs
-            SET status = 'completed', conclusion = ?, updated_at = datetime('now')
-            WHERE id = ?
-          params:
-            - "{{ default \"success\" .body.conclusion }}"
-            - "{{ .id }}"
-      - name: fetch-updated
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, repo, workflow, ref, status, conclusion, updated_at FROM workflow_runs WHERE id = ?"
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.fetch-updated.row"
-
-  # ----------------------------------------------------------------
-  # List Runs for a repo
-  # GET /api/v1/actions/runs?repo=owner/repo
-  # ----------------------------------------------------------------
-  list-runs:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/actions/runs
-        method: GET
-    steps:
-      - name: fetch-runs
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, repo, workflow, ref, status, conclusion, created_at FROM workflow_runs ORDER BY created_at DESC LIMIT 50"
-          mode: many
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.fetch-runs.rows"
+    # ----------------------------------------------------------------
+    # Health
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "46-github-cicd"
+    # ----------------------------------------------------------------
+    # Internal — initialize DB schema
+    # ----------------------------------------------------------------
+    init-db:
+        trigger:
+            type: http
+            config:
+                path: /internal/init-db
+                method: POST
+        steps:
+            - name: create_runs_table
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    CREATE TABLE IF NOT EXISTS workflow_runs (
+                      id          TEXT PRIMARY KEY,
+                      repo        TEXT NOT NULL DEFAULT '',
+                      workflow    TEXT NOT NULL DEFAULT '',
+                      ref         TEXT NOT NULL DEFAULT 'main',
+                      status      TEXT NOT NULL DEFAULT 'pending',
+                      conclusion  TEXT NOT NULL DEFAULT '',
+                      inputs      TEXT NOT NULL DEFAULT '{}',
+                      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                      updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+                    )
+                ignore_error: true
+            - name: create_webhooks_table
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    CREATE TABLE IF NOT EXISTS webhook_events (
+                      id          TEXT PRIMARY KEY,
+                      event_type  TEXT NOT NULL DEFAULT '',
+                      action      TEXT NOT NULL DEFAULT '',
+                      repo        TEXT NOT NULL DEFAULT '',
+                      signature   TEXT NOT NULL DEFAULT '',
+                      received_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    )
+                ignore_error: true
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    initialized: true
+                    tables: ["workflow_runs", "webhook_events"]
+    # ----------------------------------------------------------------
+    # GitHub Webhook Receiver
+    # POST /webhooks/github
+    # Validates X-Hub-Signature-256 header presence, stores event.
+    # ----------------------------------------------------------------
+    github-webhook:
+        trigger:
+            type: http
+            config:
+                path: /webhooks/github
+                method: POST
+        steps:
+            - name: check_signature
+              type: step.conditional
+              config:
+                field: headers.X-Hub-Signature-256
+                routes:
+                    "": missing_signature
+                default: gen_event_id
+            - name: missing_signature
+              type: step.json_response
+              config:
+                status: 401
+                body:
+                    error: "missing X-Hub-Signature-256 header"
+            - name: gen_event_id
+              type: step.set
+              config:
+                values:
+                    event_id: "evt-{{ uuidv4 }}"
+            - name: store_event
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    INSERT INTO webhook_events (id, event_type, action, repo, signature)
+                    VALUES (?, ?, ?, ?, ?)
+                params:
+                    - "{{ index .steps \"gen_event_id\" \"event_id\" }}"
+                    - "{{ default \"push\" .headers.X-GitHub-Event }}"
+                    - "{{ default \"\" .body.action }}"
+                    - "{{ default \"\" .body.repository.full_name }}"
+                    - "{{ .headers.X-Hub-Signature-256 }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_template: |
+                    {
+                      "received": true,
+                      "event_id": "{{ index .steps \"gen_event_id\" \"event_id\" }}",
+                      "event": "{{ default \"push\" .headers.X-GitHub-Event }}"
+                    }
+    # ----------------------------------------------------------------
+    # Dispatch Workflow Run
+    # POST /api/v1/actions/dispatch
+    # Body: { "repo": "owner/repo", "workflow": "ci.yml", "ref": "main", "inputs": {} }
+    # ----------------------------------------------------------------
+    dispatch-run:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/actions/dispatch
+                method: POST
+        steps:
+            - name: gen_run_id
+              type: step.set
+              config:
+                values:
+                    run_id: "run-{{ uuidv4 }}"
+            - name: insert_run
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    INSERT INTO workflow_runs (id, repo, workflow, ref, status, inputs)
+                    VALUES (?, ?, ?, ?, 'pending', ?)
+                params:
+                    - "{{ index .steps \"gen_run_id\" \"run_id\" }}"
+                    - "{{ default \"\" .body.repo }}"
+                    - "{{ default \"ci.yml\" .body.workflow }}"
+                    - "{{ default \"main\" .body.ref }}"
+                    - "{}"
+            - name: fetch_run
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, repo, workflow, ref, status, created_at FROM workflow_runs WHERE id = ?"
+                params:
+                    - "{{ index .steps \"gen_run_id\" \"run_id\" }}"
+                mode: single
+            - name: respond
+              type: step.json_response
+              config:
+                status: 201
+                body_from: "steps.fetch_run.row"
+    # ----------------------------------------------------------------
+    # Get Run Status
+    # GET /api/v1/actions/runs/{id}
+    # ----------------------------------------------------------------
+    get-run:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/actions/runs/{id}
+                method: GET
+        steps:
+            - name: fetch_run
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, repo, workflow, ref, status, conclusion, created_at, updated_at FROM workflow_runs WHERE id = ?"
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: check_found
+              type: step.conditional
+              config:
+                field: steps.fetch_run.found
+                routes:
+                    "false": not_found
+                default: respond_run
+            - name: not_found
+              type: step.json_response
+              config:
+                status: 404
+                body:
+                    error: "run not found"
+            - name: respond_run
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.fetch_run.row"
+    # ----------------------------------------------------------------
+    # Complete Run (test helper)
+    # POST /api/v1/actions/runs/{id}/complete
+    # Body: { "conclusion": "success" | "failure" | "cancelled" }
+    # ----------------------------------------------------------------
+    complete-run:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/actions/runs/{id}/complete
+                method: POST
+        steps:
+            - name: fetch_run
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, status FROM workflow_runs WHERE id = ?"
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: check_found
+              type: step.conditional
+              config:
+                field: steps.fetch_run.found
+                routes:
+                    "false": not_found
+                default: update_run
+            - name: not_found
+              type: step.json_response
+              config:
+                status: 404
+                body:
+                    error: "run not found"
+            - name: update_run
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    UPDATE workflow_runs
+                    SET status = 'completed', conclusion = ?, updated_at = datetime('now')
+                    WHERE id = ?
+                params:
+                    - "{{ default \"success\" .body.conclusion }}"
+                    - "{{ .id }}"
+            - name: fetch_updated
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, repo, workflow, ref, status, conclusion, updated_at FROM workflow_runs WHERE id = ?"
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.fetch_updated.row"
+    # ----------------------------------------------------------------
+    # List Runs for a repo
+    # GET /api/v1/actions/runs?repo=owner/repo
+    # ----------------------------------------------------------------
+    list-runs:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/actions/runs
+                method: GET
+        steps:
+            - name: fetch_runs
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, repo, workflow, ref, status, conclusion, created_at FROM workflow_runs ORDER BY created_at DESC LIMIT 50"
+                mode: many
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.fetch_runs.rows"

@@ -13,234 +13,217 @@
 # ============================================================
 
 modules:
-  - name: server
-    type: http.server
-    config:
-      address: ":8080"
-
-  - name: router
-    type: http.router
-    dependsOn: [server]
-
-  - name: artifacts
-    type: storage.artifact
-    config:
-      backend: filesystem
-      basePath: /data/artifacts
-    dependsOn: []
-
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: artifacts
+      type: storage.artifact
+      config:
+        backend: filesystem
+        basePath: /data/artifacts
+      dependsOn: []
 workflows:
-  http:
-    router: router
-    server: server
-    routes: []
-
+    http:
+        router: router
+        server: server
+        routes: []
 pipelines:
-  # ----------------------------------------------------------------
-  # Health check
-  # ----------------------------------------------------------------
-  health:
-    trigger:
-      type: http
-      config:
-        path: /healthz
-        method: GET
-    steps:
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            scenario: "24-artifact-store"
-
-  # ----------------------------------------------------------------
-  # Upload — POST /api/v1/artifacts/upload
-  #
-  # Accepts JSON body: { "key": "builds/v1/app.bin", "content": "<base64>", "metadata": {} }
-  # Writes content to a temp file then uploads via step.artifact_upload.
-  # ----------------------------------------------------------------
-  artifact-upload:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/artifacts/upload
-        method: POST
-    steps:
-      - name: parse
-        type: step.request_parse
-        config:
-          fields:
-            - name: key
-              source: body
-              path: key
-              required: true
-            - name: content
-              source: body
-              path: content
-              required: true
-            - name: content_type
-              source: body
-              path: content_type
-              default: "application/octet-stream"
-            - name: version
-              source: body
-              path: metadata.version
-              default: ""
-            - name: commit
-              source: body
-              path: metadata.commit
-              default: ""
-
-      - name: decode-and-store
-        type: step.shell_exec
-        config:
-          image: alpine:3.21
-          commands:
-            - |
-              KEY="{{ .key }}"
-              CONTENT="{{ .content }}"
-              TMPDIR="/tmp/wf-artifact-$$"
-              mkdir -p "$TMPDIR"
-              TMPFILE="$TMPDIR/artifact"
-              echo "$CONTENT" | base64 -d > "$TMPFILE"
-              echo "{\"tmpfile\":\"$TMPFILE\",\"size\":$(wc -c < "$TMPFILE")}"
-          output_field: shell_result
-          parse_json: true
-
-      - name: upload
-        type: step.artifact_upload
-        config:
-          store: artifacts
-          key: "{{ .key }}"
-          source: "{{ .shell_result.tmpfile }}"
-          metadata:
-            version: "{{ .version }}"
-            commit: "{{ .commit }}"
-            content_type: "{{ .content_type }}"
-
-      - name: respond
-        type: step.json_response
-        config:
-          status: 201
-          body:
-            status: uploaded
-            key: "{{ .key }}"
-            size: "{{ .shell_result.size }}"
-
-  # ----------------------------------------------------------------
-  # Download — GET /api/v1/artifacts/get?key=<path>
-  # ----------------------------------------------------------------
-  artifact-download:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/artifacts/get
-        method: GET
-    steps:
-      - name: parse
-        type: step.request_parse
-        config:
-          fields:
-            - name: key
-              source: query
-              path: key
-              required: true
-
-      - name: check-exists
-        type: step.shell_exec
-        config:
-          image: alpine:3.21
-          commands:
-            - |
-              KEY="{{ .key }}"
-              SAFE_KEY=$(echo "$KEY" | sed 's|[^a-zA-Z0-9/_.-]||g')
-              FILE="/data/artifacts/$SAFE_KEY"
-              if [ -f "$FILE" ]; then
-                SIZE=$(wc -c < "$FILE")
-                CONTENT=$(base64 < "$FILE")
-                echo "{\"exists\":true,\"size\":$SIZE,\"content\":\"$CONTENT\"}"
-              else
-                echo "{\"exists\":false}"
-              fi
-          output_field: artifact_data
-          parse_json: true
-
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            key: "{{ .key }}"
-            exists: "{{ .artifact_data.exists }}"
-            size: "{{ .artifact_data.size }}"
-            content: "{{ .artifact_data.content }}"
-
-  # ----------------------------------------------------------------
-  # List — GET /api/v1/artifacts?prefix=<prefix>
-  # ----------------------------------------------------------------
-  artifact-list:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/artifacts
-        method: GET
-    steps:
-      - name: parse
-        type: step.request_parse
-        config:
-          fields:
-            - name: prefix
-              source: query
-              path: prefix
-              default: ""
-
-      - name: list
-        type: step.artifact_list
-        config:
-          store: artifacts
-          prefix: "{{ .prefix }}"
-          output: artifacts
-
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            count: "{{ .count }}"
-            artifacts: "{{ .artifacts }}"
-
-  # ----------------------------------------------------------------
-  # Delete — DELETE /api/v1/artifacts/delete?key=<path>
-  # ----------------------------------------------------------------
-  artifact-delete:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/artifacts/delete
-        method: DELETE
-    steps:
-      - name: parse
-        type: step.request_parse
-        config:
-          fields:
-            - name: key
-              source: query
-              path: key
-              required: true
-
-      - name: delete
-        type: step.artifact_delete
-        config:
-          store: artifacts
-          key: "{{ .key }}"
-
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: deleted
-            key: "{{ .key }}"
+    # ----------------------------------------------------------------
+    # Health check
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "24-artifact-store"
+    # ----------------------------------------------------------------
+    # Upload — POST /api/v1/artifacts/upload
+    #
+    # Accepts JSON body: { "key": "builds/v1/app.bin", "content": "<base64>", "metadata": {} }
+    # Writes content to a temp file then uploads via step.artifact_upload.
+    # ----------------------------------------------------------------
+    artifact-upload:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/artifacts/upload
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                fields:
+                    - name: key
+                      source: body
+                      path: key
+                      required: true
+                    - name: content
+                      source: body
+                      path: content
+                      required: true
+                    - name: content_type
+                      source: body
+                      path: content_type
+                      default: "application/octet-stream"
+                    - name: version
+                      source: body
+                      path: metadata.version
+                      default: ""
+                    - name: commit
+                      source: body
+                      path: metadata.commit
+                      default: ""
+            - name: decode_and_store
+              type: step.shell_exec
+              config:
+                image: alpine:3.21
+                commands:
+                    - |
+                      KEY="{{ .key }}"
+                      CONTENT="{{ .content }}"
+                      TMPDIR="/tmp/wf-artifact-$$"
+                      mkdir -p "$TMPDIR"
+                      TMPFILE="$TMPDIR/artifact"
+                      echo "$CONTENT" | base64 -d > "$TMPFILE"
+                      echo "{\"tmpfile\":\"$TMPFILE\",\"size\":$(wc -c < "$TMPFILE")}"
+                output_field: shell_result
+                parse_json: true
+            - name: upload
+              type: step.artifact_upload
+              config:
+                store: artifacts
+                key: "{{ .key }}"
+                source: "{{ .shell_result.tmpfile }}"
+                metadata:
+                    version: "{{ .version }}"
+                    commit: "{{ .commit }}"
+                    content_type: "{{ .content_type }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 201
+                body:
+                    status: uploaded
+                    key: "{{ .key }}"
+                    size: "{{ .shell_result.size }}"
+    # ----------------------------------------------------------------
+    # Download — GET /api/v1/artifacts/get?key=<path>
+    # ----------------------------------------------------------------
+    artifact-download:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/artifacts/get
+                method: GET
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                fields:
+                    - name: key
+                      source: query
+                      path: key
+                      required: true
+            - name: check_exists
+              type: step.shell_exec
+              config:
+                image: alpine:3.21
+                commands:
+                    - |
+                      KEY="{{ .key }}"
+                      SAFE_KEY=$(echo "$KEY" | sed 's|[^a-zA-Z0-9/_.-]||g')
+                      FILE="/data/artifacts/$SAFE_KEY"
+                      if [ -f "$FILE" ]; then
+                        SIZE=$(wc -c < "$FILE")
+                        CONTENT=$(base64 < "$FILE")
+                        echo "{\"exists\":true,\"size\":$SIZE,\"content\":\"$CONTENT\"}"
+                      else
+                        echo "{\"exists\":false}"
+                      fi
+                output_field: artifact_data
+                parse_json: true
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    key: "{{ .key }}"
+                    exists: "{{ .artifact_data.exists }}"
+                    size: "{{ .artifact_data.size }}"
+                    content: "{{ .artifact_data.content }}"
+    # ----------------------------------------------------------------
+    # List — GET /api/v1/artifacts?prefix=<prefix>
+    # ----------------------------------------------------------------
+    artifact-list:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/artifacts
+                method: GET
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                fields:
+                    - name: prefix
+                      source: query
+                      path: prefix
+                      default: ""
+            - name: list
+              type: step.artifact_list
+              config:
+                store: artifacts
+                prefix: "{{ .prefix }}"
+                output: artifacts
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    count: "{{ .count }}"
+                    artifacts: "{{ .artifacts }}"
+    # ----------------------------------------------------------------
+    # Delete — DELETE /api/v1/artifacts/delete?key=<path>
+    # ----------------------------------------------------------------
+    artifact-delete:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/artifacts/delete
+                method: DELETE
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                fields:
+                    - name: key
+                      source: query
+                      path: key
+                      required: true
+            - name: delete
+              type: step.artifact_delete
+              config:
+                store: artifacts
+                key: "{{ .key }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: deleted
+                    key: "{{ .key }}"

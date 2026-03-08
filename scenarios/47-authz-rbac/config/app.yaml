@@ -17,305 +17,294 @@
 # ============================================================
 
 modules:
-  - name: server
-    type: http.server
-    config:
-      address: ":8080"
-
-  - name: router
-    type: http.router
-    dependsOn: [server]
-
-  - name: db
-    type: storage.sqlite
-    config:
-      dbPath: "/data/authz.db"
-      maxConnections: 5
-      walMode: true
-
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: db
+      type: storage.sqlite
+      config:
+        dbPath: "/data/authz.db"
+        maxConnections: 5
+        walMode: true
 workflows:
-  http:
-    router: router
-    server: server
-    routes: []
-
+    http:
+        router: router
+        server: server
+        routes: []
 pipelines:
-  # ----------------------------------------------------------------
-  # Health
-  # ----------------------------------------------------------------
-  health:
-    trigger:
-      type: http
-      config:
-        path: /healthz
-        method: GET
-    steps:
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            scenario: "47-authz-rbac"
-
-  # ----------------------------------------------------------------
-  # Internal — initialize DB schema
-  # ----------------------------------------------------------------
-  init-db:
-    trigger:
-      type: http
-      config:
-        path: /internal/init-db
-        method: POST
-    steps:
-      - name: create-policies-table
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            CREATE TABLE IF NOT EXISTS policies (
-              id         TEXT PRIMARY KEY,
-              role       TEXT NOT NULL,
-              resource   TEXT NOT NULL,
-              action     TEXT NOT NULL,
-              created_at TEXT NOT NULL DEFAULT (datetime('now')),
-              UNIQUE(role, resource, action)
-            )
-          ignore_error: true
-      - name: create-user-roles-table
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            CREATE TABLE IF NOT EXISTS user_roles (
-              id         TEXT PRIMARY KEY,
-              user       TEXT NOT NULL,
-              role       TEXT NOT NULL,
-              created_at TEXT NOT NULL DEFAULT (datetime('now')),
-              UNIQUE(user, role)
-            )
-          ignore_error: true
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            initialized: true
-            tables: ["policies", "user_roles"]
-
-  # ----------------------------------------------------------------
-  # Add Policy
-  # POST /api/v1/policies
-  # Body: { "role": "admin", "resource": "documents", "action": "read" }
-  # ----------------------------------------------------------------
-  add-policy:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/policies
-        method: POST
-    steps:
-      - name: gen-id
-        type: step.set
-        config:
-          values:
-            policy_id: "pol-{{ uuidv4 }}"
-      - name: insert-policy
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            INSERT OR IGNORE INTO policies (id, role, resource, action)
-            VALUES (?, ?, ?, ?)
-          params:
-            - "{{ index .steps \"gen-id\" \"policy_id\" }}"
-            - "{{ .body.role }}"
-            - "{{ .body.resource }}"
-            - "{{ .body.action }}"
-      - name: fetch-policy
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, role, resource, action, created_at FROM policies WHERE role = ? AND resource = ? AND action = ?"
-          params:
-            - "{{ .body.role }}"
-            - "{{ .body.resource }}"
-            - "{{ .body.action }}"
-          mode: single
-      - name: respond
-        type: step.json_response
-        config:
-          status: 201
-          body_from: "steps.fetch-policy.row"
-
-  # ----------------------------------------------------------------
-  # Remove Policy
-  # DELETE /api/v1/policies
-  # Body: { "role": "admin", "resource": "documents", "action": "read" }
-  # ----------------------------------------------------------------
-  delete-policy:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/policies
-        method: DELETE
-    steps:
-      - name: delete-policy
-        type: step.db_exec
-        config:
-          database: db
-          query: "DELETE FROM policies WHERE role = ? AND resource = ? AND action = ?"
-          params:
-            - "{{ .body.role }}"
-            - "{{ .body.resource }}"
-            - "{{ .body.action }}"
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            deleted: true
-
-  # ----------------------------------------------------------------
-  # List Policies
-  # GET /api/v1/policies
-  # ----------------------------------------------------------------
-  list-policies:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/policies
-        method: GET
-    steps:
-      - name: fetch-policies
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, role, resource, action, created_at FROM policies ORDER BY role, resource, action"
-          mode: many
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.fetch-policies.rows"
-
-  # ----------------------------------------------------------------
-  # Assign Role to User
-  # POST /api/v1/roles/assign
-  # Body: { "user": "alice", "role": "admin" }
-  # ----------------------------------------------------------------
-  assign-role:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/roles/assign
-        method: POST
-    steps:
-      - name: gen-id
-        type: step.set
-        config:
-          values:
-            assignment_id: "asgn-{{ uuidv4 }}"
-      - name: insert-role
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            INSERT OR IGNORE INTO user_roles (id, user, role)
-            VALUES (?, ?, ?)
-          params:
-            - "{{ index .steps \"gen-id\" \"assignment_id\" }}"
-            - "{{ .body.user }}"
-            - "{{ .body.role }}"
-      - name: respond
-        type: step.json_response
-        config:
-          status: 201
-          body:
-            user: "{{ .body.user }}"
-            role: "{{ .body.role }}"
-            assigned: true
-
-  # ----------------------------------------------------------------
-  # List User Roles
-  # GET /api/v1/roles/{user}
-  # ----------------------------------------------------------------
-  get-user-roles:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/roles/{user}
-        method: GET
-    steps:
-      - name: fetch-roles
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT role FROM user_roles WHERE user = ? ORDER BY role"
-          params:
-            - "{{ .user }}"
-          mode: many
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.fetch-roles.rows"
-
-  # ----------------------------------------------------------------
-  # Check Access
-  # POST /api/v1/check
-  # Body: { "user": "alice", "resource": "documents", "action": "read" }
-  # Returns: { "allowed": true/false, "user": "...", "resource": "...", "action": "..." }
-  #
-  # Logic: lookup user's roles, then check if any role has a matching policy.
-  # ----------------------------------------------------------------
-  check-access:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/check
-        method: POST
-    steps:
-      - name: find-matching-policy
-        type: step.db_query
-        config:
-          database: db
-          query: |
-            SELECT p.id, p.role, p.resource, p.action
-            FROM policies p
-            INNER JOIN user_roles ur ON ur.role = p.role
-            WHERE ur.user = ?
-              AND p.resource = ?
-              AND p.action = ?
-            LIMIT 1
-          params:
-            - "{{ .body.user }}"
-            - "{{ .body.resource }}"
-            - "{{ .body.action }}"
-          mode: single
-      - name: check-allowed
-        type: step.conditional
-        config:
-          field: steps.find-matching-policy.found
-          routes:
-            "false": deny
-          default: allow
-      - name: deny
-        type: step.json_response
-        config:
-          status: 403
-          body:
-            allowed: false
-            user: "{{ .body.user }}"
-            resource: "{{ .body.resource }}"
-            action: "{{ .body.action }}"
-      - name: allow
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            allowed: true
-            user: "{{ .body.user }}"
-            resource: "{{ .body.resource }}"
-            action: "{{ .body.action }}"
-            matched_role: "{{ index .steps \"find-matching-policy\" \"row\" \"role\" }}"
+    # ----------------------------------------------------------------
+    # Health
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "47-authz-rbac"
+    # ----------------------------------------------------------------
+    # Internal — initialize DB schema
+    # ----------------------------------------------------------------
+    init-db:
+        trigger:
+            type: http
+            config:
+                path: /internal/init-db
+                method: POST
+        steps:
+            - name: create_policies_table
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    CREATE TABLE IF NOT EXISTS policies (
+                      id         TEXT PRIMARY KEY,
+                      role       TEXT NOT NULL,
+                      resource   TEXT NOT NULL,
+                      action     TEXT NOT NULL,
+                      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                      UNIQUE(role, resource, action)
+                    )
+                ignore_error: true
+            - name: create_user_roles_table
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    CREATE TABLE IF NOT EXISTS user_roles (
+                      id         TEXT PRIMARY KEY,
+                      user       TEXT NOT NULL,
+                      role       TEXT NOT NULL,
+                      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                      UNIQUE(user, role)
+                    )
+                ignore_error: true
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    initialized: true
+                    tables: ["policies", "user_roles"]
+    # ----------------------------------------------------------------
+    # Add Policy
+    # POST /api/v1/policies
+    # Body: { "role": "admin", "resource": "documents", "action": "read" }
+    # ----------------------------------------------------------------
+    add-policy:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/policies
+                method: POST
+        steps:
+            - name: gen_id
+              type: step.set
+              config:
+                values:
+                    policy_id: "pol-{{ uuidv4 }}"
+            - name: insert_policy
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    INSERT OR IGNORE INTO policies (id, role, resource, action)
+                    VALUES (?, ?, ?, ?)
+                params:
+                    - "{{ index .steps \"gen_id\" \"policy_id\" }}"
+                    - "{{ .body.role }}"
+                    - "{{ .body.resource }}"
+                    - "{{ .body.action }}"
+            - name: fetch_policy
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, role, resource, action, created_at FROM policies WHERE role = ? AND resource = ? AND action = ?"
+                params:
+                    - "{{ .body.role }}"
+                    - "{{ .body.resource }}"
+                    - "{{ .body.action }}"
+                mode: single
+            - name: respond
+              type: step.json_response
+              config:
+                status: 201
+                body_from: "steps.fetch_policy.row"
+    # ----------------------------------------------------------------
+    # Remove Policy
+    # DELETE /api/v1/policies
+    # Body: { "role": "admin", "resource": "documents", "action": "read" }
+    # ----------------------------------------------------------------
+    delete_policy:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/policies
+                method: DELETE
+        steps:
+            - name: delete_policy
+              type: step.db_exec
+              config:
+                database: db
+                query: "DELETE FROM policies WHERE role = ? AND resource = ? AND action = ?"
+                params:
+                    - "{{ .body.role }}"
+                    - "{{ .body.resource }}"
+                    - "{{ .body.action }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    deleted: true
+    # ----------------------------------------------------------------
+    # List Policies
+    # GET /api/v1/policies
+    # ----------------------------------------------------------------
+    list-policies:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/policies
+                method: GET
+        steps:
+            - name: fetch_policies
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, role, resource, action, created_at FROM policies ORDER BY role, resource, action"
+                mode: many
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.fetch_policies.rows"
+    # ----------------------------------------------------------------
+    # Assign Role to User
+    # POST /api/v1/roles/assign
+    # Body: { "user": "alice", "role": "admin" }
+    # ----------------------------------------------------------------
+    assign-role:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/roles/assign
+                method: POST
+        steps:
+            - name: gen_id
+              type: step.set
+              config:
+                values:
+                    assignment_id: "asgn-{{ uuidv4 }}"
+            - name: insert_role
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    INSERT OR IGNORE INTO user_roles (id, user, role)
+                    VALUES (?, ?, ?)
+                params:
+                    - "{{ index .steps \"gen_id\" \"assignment_id\" }}"
+                    - "{{ .body.user }}"
+                    - "{{ .body.role }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 201
+                body:
+                    user: "{{ .body.user }}"
+                    role: "{{ .body.role }}"
+                    assigned: true
+    # ----------------------------------------------------------------
+    # List User Roles
+    # GET /api/v1/roles/{user}
+    # ----------------------------------------------------------------
+    get-user-roles:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/roles/{user}
+                method: GET
+        steps:
+            - name: fetch_roles
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT role FROM user_roles WHERE user = ? ORDER BY role"
+                params:
+                    - "{{ .user }}"
+                mode: many
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.fetch_roles.rows"
+    # ----------------------------------------------------------------
+    # Check Access
+    # POST /api/v1/check
+    # Body: { "user": "alice", "resource": "documents", "action": "read" }
+    # Returns: { "allowed": true/false, "user": "...", "resource": "...", "action": "..." }
+    #
+    # Logic: lookup user's roles, then check if any role has a matching policy.
+    # ----------------------------------------------------------------
+    check-access:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/check
+                method: POST
+        steps:
+            - name: find_matching_policy
+              type: step.db_query
+              config:
+                database: db
+                query: |
+                    SELECT p.id, p.role, p.resource, p.action
+                    FROM policies p
+                    INNER JOIN user_roles ur ON ur.role = p.role
+                    WHERE ur.user = ?
+                      AND p.resource = ?
+                      AND p.action = ?
+                    LIMIT 1
+                params:
+                    - "{{ .body.user }}"
+                    - "{{ .body.resource }}"
+                    - "{{ .body.action }}"
+                mode: single
+            - name: check_allowed
+              type: step.conditional
+              config:
+                field: steps.find_matching_policy.found
+                routes:
+                    "false": deny
+                default: allow
+            - name: deny
+              type: step.json_response
+              config:
+                status: 403
+                body:
+                    allowed: false
+                    user: "{{ .body.user }}"
+                    resource: "{{ .body.resource }}"
+                    action: "{{ .body.action }}"
+            - name: allow
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    allowed: true
+                    user: "{{ .body.user }}"
+                    resource: "{{ .body.resource }}"
+                    action: "{{ .body.action }}"
+                    matched_role: "{{ index .steps \"find_matching_policy\" \"row\" \"role\" }}"

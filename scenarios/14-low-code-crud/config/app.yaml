@@ -1,443 +1,424 @@
 modules:
-  - name: server
-    type: http.server
-    config:
-      address: ":8080"
-
-  - name: router
-    type: http.router
-    dependsOn: [server]
-
-  - name: db
-    type: storage.sqlite
-    config:
-      dbPath: "/data/tasks.db"
-      maxConnections: 5
-      walMode: true
-
-  - name: jwt
-    type: auth.jwt
-    config:
-      secret: "${JWT_SECRET}"
-      issuer: "scenario-14-tasks"
-      tokenExpiry: "24h"
-    dependsOn: [router]
-
-  - name: broker
-    type: messaging.broker
-    config:
-      maxQueueSize: 1000
-      deliveryTimeout: "30s"
-
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: db
+      type: storage.sqlite
+      config:
+        dbPath: "/data/tasks.db"
+        maxConnections: 5
+        walMode: true
+    - name: jwt
+      type: auth.jwt
+      config:
+        secret: "${JWT_SECRET}"
+        issuer: "scenario-14-tasks"
+        tokenExpiry: "24h"
+      dependsOn: [router]
+    - name: broker
+      type: messaging.broker
+      config:
+        maxQueueSize: 1000
+        deliveryTimeout: "30s"
 workflows:
-  http:
-    router: router
-    server: server
-    routes:
-      # Auth — handled natively by jwt module
-      - method: POST
-        path: /api/v1/auth/register
-        handler: jwt
-
-      - method: POST
-        path: /api/v1/auth/login
-        handler: jwt
-
-      - method: GET
-        path: /api/v1/auth/profile
-        handler: jwt
-
+    http:
+        router: router
+        server: server
+        routes:
+            # Auth — handled natively by jwt module
+            - method: POST
+              path: /api/v1/auth/register
+              handler: jwt
+            - method: POST
+              path: /api/v1/auth/login
+              handler: jwt
+            - method: GET
+              path: /api/v1/auth/profile
+              handler: jwt
 pipelines:
-  health:
-    trigger:
-      type: http
-      config:
-        path: /healthz
-        method: GET
-    steps:
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            scenario: "14-low-code-crud"
-
-  init-db:
-    trigger:
-      type: http
-      config:
-        path: /internal/init-db
-        method: POST
-    steps:
-      - name: create-tasks-table
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            CREATE TABLE IF NOT EXISTS tasks (
-              id        INTEGER PRIMARY KEY AUTOINCREMENT,
-              user_id   INTEGER NOT NULL DEFAULT 1,
-              title     TEXT    NOT NULL,
-              description TEXT  DEFAULT '',
-              priority  TEXT    NOT NULL DEFAULT 'medium',
-              status    TEXT    NOT NULL DEFAULT 'todo',
-              due_date  TEXT,
-              category_id INTEGER,
-              created_at TEXT NOT NULL DEFAULT (datetime('now')),
-              updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-      - name: create-categories-table
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            CREATE TABLE IF NOT EXISTS categories (
-              id   INTEGER PRIMARY KEY AUTOINCREMENT,
-              name TEXT    NOT NULL UNIQUE,
-              color TEXT   DEFAULT '#6366f1',
-              created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-      - name: create-task-idx-user
-        type: step.db_exec
-        config:
-          database: db
-          query: "CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_id)"
-      - name: create-task-idx-status
-        type: step.db_exec
-        config:
-          database: db
-          query: "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)"
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            message: database schema initialised
-
-  task-create:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/tasks
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: validate
-        type: step.validate
-        config:
-          strategy: required_fields
-          required_fields: [title]
-          source: "steps.parse-body.body"
-      - name: insert
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            INSERT INTO tasks (user_id, title, description, priority, due_date, category_id)
-            VALUES (1, ?, ?, ?, ?, ?)
-          params:
-            - "{{ .body.title }}"
-            - "{{ .body.description }}"
-            - "{{ .body.priority | default \"medium\" }}"
-            - "{{ .body.due_date }}"
-            - "{{ .body.category_id }}"
-      - name: fetch-created
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, user_id, title, description, priority, status, due_date, category_id, created_at FROM tasks WHERE id = last_insert_rowid()"
-          mode: single
-      - name: publish-created
-        type: step.publish
-        config:
-          topic: "task.events"
-          broker: broker
-      - name: respond
-        type: step.json_response
-        config:
-          status: 201
-          body_from: "steps.fetch-created.row"
-
-  task-list:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/tasks
-        method: GET
-    steps:
-      - name: get-tasks
-        type: step.db_query
-        config:
-          database: db
-          query: |
-            SELECT t.id, t.title, t.description, t.priority, t.status,
-                   t.due_date, t.category_id, c.name AS category_name,
-                   t.created_at, t.updated_at
-            FROM tasks t
-            LEFT JOIN categories c ON c.id = t.category_id
-            ORDER BY t.created_at DESC
-            LIMIT 100
-          mode: list
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.get-tasks.rows"
-
-  task-get:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/tasks/{id}
-        method: GET
-    steps:
-      - name: get-task
-        type: step.db_query
-        config:
-          database: db
-          query: |
-            SELECT t.id, t.title, t.description, t.priority, t.status,
-                   t.due_date, t.category_id, c.name AS category_name,
-                   t.created_at, t.updated_at
-            FROM tasks t
-            LEFT JOIN categories c ON c.id = t.category_id
-            WHERE t.id = ?
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: check-exists
-        type: step.conditional
-        config:
-          field: steps.get-task.row.id
-          routes:
-            "": not-found
-          default: respond
-      - name: not-found
-        type: step.json_response
-        config:
-          status: 404
-          body:
-            error: task not found
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.get-task.row"
-
-  task-update:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/tasks/{id}
-        method: PUT
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: update
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            UPDATE tasks
-            SET title = COALESCE(NULLIF(?, ''), title),
-                description = COALESCE(NULLIF(?, ''), description),
-                priority = COALESCE(NULLIF(?, ''), priority),
-                due_date = COALESCE(NULLIF(?, ''), due_date),
-                category_id = COALESCE(NULLIF(CAST(? AS TEXT), ''), CAST(category_id AS TEXT)),
-                updated_at = datetime('now')
-            WHERE id = ?
-          params:
-            - "{{ .body.title }}"
-            - "{{ .body.description }}"
-            - "{{ .body.priority }}"
-            - "{{ .body.due_date }}"
-            - "{{ .body.category_id }}"
-            - "{{ .id }}"
-      - name: fetch-updated
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, title, description, priority, status, due_date, category_id, updated_at FROM tasks WHERE id = ?"
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.fetch-updated.row"
-
-  task-delete:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/tasks/{id}
-        method: DELETE
-    steps:
-      - name: delete
-        type: step.db_exec
-        config:
-          database: db
-          query: "DELETE FROM tasks WHERE id = ?"
-          params:
-            - "{{ .id }}"
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            status: ok
-            message: task deleted
-
-  task-complete:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/tasks/{id}/complete
-        method: POST
-    steps:
-      - name: get-current-status
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, status FROM tasks WHERE id = ?"
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: check-exists
-        type: step.conditional
-        config:
-          field: steps.get-current-status.row.id
-          routes:
-            "": not-found
-          default: check-state
-      - name: not-found
-        type: step.json_response
-        config:
-          status: 404
-          body:
-            error: task not found
-      - name: check-state
-        type: step.conditional
-        config:
-          field: steps.get-current-status.row.status
-          routes:
-            done: already-done
-          default: do-update
-      - name: already-done
-        type: step.json_response
-        config:
-          status: 409
-          body:
-            error: cannot transition from current state
-      - name: do-update
-        type: step.db_exec
-        config:
-          database: db
-          query: |
-            UPDATE tasks
-            SET status = CASE status
-              WHEN 'todo' THEN 'in_progress'
-              WHEN 'in_progress' THEN 'done'
-              ELSE status
-            END,
-            updated_at = datetime('now')
-            WHERE id = ?
-          params:
-            - "{{ .id }}"
-      - name: fetch-updated
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, title, status, updated_at FROM tasks WHERE id = ?"
-          params:
-            - "{{ .id }}"
-          mode: single
-      - name: publish-updated
-        type: step.publish
-        config:
-          topic: "task.events"
-          broker: broker
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.fetch-updated.row"
-
-  category-list:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/categories
-        method: GET
-    steps:
-      - name: get-categories
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, name, color, created_at FROM categories ORDER BY name ASC"
-          mode: list
-      - name: respond
-        type: step.json_response
-        config:
-          status: 200
-          body_from: "steps.get-categories.rows"
-
-  category-create:
-    trigger:
-      type: http
-      config:
-        path: /api/v1/categories
-        method: POST
-    steps:
-      - name: parse-body
-        type: step.request_parse
-        config:
-          parse_body: true
-      - name: validate
-        type: step.validate
-        config:
-          strategy: required_fields
-          required_fields: [name]
-          source: "steps.parse-body.body"
-      - name: insert
-        type: step.db_exec
-        config:
-          database: db
-          query: "INSERT INTO categories (name, color) VALUES (?, ?)"
-          params:
-            - "{{ .body.name }}"
-            - "{{ .body.color | default \"#6366f1\" }}"
-      - name: fetch-created
-        type: step.db_query
-        config:
-          database: db
-          query: "SELECT id, name, color, created_at FROM categories WHERE id = last_insert_rowid()"
-          mode: single
-      - name: respond
-        type: step.json_response
-        config:
-          status: 201
-          body_from: "steps.fetch-created.row"
-
-  log-task-event:
-    steps:
-      - name: log
-        type: step.log
-        config:
-          level: info
-          message: "Task event received from broker"
-
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "14-low-code-crud"
+    init-db:
+        trigger:
+            type: http
+            config:
+                path: /internal/init-db
+                method: POST
+        steps:
+            - name: create_tasks_table
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    CREATE TABLE IF NOT EXISTS tasks (
+                      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                      user_id   INTEGER NOT NULL DEFAULT 1,
+                      title     TEXT    NOT NULL,
+                      description TEXT  DEFAULT '',
+                      priority  TEXT    NOT NULL DEFAULT 'medium',
+                      status    TEXT    NOT NULL DEFAULT 'todo',
+                      due_date  TEXT,
+                      category_id INTEGER,
+                      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    )
+            - name: create_categories_table
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    CREATE TABLE IF NOT EXISTS categories (
+                      id   INTEGER PRIMARY KEY AUTOINCREMENT,
+                      name TEXT    NOT NULL UNIQUE,
+                      color TEXT   DEFAULT '#6366f1',
+                      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    )
+            - name: create_task_idx_user
+              type: step.db_exec
+              config:
+                database: db
+                query: "CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_id)"
+            - name: create_task_idx_status
+              type: step.db_exec
+              config:
+                database: db
+                query: "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    message: database schema initialised
+    task-create:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/tasks
+                method: POST
+        steps:
+            - name: parse_body
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: validate
+              type: step.validate
+              config:
+                strategy: required_fields
+                required_fields: [title]
+                source: "steps.parse_body.body"
+            - name: insert
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    INSERT INTO tasks (user_id, title, description, priority, due_date, category_id)
+                    VALUES (1, ?, ?, ?, ?, ?)
+                params:
+                    - "{{ .body.title }}"
+                    - "{{ .body.description }}"
+                    - "{{ .body.priority | default \"medium\" }}"
+                    - "{{ .body.due_date }}"
+                    - "{{ .body.category_id }}"
+            - name: fetch_created
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, user_id, title, description, priority, status, due_date, category_id, created_at FROM tasks WHERE id = last_insert_rowid()"
+                mode: single
+            - name: publish_created
+              type: step.publish
+              config:
+                topic: "task.events"
+                broker: broker
+            - name: respond
+              type: step.json_response
+              config:
+                status: 201
+                body_from: "steps.fetch_created.row"
+    task-list:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/tasks
+                method: GET
+        steps:
+            - name: get_tasks
+              type: step.db_query
+              config:
+                database: db
+                query: |
+                    SELECT t.id, t.title, t.description, t.priority, t.status,
+                           t.due_date, t.category_id, c.name AS category_name,
+                           t.created_at, t.updated_at
+                    FROM tasks t
+                    LEFT JOIN categories c ON c.id = t.category_id
+                    ORDER BY t.created_at DESC
+                    LIMIT 100
+                mode: list
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get_tasks.rows"
+    task-get:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/tasks/{id}
+                method: GET
+        steps:
+            - name: get_task
+              type: step.db_query
+              config:
+                database: db
+                query: |
+                    SELECT t.id, t.title, t.description, t.priority, t.status,
+                           t.due_date, t.category_id, c.name AS category_name,
+                           t.created_at, t.updated_at
+                    FROM tasks t
+                    LEFT JOIN categories c ON c.id = t.category_id
+                    WHERE t.id = ?
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: check_exists
+              type: step.conditional
+              config:
+                field: steps.get_task.row.id
+                routes:
+                    "": not_found
+                default: respond
+            - name: not_found
+              type: step.json_response
+              config:
+                status: 404
+                body:
+                    error: task not found
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get_task.row"
+    task-update:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/tasks/{id}
+                method: PUT
+        steps:
+            - name: parse_body
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: update
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    UPDATE tasks
+                    SET title = COALESCE(NULLIF(?, ''), title),
+                        description = COALESCE(NULLIF(?, ''), description),
+                        priority = COALESCE(NULLIF(?, ''), priority),
+                        due_date = COALESCE(NULLIF(?, ''), due_date),
+                        category_id = COALESCE(NULLIF(CAST(? AS TEXT), ''), CAST(category_id AS TEXT)),
+                        updated_at = datetime('now')
+                    WHERE id = ?
+                params:
+                    - "{{ .body.title }}"
+                    - "{{ .body.description }}"
+                    - "{{ .body.priority }}"
+                    - "{{ .body.due_date }}"
+                    - "{{ .body.category_id }}"
+                    - "{{ .id }}"
+            - name: fetch_updated
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, title, description, priority, status, due_date, category_id, updated_at FROM tasks WHERE id = ?"
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.fetch_updated.row"
+    task-delete:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/tasks/{id}
+                method: DELETE
+        steps:
+            - name: delete
+              type: step.db_exec
+              config:
+                database: db
+                query: "DELETE FROM tasks WHERE id = ?"
+                params:
+                    - "{{ .id }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    message: task deleted
+    task-complete:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/tasks/{id}/complete
+                method: POST
+        steps:
+            - name: get_current_status
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, status FROM tasks WHERE id = ?"
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: check_exists
+              type: step.conditional
+              config:
+                field: steps.get_current_status.row.id
+                routes:
+                    "": not_found
+                default: check_state
+            - name: not_found
+              type: step.json_response
+              config:
+                status: 404
+                body:
+                    error: task not found
+            - name: check_state
+              type: step.conditional
+              config:
+                field: steps.get_current_status.row.status
+                routes:
+                    done: already_done
+                default: do_update
+            - name: already_done
+              type: step.json_response
+              config:
+                status: 409
+                body:
+                    error: cannot transition from current state
+            - name: do_update
+              type: step.db_exec
+              config:
+                database: db
+                query: |
+                    UPDATE tasks
+                    SET status = CASE status
+                      WHEN 'todo' THEN 'in_progress'
+                      WHEN 'in_progress' THEN 'done'
+                      ELSE status
+                    END,
+                    updated_at = datetime('now')
+                    WHERE id = ?
+                params:
+                    - "{{ .id }}"
+            - name: fetch_updated
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, title, status, updated_at FROM tasks WHERE id = ?"
+                params:
+                    - "{{ .id }}"
+                mode: single
+            - name: publish_updated
+              type: step.publish
+              config:
+                topic: "task.events"
+                broker: broker
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.fetch_updated.row"
+    category-list:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/categories
+                method: GET
+        steps:
+            - name: get_categories
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, name, color, created_at FROM categories ORDER BY name ASC"
+                mode: list
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get_categories.rows"
+    category-create:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/categories
+                method: POST
+        steps:
+            - name: parse_body
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: validate
+              type: step.validate
+              config:
+                strategy: required_fields
+                required_fields: [name]
+                source: "steps.parse_body.body"
+            - name: insert
+              type: step.db_exec
+              config:
+                database: db
+                query: "INSERT INTO categories (name, color) VALUES (?, ?)"
+                params:
+                    - "{{ .body.name }}"
+                    - "{{ .body.color | default \"#6366f1\" }}"
+            - name: fetch_created
+              type: step.db_query
+              config:
+                database: db
+                query: "SELECT id, name, color, created_at FROM categories WHERE id = last_insert_rowid()"
+                mode: single
+            - name: respond
+              type: step.json_response
+              config:
+                status: 201
+                body_from: "steps.fetch_created.row"
+    log-task-event:
+        steps:
+            - name: log
+              type: step.log
+              config:
+                level: info
+                message: "Task event received from broker"
 triggers:
-  event:
-    subscriptions:
-      - topic: "task.events"
-        workflow: "pipeline:log-task-event"
-        action: "log"
+    event:
+        subscriptions:
+            - topic: "task.events"
+              workflow: "pipeline:log-task-event"
+              action: "log"
