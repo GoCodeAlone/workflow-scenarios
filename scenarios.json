@@ -629,7 +629,7 @@
       "status": "not-deployed",
       "namespace": "wf-scenario-51",
       "deployed": false,
-      "testCount": 14,
+      "testCount": 13,
       "passCount": 0,
       "failCount": 0,
       "notes": "BMW IaC lifecycle with DO mock providers. Tests plan/apply/status/drift/destroy + idempotency."
