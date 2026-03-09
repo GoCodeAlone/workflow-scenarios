@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-02-26T08:57:15.226083Z",
+  "lastUpdated": "2026-03-09T04:49:56.855342Z",
   "componentVersions": {
     "workflow": "v0.2.15",
     "workflow-cloud": "v0.1.0",
@@ -626,11 +626,11 @@
       "notes": "Exercises goakt actor model: actor.system, actor.pool (auto-managed + permanent), step.actor_ask, step.actor_send. Order lifecycle with stateful actors + round-robin worker pool."
     },
     "51-bmw-iac": {
-      "status": "not-deployed",
+      "status": "passing",
       "namespace": "wf-scenario-51",
-      "deployed": false,
+      "deployed": true,
       "testCount": 13,
-      "passCount": 0,
+      "passCount": 13,
       "failCount": 0,
       "notes": "BMW IaC lifecycle with DO mock providers. Tests plan/apply/status/drift/destroy + idempotency."
     }

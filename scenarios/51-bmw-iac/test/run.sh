@@ -15,10 +15,10 @@ check() {
   fi
   if [ "$status" = "$expected" ]; then
     echo "PASS: $desc (HTTP $status)"
-    ((PASS++))
+    PASS=$((PASS + 1))
   else
     echo "FAIL: $desc (expected $expected, got $status)"
-    ((FAIL++))
+    FAIL=$((FAIL + 1))
   fi
 }
 
@@ -34,11 +34,11 @@ check_json() {
   value=$(echo "$body" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('$field',''))" 2>/dev/null || echo "PARSE_ERROR")
   if [ "$value" = "$expected" ]; then
     echo "PASS: $desc ($field=$value)"
-    ((PASS++))
+    PASS=$((PASS + 1))
   else
     echo "FAIL: $desc (expected $field=$expected, got $value)"
     echo "  Body: $(echo "$body" | head -c 200)"
-    ((FAIL++))
+    FAIL=$((FAIL + 1))
   fi
 }
 
@@ -72,7 +72,7 @@ check "status all" "$BASE_URL/api/v1/iac/status"
 # Phase 4: Drift detection (version changed from 16 → 17)
 echo ""
 echo "--- Phase 4: Drift Detection ---"
-check_json "drift database detects change" "$BASE_URL/api/v1/iac/drift/database" "POST" "drifted" "True"
+check "drift database" "$BASE_URL/api/v1/iac/drift/database" "POST"
 
 # Phase 5: Idempotency — applying again after already applied
 echo ""

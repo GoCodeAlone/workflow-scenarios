@@ -23,7 +23,6 @@ modules:
   - name: bmw-database
     type: platform.do_database
     config:
-      account: cloud-mock
       provider: mock
       engine: pg
       version: "16"
@@ -35,7 +34,6 @@ modules:
   - name: bmw-networking
     type: platform.do_networking
     config:
-      account: cloud-mock
       provider: mock
       vpc:
         name: bmw-vpc
@@ -51,7 +49,6 @@ modules:
   - name: bmw-app
     type: platform.do_app
     config:
-      account: cloud-mock
       provider: mock
       name: buymywishlist
       region: nyc
@@ -65,7 +62,6 @@ modules:
   - name: bmw-dns
     type: platform.do_dns
     config:
-      account: cloud-mock
       provider: mock
       domain: buymywishlist.com
       records:
