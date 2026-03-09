@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wf-scenario-51
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app
+  namespace: wf-scenario-51
+data:
+  app.yaml: |
+    # Mounted from scenarios/51-bmw-iac/config/app.yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow
+  namespace: wf-scenario-51
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: workflow
+  template:
+    metadata:
+      labels:
+        app: workflow
+    spec:
+      containers:
+        - name: workflow
+          image: workflow-server:local
+          args: ["-config", "/config/app.yaml", "-data-dir", "/data"]
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: data
+              mountPath: /data
+            - name: iac-state
+              mountPath: /var/lib/workflow/iac-state
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: app
+        - name: data
+          emptyDir: {}
+        - name: iac-state
+          persistentVolumeClaim:
+            claimName: iac-state
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: iac-state
+  namespace: wf-scenario-51
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 100Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: workflow
+  namespace: wf-scenario-51
+spec:
+  selector:
+    app: workflow
+  ports:
+    - port: 8080
+      targetPort: 8080

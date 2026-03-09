@@ -1,0 +1,16 @@
+name: BMW IaC (DigitalOcean Mock)
+id: "51-bmw-iac"
+category: C
+description: |
+  Validates the full IaC lifecycle for BuyMyWishlist infrastructure on
+  DigitalOcean using mock providers. Exercises:
+    plan → apply → status → drift detect → destroy
+  across 4 resource types: managed database, VPC/firewall, App Platform, DNS.
+  State is persisted via the iac.state filesystem backend.
+
+  All platform modules use mock backends — no real cloud API calls.
+components:
+  - workflow (engine)
+  - cloud plugin (cloud.account)
+  - platform plugin (platform.do_database, platform.do_networking, platform.do_app, platform.do_dns, iac.state)
+status: testable
