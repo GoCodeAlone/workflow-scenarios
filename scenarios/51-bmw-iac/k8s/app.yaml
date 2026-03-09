@@ -38,8 +38,6 @@ spec:
               mountPath: /config
             - name: data
               mountPath: /data
-            - name: iac-state
-              mountPath: /var/lib/workflow/iac-state
           readinessProbe:
             httpGet:
               path: /healthz
@@ -52,20 +50,6 @@ spec:
             name: app
         - name: data
           emptyDir: {}
-        - name: iac-state
-          persistentVolumeClaim:
-            claimName: iac-state
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: iac-state
-  namespace: wf-scenario-51
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 100Mi
 ---
 apiVersion: v1
 kind: Service
