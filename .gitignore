@@ -6,3 +6,4 @@ scenarios/*/ui/dist/
 # Go
 /cmd/sample-orders/sample-orders
 dist/
+.worktrees/
