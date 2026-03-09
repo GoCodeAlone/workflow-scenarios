@@ -1,0 +1,370 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: cloud-mock
+    type: cloud.account
+    config:
+      provider: mock
+      region: nyc1
+
+  - name: infra-state
+    type: iac.state
+    config:
+      backend: filesystem
+      directory: /var/lib/workflow/iac-state
+
+  - name: bmw-database
+    type: platform.do_database
+    config:
+      account: cloud-mock
+      provider: mock
+      engine: pg
+      version: "16"
+      size: db-s-1vcpu-1gb
+      region: nyc1
+      num_nodes: 1
+      name: bmw-db
+
+  - name: bmw-networking
+    type: platform.do_networking
+    config:
+      account: cloud-mock
+      provider: mock
+      vpc:
+        name: bmw-vpc
+        region: nyc1
+        ip_range: 10.10.10.0/24
+      firewalls:
+        - name: bmw-firewall
+          inbound:
+            - protocol: tcp
+              ports: "443"
+              sources: ["0.0.0.0/0"]
+
+  - name: bmw-app
+    type: platform.do_app
+    config:
+      account: cloud-mock
+      provider: mock
+      name: buymywishlist
+      region: nyc
+      image: ghcr.io/gocodealone/buymywishlist:latest
+      instances: 1
+      http_port: 8080
+      envs:
+        DATABASE_URL: "mock://db"
+        JWT_SECRET: "mock-secret"
+
+  - name: bmw-dns
+    type: platform.do_dns
+    config:
+      account: cloud-mock
+      provider: mock
+      domain: buymywishlist.com
+      records:
+        - name: "@"
+          type: A
+          data: "127.0.0.1"
+          ttl: 300
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "51-bmw-iac"
+
+  # Plan all resources
+  iac-plan-db:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/plan/database
+        method: POST
+    steps:
+      - name: plan
+        type: step.iac_plan
+        config:
+          platform: bmw-database
+          resource_id: bmw-database
+          state_store: infra-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  iac-plan-net:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/plan/networking
+        method: POST
+    steps:
+      - name: plan
+        type: step.iac_plan
+        config:
+          platform: bmw-networking.iac
+          resource_id: bmw-networking
+          state_store: infra-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  iac-plan-app:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/plan/app
+        method: POST
+    steps:
+      - name: plan
+        type: step.iac_plan
+        config:
+          platform: bmw-app.iac
+          resource_id: bmw-app
+          state_store: infra-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  iac-plan-dns:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/plan/dns
+        method: POST
+    steps:
+      - name: plan
+        type: step.iac_plan
+        config:
+          platform: bmw-dns.iac
+          resource_id: bmw-dns
+          state_store: infra-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Apply all resources
+  iac-apply-db:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/apply/database
+        method: POST
+    steps:
+      - name: apply
+        type: step.iac_apply
+        config:
+          platform: bmw-database
+          resource_id: bmw-database
+          state_store: infra-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  iac-apply-net:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/apply/networking
+        method: POST
+    steps:
+      - name: apply
+        type: step.iac_apply
+        config:
+          platform: bmw-networking.iac
+          resource_id: bmw-networking
+          state_store: infra-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  iac-apply-app:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/apply/app
+        method: POST
+    steps:
+      - name: apply
+        type: step.iac_apply
+        config:
+          platform: bmw-app.iac
+          resource_id: bmw-app
+          state_store: infra-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  iac-apply-dns:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/apply/dns
+        method: POST
+    steps:
+      - name: apply
+        type: step.iac_apply
+        config:
+          platform: bmw-dns.iac
+          resource_id: bmw-dns
+          state_store: infra-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Status all resources
+  iac-status-all:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/status
+        method: GET
+    steps:
+      - name: status-db
+        type: step.iac_status
+        config:
+          platform: bmw-database
+          resource_id: bmw-database
+          state_store: infra-state
+      - name: status-net
+        type: step.iac_status
+        config:
+          platform: bmw-networking.iac
+          resource_id: bmw-networking
+          state_store: infra-state
+      - name: status-app
+        type: step.iac_status
+        config:
+          platform: bmw-app.iac
+          resource_id: bmw-app
+          state_store: infra-state
+      - name: status-dns
+        type: step.iac_status
+        config:
+          platform: bmw-dns.iac
+          resource_id: bmw-dns
+          state_store: infra-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Drift detection
+  iac-drift-db:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/drift/database
+        method: POST
+    steps:
+      - name: drift
+        type: step.iac_drift_detect
+        config:
+          platform: bmw-database
+          resource_id: bmw-database
+          state_store: infra-state
+          config:
+            engine: pg
+            version: "17"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Destroy all resources (reverse order)
+  iac-destroy-all:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac
+        method: DELETE
+    steps:
+      - name: destroy-dns
+        type: step.iac_destroy
+        config:
+          platform: bmw-dns.iac
+          resource_id: bmw-dns
+          state_store: infra-state
+      - name: destroy-app
+        type: step.iac_destroy
+        config:
+          platform: bmw-app.iac
+          resource_id: bmw-app
+          state_store: infra-state
+      - name: destroy-net
+        type: step.iac_destroy
+        config:
+          platform: bmw-networking.iac
+          resource_id: bmw-networking
+          state_store: infra-state
+      - name: destroy-db
+        type: step.iac_destroy
+        config:
+          platform: bmw-database
+          resource_id: bmw-database
+          state_store: infra-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  # Idempotency test — apply after apply should be no-op
+  iac-apply-idempotent:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/apply/idempotent
+        method: POST
+    steps:
+      - name: apply-db-again
+        type: step.iac_apply
+        config:
+          platform: bmw-database
+          resource_id: bmw-database
+          state_store: infra-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."

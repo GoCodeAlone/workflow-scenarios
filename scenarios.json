@@ -624,6 +624,15 @@
       "passCount": 0,
       "failCount": 0,
       "notes": "Exercises goakt actor model: actor.system, actor.pool (auto-managed + permanent), step.actor_ask, step.actor_send. Order lifecycle with stateful actors + round-robin worker pool."
+    },
+    "51-bmw-iac": {
+      "status": "not-deployed",
+      "namespace": "wf-scenario-51",
+      "deployed": false,
+      "testCount": 14,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "BMW IaC lifecycle with DO mock providers. Tests plan/apply/status/drift/destroy + idempotency."
     }
   }
 }
