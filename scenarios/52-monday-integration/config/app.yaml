@@ -1,0 +1,280 @@
+# ============================================================
+# Scenario 52 — monday.com Integration
+#
+# Tests workflow-plugin-monday step types against a mock
+# monday.com GraphQL API server running at localhost:19052.
+#
+# Endpoints:
+#   GET  /healthz                    — health check
+#   POST /api/v1/monday/boards       — create a board
+#   GET  /api/v1/monday/boards       — list boards
+#   POST /api/v1/monday/items        — create an item
+#   GET  /api/v1/monday/items        — list items
+#   POST /api/v1/monday/groups       — create a group
+#   GET  /api/v1/monday/groups       — list groups
+#   POST /api/v1/monday/query        — generic GraphQL query
+#   GET  /api/v1/monday/users        — list users
+# ============================================================
+
+modules:
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: monday
+      type: monday.provider
+      config:
+        apiToken: "test_api_token"
+        apiVersion: "2026-04"
+        baseURL: "http://localhost:19052"
+
+workflows:
+    http:
+        router: router
+        server: server
+        routes: []
+
+pipelines:
+    # ----------------------------------------------------------------
+    # Health
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "52-monday-integration"
+
+    # ----------------------------------------------------------------
+    # Create Board
+    # POST /api/v1/monday/boards
+    # Body: { "board_name": "...", "board_kind": "public" }
+    # ----------------------------------------------------------------
+    create-board:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/monday/boards
+                method: POST
+        steps:
+            - name: parse_request
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prep
+              type: step.set
+              config:
+                values:
+                    board_name: "{{ default \"New Board\" .body.board_name }}"
+                    board_kind: "{{ default \"public\" .body.board_kind }}"
+            - name: create_board
+              type: step.monday_create_board
+              config:
+                module: monday
+                board_name: "{{ index .steps \"prep\" \"board_name\" }}"
+                board_kind: "{{ index .steps \"prep\" \"board_kind\" }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 201
+                body_from: "steps.create_board"
+
+    # ----------------------------------------------------------------
+    # List Boards
+    # GET /api/v1/monday/boards
+    # ----------------------------------------------------------------
+    list-boards:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/monday/boards
+                method: GET
+        steps:
+            - name: list_boards
+              type: step.monday_list_boards
+              config:
+                module: monday
+                limit: 10
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list_boards"
+
+    # ----------------------------------------------------------------
+    # Create Item
+    # POST /api/v1/monday/items
+    # Body: { "board_id": "...", "item_name": "..." }
+    # ----------------------------------------------------------------
+    create-item:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/monday/items
+                method: POST
+        steps:
+            - name: parse_request
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prep
+              type: step.set
+              config:
+                values:
+                    board_id: "{{ default \"1234567890\" .body.board_id }}"
+                    item_name: "{{ default \"New Item\" .body.item_name }}"
+            - name: create_item
+              type: step.monday_create_item
+              config:
+                module: monday
+                board_id: "{{ index .steps \"prep\" \"board_id\" }}"
+                item_name: "{{ index .steps \"prep\" \"item_name\" }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 201
+                body_from: "steps.create_item"
+
+    # ----------------------------------------------------------------
+    # List Items
+    # GET /api/v1/monday/items?board_id=...
+    # ----------------------------------------------------------------
+    list-items:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/monday/items
+                method: GET
+        steps:
+            - name: list_items
+              type: step.monday_list_items
+              config:
+                module: monday
+                board_id: "{{ default \"1234567890\" .query.board_id }}"
+                limit: 10
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list_items"
+
+    # ----------------------------------------------------------------
+    # Create Group
+    # POST /api/v1/monday/groups
+    # Body: { "board_id": "...", "group_name": "..." }
+    # ----------------------------------------------------------------
+    create-group:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/monday/groups
+                method: POST
+        steps:
+            - name: parse_request
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prep
+              type: step.set
+              config:
+                values:
+                    board_id: "{{ default \"1234567890\" .body.board_id }}"
+                    group_name: "{{ default \"New Group\" .body.group_name }}"
+            - name: create_group
+              type: step.monday_create_group
+              config:
+                module: monday
+                board_id: "{{ index .steps \"prep\" \"board_id\" }}"
+                group_name: "{{ index .steps \"prep\" \"group_name\" }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 201
+                body_from: "steps.create_group"
+
+    # ----------------------------------------------------------------
+    # List Groups
+    # GET /api/v1/monday/groups?board_id=...
+    # ----------------------------------------------------------------
+    list-groups:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/monday/groups
+                method: GET
+        steps:
+            - name: list_groups
+              type: step.monday_list_groups
+              config:
+                module: monday
+                board_id: "{{ default \"1234567890\" .query.board_id }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list_groups"
+
+    # ----------------------------------------------------------------
+    # Generic Query
+    # POST /api/v1/monday/query
+    # Body: { "query": "{ users { id name } }" }
+    # ----------------------------------------------------------------
+    generic-query:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/monday/query
+                method: POST
+        steps:
+            - name: parse_request
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prep
+              type: step.set
+              config:
+                values:
+                    gql_query: "{{ default \"{ users { id name } }\" .body.query }}"
+            - name: run_query
+              type: step.monday_query
+              config:
+                module: monday
+                query: "{{ index .steps \"prep\" \"gql_query\" }}"
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.run_query"
+
+    # ----------------------------------------------------------------
+    # List Users
+    # GET /api/v1/monday/users
+    # ----------------------------------------------------------------
+    list-users:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/monday/users
+                method: GET
+        steps:
+            - name: list_users
+              type: step.monday_list_users
+              config:
+                module: monday
+                limit: 50
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list_users"

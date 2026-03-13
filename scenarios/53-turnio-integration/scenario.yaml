@@ -1,0 +1,19 @@
+name: turn.io Integration
+id: "53-turnio-integration"
+category: C
+description: |
+  Tests workflow-plugin-turnio step types against a mock turn.io API server.
+  Validates WhatsApp messaging, contact management, template operations, and flows.
+  Verifies rate limit header tracking.
+  Uses a Go mock HTTP server that returns canned turn.io API responses.
+components:
+  - workflow (engine)
+  - workflow-plugin-turnio (external plugin)
+  - mock turn.io API server
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh

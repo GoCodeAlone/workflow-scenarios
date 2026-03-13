@@ -1,0 +1,321 @@
+# ============================================================
+# Scenario 51 — Twilio Integration
+#
+# Tests workflow-plugin-twilio step types against a mock Twilio
+# API server running as a sidecar on :19051.
+#
+# The twilio.provider module is configured with a baseURL that
+# redirects all Twilio SDK calls to the local mock server.
+#
+# Endpoints:
+#   GET  /healthz                         — health check
+#   POST /api/v1/twilio/sms               — send SMS (step.twilio_send_sms)
+#   POST /api/v1/twilio/mms               — send MMS (step.twilio_send_mms)
+#   GET  /api/v1/twilio/messages          — list messages (step.twilio_list_messages)
+#   GET  /api/v1/twilio/messages/{sid}    — fetch message (step.twilio_fetch_message)
+#   POST /api/v1/twilio/verify            — send verification (step.twilio_send_verification)
+#   POST /api/v1/twilio/verify/check      — check verification (step.twilio_check_verification)
+#   POST /api/v1/twilio/calls             — create call (step.twilio_create_call)
+#   GET  /api/v1/twilio/calls             — list calls (step.twilio_list_calls)
+#   GET  /api/v1/twilio/lookup/{phone}    — lookup phone (step.twilio_lookup_phone)
+# ============================================================
+
+modules:
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: twilio
+      type: twilio.provider
+      config:
+        accountSid: "AC_test_account"
+        authToken: "test_auth_token"
+        baseURL: "http://localhost:19051"
+
+workflows:
+    http:
+        router: router
+        server: server
+        routes: []
+
+pipelines:
+    # ----------------------------------------------------------------
+    # Health
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "51-twilio-integration"
+
+    # ----------------------------------------------------------------
+    # Send SMS
+    # POST /api/v1/twilio/sms
+    # Body: { "to": "+15005550001", "from": "+15005550006", "body": "Hello" }
+    # ----------------------------------------------------------------
+    send-sms:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/twilio/sms
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    to: "{{ default \"+15005550001\" .body.to }}"
+                    from: "{{ default \"+15005550006\" .body.from }}"
+                    body: "{{ default \"Hello from workflow\" .body.body }}"
+            - name: send
+              type: step.twilio_send_sms
+              config:
+                module: twilio
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.send"
+
+    # ----------------------------------------------------------------
+    # Send MMS
+    # POST /api/v1/twilio/mms
+    # Body: { "to": "+15005550001", "from": "+15005550006", "body": "...", "media_url": "..." }
+    # ----------------------------------------------------------------
+    send-mms:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/twilio/mms
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    to: "{{ default \"+15005550001\" .body.to }}"
+                    from: "{{ default \"+15005550006\" .body.from }}"
+                    body: "{{ default \"MMS message\" .body.body }}"
+                    media_url: "{{ default \"https://example.com/image.jpg\" .body.media_url }}"
+            - name: send
+              type: step.twilio_send_mms
+              config:
+                module: twilio
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.send"
+
+    # ----------------------------------------------------------------
+    # List Messages
+    # GET /api/v1/twilio/messages
+    # ----------------------------------------------------------------
+    list-messages:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/twilio/messages
+                method: GET
+        steps:
+            - name: list
+              type: step.twilio_list_messages
+              config:
+                module: twilio
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list"
+
+    # ----------------------------------------------------------------
+    # Fetch Message
+    # GET /api/v1/twilio/messages/{sid}
+    # ----------------------------------------------------------------
+    fetch-message:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/twilio/messages/{sid}
+                method: GET
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    message_sid: "{{ .sid }}"
+            - name: fetch
+              type: step.twilio_fetch_message
+              config:
+                module: twilio
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.fetch"
+
+    # ----------------------------------------------------------------
+    # Send Verification
+    # POST /api/v1/twilio/verify
+    # Body: { "to": "+15005550001", "channel": "sms", "service_sid": "VA..." }
+    # ----------------------------------------------------------------
+    send-verification:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/twilio/verify
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    to: "{{ default \"+15005550001\" .body.to }}"
+                    channel: "{{ default \"sms\" .body.channel }}"
+                    service_sid: "{{ default \"VA_test_service\" .body.service_sid }}"
+            - name: verify
+              type: step.twilio_send_verification
+              config:
+                module: twilio
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.verify"
+
+    # ----------------------------------------------------------------
+    # Check Verification
+    # POST /api/v1/twilio/verify/check
+    # Body: { "to": "+15005550001", "code": "123456", "service_sid": "VA..." }
+    # ----------------------------------------------------------------
+    check-verification:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/twilio/verify/check
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    to: "{{ default \"+15005550001\" .body.to }}"
+                    code: "{{ default \"123456\" .body.code }}"
+                    service_sid: "{{ default \"VA_test_service\" .body.service_sid }}"
+            - name: check
+              type: step.twilio_check_verification
+              config:
+                module: twilio
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.check"
+
+    # ----------------------------------------------------------------
+    # Create Call
+    # POST /api/v1/twilio/calls
+    # Body: { "to": "+15005550001", "from": "+15005550006", "url": "https://..." }
+    # ----------------------------------------------------------------
+    create-call:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/twilio/calls
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    to: "{{ default \"+15005550001\" .body.to }}"
+                    from: "{{ default \"+15005550006\" .body.from }}"
+                    url: "{{ default \"https://example.com/twiml\" .body.url }}"
+            - name: call
+              type: step.twilio_create_call
+              config:
+                module: twilio
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.call"
+
+    # ----------------------------------------------------------------
+    # List Calls
+    # GET /api/v1/twilio/calls
+    # ----------------------------------------------------------------
+    list-calls:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/twilio/calls
+                method: GET
+        steps:
+            - name: list
+              type: step.twilio_list_calls
+              config:
+                module: twilio
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list"
+
+    # ----------------------------------------------------------------
+    # Lookup Phone
+    # GET /api/v1/twilio/lookup/{phone}
+    # ----------------------------------------------------------------
+    lookup-phone:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/twilio/lookup/{phone}
+                method: GET
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    phone_number: "{{ .phone }}"
+            - name: lookup
+              type: step.twilio_lookup_phone
+              config:
+                module: twilio
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.lookup"

@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scenario-52
+  namespace: wf-scenario-52
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scenario-52
+  template:
+    metadata:
+      labels:
+        app: scenario-52
+    spec:
+      initContainers:
+        - name: build-mock
+          image: golang:1.22-alpine
+          command:
+            - sh
+            - -c
+            - |
+              cp -r /mock-src /tmp/mock && \
+              cd /tmp/mock && \
+              go build -o /mock-bin/mock-monday . && \
+              echo "mock server built"
+          volumeMounts:
+            - name: mock-src
+              mountPath: /mock-src
+            - name: mock-bin
+              mountPath: /mock-bin
+      containers:
+        - name: workflow
+          image: workflow-server:local
+          args: ["-config", "/config/app.yaml", "-data-dir", "/data"]
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: data
+              mountPath: /data
+        - name: mock-monday
+          image: golang:1.22-alpine
+          command: ["/mock-bin/mock-monday"]
+          env:
+            - name: MOCK_PORT
+              value: "19052"
+          ports:
+            - containerPort: 19052
+          volumeMounts:
+            - name: mock-bin
+              mountPath: /mock-bin
+      volumes:
+        - name: config
+          configMap:
+            name: app
+        - name: data
+          emptyDir: {}
+        - name: mock-src
+          configMap:
+            name: mock-monday-src
+        - name: mock-bin
+          emptyDir: {}

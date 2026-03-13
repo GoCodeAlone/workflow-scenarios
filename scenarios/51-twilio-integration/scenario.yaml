@@ -1,0 +1,18 @@
+name: Twilio Integration
+id: "51-twilio-integration"
+category: C
+description: |
+  Tests workflow-plugin-twilio step types against a mock Twilio API server.
+  Validates SMS sending, message listing, verification, and call creation.
+  Uses a Go mock HTTP server that returns canned Twilio JSON responses.
+components:
+  - workflow (engine)
+  - workflow-plugin-twilio (external plugin)
+  - mock Twilio API server
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh

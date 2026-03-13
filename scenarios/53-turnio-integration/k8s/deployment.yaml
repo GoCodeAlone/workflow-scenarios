@@ -1,0 +1,271 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wf-scenario-53
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app
+  namespace: wf-scenario-53
+data:
+  app.yaml: |
+    modules:
+        - name: server
+          type: http.server
+          config:
+            address: ":8080"
+        - name: router
+          type: http.router
+          dependsOn: [server]
+        - name: turnio
+          type: turnio.provider
+          config:
+            apiToken: "test_turn_token"
+            baseUrl: "http://localhost:19053"
+    workflows:
+        http:
+            router: router
+            server: server
+            routes: []
+    pipelines:
+        health:
+            trigger:
+                type: http
+                config:
+                    path: /healthz
+                    method: GET
+            steps:
+                - name: respond
+                  type: step.json_response
+                  config:
+                    status: 200
+                    body:
+                        status: ok
+                        scenario: "53-turnio-integration"
+        send-text:
+            trigger:
+                type: http
+                config:
+                    path: /api/v1/turnio/send
+                    method: POST
+            steps:
+                - name: parse_request
+                  type: step.request_parse
+                  config:
+                    parse_body: true
+                - name: prep
+                  type: step.set
+                  config:
+                    values:
+                        to: "{{ default \"+1234567890\" .body.to }}"
+                        body: "{{ default \"Hello from workflow\" .body.body }}"
+                - name: send_text
+                  type: step.turnio_send_text
+                  config:
+                    module: turnio
+                    to: "{{ index .steps \"prep\" \"to\" }}"
+                    body: "{{ index .steps \"prep\" \"body\" }}"
+                - name: respond
+                  type: step.json_response
+                  config:
+                    status: 200
+                    body_from: "steps.send_text"
+        send-template:
+            trigger:
+                type: http
+                config:
+                    path: /api/v1/turnio/template
+                    method: POST
+            steps:
+                - name: parse_request
+                  type: step.request_parse
+                  config:
+                    parse_body: true
+                - name: prep
+                  type: step.set
+                  config:
+                    values:
+                        to: "{{ default \"+1234567890\" .body.to }}"
+                        template_name: "{{ default \"hello_world\" .body.template_name }}"
+                        language_code: "{{ default \"en\" .body.language_code }}"
+                - name: send_template
+                  type: step.turnio_send_template
+                  config:
+                    module: turnio
+                    to: "{{ index .steps \"prep\" \"to\" }}"
+                    template_name: "{{ index .steps \"prep\" \"template_name\" }}"
+                    language_code: "{{ index .steps \"prep\" \"language_code\" }}"
+                - name: respond
+                  type: step.json_response
+                  config:
+                    status: 200
+                    body_from: "steps.send_template"
+        check-contact:
+            trigger:
+                type: http
+                config:
+                    path: /api/v1/turnio/contacts
+                    method: POST
+            steps:
+                - name: parse_request
+                  type: step.request_parse
+                  config:
+                    parse_body: true
+                - name: prep
+                  type: step.set
+                  config:
+                    values:
+                        phone: "{{ default \"+1234567890\" .body.phone }}"
+                - name: check_contact
+                  type: step.turnio_check_contact
+                  config:
+                    module: turnio
+                    phone: "{{ index .steps \"prep\" \"phone\" }}"
+                - name: respond
+                  type: step.json_response
+                  config:
+                    status: 200
+                    body_from: "steps.check_contact"
+        list-templates:
+            trigger:
+                type: http
+                config:
+                    path: /api/v1/turnio/templates
+                    method: GET
+            steps:
+                - name: list_templates
+                  type: step.turnio_list_templates
+                  config:
+                    module: turnio
+                - name: respond
+                  type: step.json_response
+                  config:
+                    status: 200
+                    body_from: "steps.list_templates"
+        create-template:
+            trigger:
+                type: http
+                config:
+                    path: /api/v1/turnio/templates
+                    method: POST
+            steps:
+                - name: parse_request
+                  type: step.request_parse
+                  config:
+                    parse_body: true
+                - name: prep
+                  type: step.set
+                  config:
+                    values:
+                        template_name: "{{ default \"my_template\" .body.template_name }}"
+                        category: "{{ default \"UTILITY\" .body.category }}"
+                        language_code: "{{ default \"en\" .body.language_code }}"
+                - name: create_template
+                  type: step.turnio_create_template
+                  config:
+                    module: turnio
+                    template_name: "{{ index .steps \"prep\" \"template_name\" }}"
+                    category: "{{ index .steps \"prep\" \"category\" }}"
+                    language_code: "{{ index .steps \"prep\" \"language_code\" }}"
+                - name: respond
+                  type: step.json_response
+                  config:
+                    status: 201
+                    body_from: "steps.create_template"
+        create-flow:
+            trigger:
+                type: http
+                config:
+                    path: /api/v1/turnio/flows
+                    method: POST
+            steps:
+                - name: parse_request
+                  type: step.request_parse
+                  config:
+                    parse_body: true
+                - name: prep
+                  type: step.set
+                  config:
+                    values:
+                        flow_name: "{{ default \"my-flow\" .body.flow_name }}"
+                        description: "{{ default \"\" .body.description }}"
+                - name: create_flow
+                  type: step.turnio_create_flow
+                  config:
+                    module: turnio
+                    flow_name: "{{ index .steps \"prep\" \"flow_name\" }}"
+                    description: "{{ index .steps \"prep\" \"description\" }}"
+                - name: respond
+                  type: step.json_response
+                  config:
+                    status: 201
+                    body_from: "steps.create_flow"
+        list-flows:
+            trigger:
+                type: http
+                config:
+                    path: /api/v1/turnio/flows
+                    method: GET
+            steps:
+                - name: list_flows
+                  type: step.turnio_list_flows
+                  config:
+                    module: turnio
+                - name: respond
+                  type: step.json_response
+                  config:
+                    status: 200
+                    body_from: "steps.list_flows"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scenario-53
+  namespace: wf-scenario-53
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scenario-53
+  template:
+    metadata:
+      labels:
+        app: scenario-53
+    spec:
+      containers:
+        - name: mock-turnio
+          image: mock-turnio:local
+          ports:
+            - containerPort: 19053
+          env:
+            - name: MOCK_PORT
+              value: "19053"
+        - name: workflow
+          image: workflow-server:local
+          args: ["-config", "/config/app.yaml", "-data-dir", "/data"]
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: config
+          configMap:
+            name: app
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: workflow-server
+  namespace: wf-scenario-53
+spec:
+  selector:
+    app: scenario-53
+  ports:
+    - port: 8080
+      targetPort: 8080

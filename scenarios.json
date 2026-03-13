@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-03-09T04:49:56.855342Z",
+  "lastUpdated": "2026-03-13T00:54:34.577041+00:00",
   "componentVersions": {
     "workflow": "v0.2.15",
     "workflow-cloud": "v0.1.0",
@@ -625,14 +625,32 @@
       "failCount": 0,
       "notes": "Exercises goakt actor model: actor.system, actor.pool (auto-managed + permanent), step.actor_ask, step.actor_send. Order lifecycle with stateful actors + round-robin worker pool."
     },
-    "51-bmw-iac": {
-      "status": "passing",
-      "namespace": "wf-scenario-51",
-      "deployed": true,
-      "testCount": 13,
-      "passCount": 13,
+    "52-monday-integration": {
+      "status": "not-deployed",
+      "namespace": "wf-scenario-52",
+      "deployed": false,
+      "testCount": 12,
+      "passCount": 0,
       "failCount": 0,
-      "notes": "BMW IaC lifecycle with DO mock providers. Tests plan/apply/status/drift/destroy + idempotency."
+      "notes": "Tests workflow-plugin-monday step types against a mock monday.com GraphQL API server. Validates board/item/group CRUD and generic queries."
+    },
+    "51-twilio-integration": {
+      "status": "not-deployed",
+      "namespace": "wf-scenario-51",
+      "deployed": false,
+      "testCount": 18,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Tests workflow-plugin-twilio step types against a mock Twilio API server. Validates SMS/MMS sending, message listing, verification, call creation, and phone lookup."
+    },
+    "53-turnio-integration": {
+      "status": "not-deployed",
+      "namespace": "wf-scenario-53",
+      "deployed": false,
+      "testCount": 13,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Tests workflow-plugin-turnio step types against a mock turn.io API server. Validates WhatsApp messaging, contacts, templates, flows, and rate limit tracking."
     }
   }
 }

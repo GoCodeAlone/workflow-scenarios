@@ -1,0 +1,18 @@
+name: monday.com Integration
+id: "52-monday-integration"
+category: C
+description: |
+  Tests workflow-plugin-monday step types against a mock monday.com GraphQL API server.
+  Validates board CRUD, item CRUD, group operations, and generic queries.
+  Uses a Go mock HTTP server that returns canned monday.com GraphQL responses.
+components:
+  - workflow (engine)
+  - workflow-plugin-monday (external plugin)
+  - mock monday.com GraphQL server
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh

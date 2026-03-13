@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wf-scenario-51
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app
+  namespace: wf-scenario-51
+data:
+  app.yaml: |
+    # loaded from config/app.yaml via make deploy
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scenario-51
+  namespace: wf-scenario-51
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scenario-51
+  template:
+    metadata:
+      labels:
+        app: scenario-51
+    spec:
+      initContainers:
+        # Copy the twilio plugin binary into the shared plugins volume so the
+        # workflow server can discover it as an external gRPC plugin.
+        - name: install-plugin
+          image: workflow-plugin-twilio:local
+          imagePullPolicy: Never
+          command: ["/bin/sh", "-c", "cp /workflow-plugin-twilio /plugins/workflow-plugin-twilio && cp /plugin.json /plugins/plugin.json"]
+          volumeMounts:
+            - name: plugins
+              mountPath: /plugins
+      containers:
+        # Mock Twilio API server — returns canned responses on :19051.
+        - name: mock-twilio
+          image: mock-twilio:local
+          imagePullPolicy: Never
+          env:
+            - name: MOCK_PORT
+              value: "19051"
+          ports:
+            - containerPort: 19051
+          readinessProbe:
+            tcpSocket:
+              port: 19051
+            initialDelaySeconds: 1
+            periodSeconds: 2
+
+        # Workflow engine with twilio plugin loaded from /data/plugins/.
+        - name: workflow
+          image: workflow-server:local
+          imagePullPolicy: Never
+          args: ["-config", "/config/app.yaml", "-data-dir", "/data"]
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 3
+            failureThreshold: 20
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: data
+              mountPath: /data
+            - name: plugins
+              mountPath: /data/plugins/workflow-plugin-twilio
+      volumes:
+        - name: config
+          configMap:
+            name: app
+        - name: data
+          emptyDir: {}
+        - name: plugins
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scenario-51
+  namespace: wf-scenario-51
+spec:
+  selector:
+    app: scenario-51
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: mock
+      port: 19051
+      targetPort: 19051
