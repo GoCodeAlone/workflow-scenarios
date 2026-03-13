@@ -1,0 +1,17 @@
+name: Salesforce Integration
+id: "57-salesforce-integration"
+category: C
+description: |
+  Tests workflow-plugin-salesforce step types against a mock Salesforce API server.
+  Validates SObject CRUD, SOQL queries, and metadata operations.
+components:
+  - workflow (engine)
+  - workflow-plugin-salesforce (external plugin)
+  - mock Salesforce API server
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh

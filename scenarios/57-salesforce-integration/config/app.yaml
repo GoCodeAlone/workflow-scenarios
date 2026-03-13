@@ -1,0 +1,295 @@
+# ============================================================
+# Scenario 57 — Salesforce Integration
+#
+# Tests workflow-plugin-salesforce step types against a mock
+# Salesforce REST API server running as a sidecar on :19057.
+#
+# The salesforce.provider module is configured with an
+# instanceUrl that redirects all REST calls to the local mock.
+#
+# Endpoints:
+#   GET  /healthz                              — health check
+#   POST /api/v1/sf/records/{type}             — create record
+#   GET  /api/v1/sf/records/{type}/{id}        — get record
+#   PATCH /api/v1/sf/records/{type}/{id}       — update record
+#   DELETE /api/v1/sf/records/{type}/{id}      — delete record
+#   GET  /api/v1/sf/query                      — SOQL query
+#   GET  /api/v1/sf/describe                   — describe global
+#   GET  /api/v1/sf/describe/{type}            — describe object
+#   GET  /api/v1/sf/limits                     — org limits
+#   GET  /api/v1/sf/identity                   — current user info
+# ============================================================
+
+modules:
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: salesforce
+      type: salesforce.provider
+      config:
+        accessToken: "mock-access-token-for-testing"
+        instanceUrl: "http://localhost:19057"
+        apiVersion: "v63.0"
+
+workflows:
+    http:
+        router: router
+        server: server
+        routes: []
+
+pipelines:
+    # ----------------------------------------------------------------
+    # Health
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "57-salesforce-integration"
+
+    # ----------------------------------------------------------------
+    # Create Record
+    # POST /api/v1/sf/records/{type}
+    # Body: { "fields": { "Name": "Acme", ... } }
+    # ----------------------------------------------------------------
+    create_record:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/sf/records/{type}
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    sobject_type: "{{ .type }}"
+                    fields: "{{ .body.fields }}"
+            - name: create
+              type: step.salesforce_record_create
+              config:
+                module: salesforce
+            - name: respond
+              type: step.json_response
+              config:
+                status: 201
+                body_from: "steps.create"
+
+    # ----------------------------------------------------------------
+    # Get Record
+    # GET /api/v1/sf/records/{type}/{id}
+    # ----------------------------------------------------------------
+    get_record:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/sf/records/{type}/{id}
+                method: GET
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    sobject_type: "{{ .type }}"
+                    record_id: "{{ .id }}"
+            - name: get
+              type: step.salesforce_record_get
+              config:
+                module: salesforce
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get"
+
+    # ----------------------------------------------------------------
+    # Update Record
+    # PATCH /api/v1/sf/records/{type}/{id}
+    # Body: { "fields": { "Name": "Updated" } }
+    # ----------------------------------------------------------------
+    update_record:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/sf/records/{type}/{id}
+                method: PATCH
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    sobject_type: "{{ .type }}"
+                    record_id: "{{ .id }}"
+                    fields: "{{ .body.fields }}"
+            - name: update
+              type: step.salesforce_record_update
+              config:
+                module: salesforce
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.update"
+
+    # ----------------------------------------------------------------
+    # Delete Record
+    # DELETE /api/v1/sf/records/{type}/{id}
+    # ----------------------------------------------------------------
+    delete_record:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/sf/records/{type}/{id}
+                method: DELETE
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    sobject_type: "{{ .type }}"
+                    record_id: "{{ .id }}"
+            - name: delete
+              type: step.salesforce_record_delete
+              config:
+                module: salesforce
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.delete"
+
+    # ----------------------------------------------------------------
+    # SOQL Query
+    # GET /api/v1/sf/query?soql=SELECT+Id,Name+FROM+Account
+    # ----------------------------------------------------------------
+    query:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/sf/query
+                method: GET
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    soql: "{{ .soql }}"
+            - name: query
+              type: step.salesforce_query
+              config:
+                module: salesforce
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.query"
+
+    # ----------------------------------------------------------------
+    # Describe Global
+    # GET /api/v1/sf/describe
+    # ----------------------------------------------------------------
+    describe_global:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/sf/describe
+                method: GET
+        steps:
+            - name: describe
+              type: step.salesforce_describe_global
+              config:
+                module: salesforce
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.describe"
+
+    # ----------------------------------------------------------------
+    # Describe Object
+    # GET /api/v1/sf/describe/{type}
+    # ----------------------------------------------------------------
+    describe_object:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/sf/describe/{type}
+                method: GET
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    sobject_type: "{{ .type }}"
+            - name: describe
+              type: step.salesforce_record_describe
+              config:
+                module: salesforce
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.describe"
+
+    # ----------------------------------------------------------------
+    # Org Limits
+    # GET /api/v1/sf/limits
+    # ----------------------------------------------------------------
+    org_limits:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/sf/limits
+                method: GET
+        steps:
+            - name: limits
+              type: step.salesforce_org_limits
+              config:
+                module: salesforce
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.limits"
+
+    # ----------------------------------------------------------------
+    # Identity / Current User
+    # GET /api/v1/sf/identity
+    # ----------------------------------------------------------------
+    identity:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/sf/identity
+                method: GET
+        steps:
+            - name: identity
+              type: step.salesforce_identity_get
+              config:
+                module: salesforce
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.identity"
