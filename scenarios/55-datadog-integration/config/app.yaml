@@ -1,0 +1,337 @@
+# ============================================================
+# Scenario 55 — Datadog Integration
+#
+# Tests workflow-plugin-datadog step types against a mock
+# Datadog API server running as a sidecar on :19055.
+#
+# The datadog.provider module is configured with apiUrl that
+# redirects all Datadog SDK calls to the local mock server.
+#
+# Endpoints:
+#   GET  /healthz                           — health check
+#   POST /api/v1/datadog/metric             — submit metric (step.datadog_metric_submit)
+#   POST /api/v1/datadog/event              — create event (step.datadog_event_create)
+#   GET  /api/v1/datadog/event/{event_id}   — get event (step.datadog_event_get)
+#   GET  /api/v1/datadog/events             — list events (step.datadog_event_list)
+#   POST /api/v1/datadog/monitor            — create monitor (step.datadog_monitor_create)
+#   GET  /api/v1/datadog/monitors           — list monitors (step.datadog_monitor_list)
+#   POST /api/v1/datadog/dashboard          — create dashboard (step.datadog_dashboard_create)
+#   GET  /api/v1/datadog/dashboards         — list dashboards (step.datadog_dashboard_list)
+#   GET  /api/v1/datadog/hosts              — list hosts (step.datadog_host_list)
+#   POST /api/v1/datadog/log                — submit log (step.datadog_log_submit)
+# ============================================================
+
+modules:
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: datadog
+      type: datadog.provider
+      config:
+        apiKey: "test-api-key-0123456789abcdef"
+        appKey: "test-app-key-0123456789abcdef"
+        site: "datadoghq.com"
+        apiUrl: "http://localhost:19055"
+
+workflows:
+    http:
+        router: router
+        server: server
+        routes: []
+
+pipelines:
+    # ----------------------------------------------------------------
+    # Health
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "55-datadog-integration"
+
+    # ----------------------------------------------------------------
+    # Submit Metric
+    # POST /api/v1/datadog/metric
+    # Body: { "metric": "cpu.usage", "value": 42.5, "type": "gauge", "tags": ["env:test"] }
+    # ----------------------------------------------------------------
+    submit_metric:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/datadog/metric
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    metric: '{{ default "cpu.usage" .body.metric }}'
+                    value: '{{ default "42.5" .body.value }}'
+                    type: '{{ default "gauge" .body.type }}'
+            - name: submit
+              type: step.datadog_metric_submit
+              config:
+                module: datadog
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.submit"
+
+    # ----------------------------------------------------------------
+    # Create Event
+    # POST /api/v1/datadog/event
+    # Body: { "title": "Deploy v1.2", "text": "Deployed to prod", "tags": ["env:prod"] }
+    # ----------------------------------------------------------------
+    create_event:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/datadog/event
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    title: '{{ default "Test Event" .body.title }}'
+                    text: '{{ default "Event description" .body.text }}'
+            - name: create
+              type: step.datadog_event_create
+              config:
+                module: datadog
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.create"
+
+    # ----------------------------------------------------------------
+    # Get Event
+    # GET /api/v1/datadog/event/{event_id}
+    # ----------------------------------------------------------------
+    get_event:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/datadog/event/{event_id}
+                method: GET
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    event_id: "{{ .event_id }}"
+            - name: fetch
+              type: step.datadog_event_get
+              config:
+                module: datadog
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.fetch"
+
+    # ----------------------------------------------------------------
+    # List Events
+    # GET /api/v1/datadog/events
+    # ----------------------------------------------------------------
+    list_events:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/datadog/events
+                method: GET
+        steps:
+            - name: list
+              type: step.datadog_event_list
+              config:
+                module: datadog
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list"
+
+    # ----------------------------------------------------------------
+    # Create Monitor
+    # POST /api/v1/datadog/monitor
+    # Body: { "name": "CPU Alert", "query": "avg(last_5m):avg:cpu.usage{*} > 90", "message": "High CPU" }
+    # ----------------------------------------------------------------
+    create_monitor:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/datadog/monitor
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    name: '{{ default "CPU Alert" .body.name }}'
+                    query: '{{ default "avg(last_5m):avg:cpu.usage{*} > 90" .body.query }}'
+                    message: '{{ default "CPU is high" .body.message }}'
+            - name: create
+              type: step.datadog_monitor_create
+              config:
+                module: datadog
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.create"
+
+    # ----------------------------------------------------------------
+    # List Monitors
+    # GET /api/v1/datadog/monitors
+    # ----------------------------------------------------------------
+    list_monitors:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/datadog/monitors
+                method: GET
+        steps:
+            - name: list
+              type: step.datadog_monitor_list
+              config:
+                module: datadog
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list"
+
+    # ----------------------------------------------------------------
+    # Create Dashboard
+    # POST /api/v1/datadog/dashboard
+    # Body: { "title": "My Dashboard", "layout_type": "ordered", "description": "Test" }
+    # ----------------------------------------------------------------
+    create_dashboard:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/datadog/dashboard
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    title: '{{ default "Test Dashboard" .body.title }}'
+                    layout_type: '{{ default "ordered" .body.layout_type }}'
+                    description: '{{ default "Dashboard description" .body.description }}'
+            - name: create
+              type: step.datadog_dashboard_create
+              config:
+                module: datadog
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.create"
+
+    # ----------------------------------------------------------------
+    # List Dashboards
+    # GET /api/v1/datadog/dashboards
+    # ----------------------------------------------------------------
+    list_dashboards:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/datadog/dashboards
+                method: GET
+        steps:
+            - name: list
+              type: step.datadog_dashboard_list
+              config:
+                module: datadog
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list"
+
+    # ----------------------------------------------------------------
+    # List Hosts
+    # GET /api/v1/datadog/hosts
+    # ----------------------------------------------------------------
+    list_hosts:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/datadog/hosts
+                method: GET
+        steps:
+            - name: list
+              type: step.datadog_host_list
+              config:
+                module: datadog
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list"
+
+    # ----------------------------------------------------------------
+    # Submit Log
+    # POST /api/v1/datadog/log
+    # Body: { "message": "Application started", "service": "myapp", "source": "go" }
+    # ----------------------------------------------------------------
+    submit_log:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/datadog/log
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    message: '{{ default "Test log message" .body.message }}'
+                    service: '{{ default "test-service" .body.service }}'
+                    source: '{{ default "go" .body.source }}'
+            - name: submit
+              type: step.datadog_log_submit
+              config:
+                module: datadog
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.submit"

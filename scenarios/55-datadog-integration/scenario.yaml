@@ -1,0 +1,17 @@
+name: Datadog Integration
+id: "55-datadog-integration"
+category: C
+description: |
+  Tests workflow-plugin-datadog step types against a mock Datadog API server.
+  Validates metrics, events, monitors, dashboards, and host operations.
+components:
+  - workflow (engine)
+  - workflow-plugin-datadog (external plugin)
+  - mock Datadog API server
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh
