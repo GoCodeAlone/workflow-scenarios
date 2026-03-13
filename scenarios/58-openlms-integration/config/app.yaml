@@ -1,0 +1,410 @@
+# ============================================================
+# Scenario 58 — OpenLMS Integration
+#
+# Tests workflow-plugin-openlms step types against a mock Moodle
+# Web Services server running as a sidecar on :19058.
+#
+# The openlms.provider module is configured with a siteUrl that
+# redirects all Moodle API calls to the local mock server.
+#
+# Endpoints:
+#   GET  /healthz                                — health check
+#   POST /api/v1/openlms/users                   — create user (step.openlms_user_create)
+#   POST /api/v1/openlms/users/get               — get user (step.openlms_user_get)
+#   GET  /api/v1/openlms/users/search/{query}    — search users (step.openlms_user_search)
+#   POST /api/v1/openlms/courses                 — create course (step.openlms_course_create)
+#   POST /api/v1/openlms/courses/get             — get course (step.openlms_course_get)
+#   POST /api/v1/openlms/courses/search          — search courses (step.openlms_course_search)
+#   POST /api/v1/openlms/courses/contents        — get course contents (step.openlms_course_get_contents)
+#   POST /api/v1/openlms/enrol                   — enrol user (step.openlms_enrol_manual_enrol)
+#   POST /api/v1/openlms/enrol/users             — get enrolled users (step.openlms_enrol_get_enrolled_users)
+#   POST /api/v1/openlms/grades                  — get grades (step.openlms_grade_get_grades)
+#   POST /api/v1/openlms/grades/items            — get grade items (step.openlms_grade_get_grade_items)
+# ============================================================
+
+modules:
+    - name: server
+      type: http.server
+      config:
+        address: ":18058"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: openlms
+      type: openlms.provider
+      config:
+        siteUrl: "http://localhost:19058"
+        token: "mock_moodle_token_abc123"
+
+workflows:
+    http:
+        router: router
+        server: server
+        routes: []
+
+pipelines:
+    # ----------------------------------------------------------------
+    # Health
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "58-openlms-integration"
+
+    # ----------------------------------------------------------------
+    # Create User
+    # POST /api/v1/openlms/users
+    # Body: { "username": "jdoe", "password": "Pass1234!", "firstname": "John", "lastname": "Doe", "email": "jdoe@example.com" }
+    # ----------------------------------------------------------------
+    create_user:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/openlms/users
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    username: "{{ .body.username }}"
+                    password: "{{ .body.password }}"
+                    firstname: "{{ .body.firstname }}"
+                    lastname: "{{ .body.lastname }}"
+                    email: "{{ .body.email }}"
+            - name: create
+              type: step.openlms_user_create
+              config:
+                module: openlms
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.create"
+
+    # ----------------------------------------------------------------
+    # Get User
+    # POST /api/v1/openlms/users/get
+    # Body: { "key": "username", "value": "jdoe" }
+    # ----------------------------------------------------------------
+    get_user:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/openlms/users/get
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    key: "{{ default \"username\" .body.key }}"
+                    value: "{{ .body.value }}"
+            - name: get
+              type: step.openlms_user_get
+              config:
+                module: openlms
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get"
+
+    # ----------------------------------------------------------------
+    # Search Users
+    # GET /api/v1/openlms/users/search/{query}
+    # ----------------------------------------------------------------
+    search_users:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/openlms/users/search/{query}
+                method: GET
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    query: "{{ .query }}"
+            - name: search
+              type: step.openlms_user_search
+              config:
+                module: openlms
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.search"
+
+    # ----------------------------------------------------------------
+    # Create Course
+    # POST /api/v1/openlms/courses
+    # Body: { "shortname": "CS101", "fullname": "Intro to CS", "categoryid": "1" }
+    # ----------------------------------------------------------------
+    create_course:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/openlms/courses
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    shortname: "{{ .body.shortname }}"
+                    fullname: "{{ .body.fullname }}"
+                    categoryid: "{{ default \"1\" .body.categoryid }}"
+            - name: create
+              type: step.openlms_course_create
+              config:
+                module: openlms
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.create"
+
+    # ----------------------------------------------------------------
+    # Get Course
+    # POST /api/v1/openlms/courses/get
+    # Body: { "courseid": "2" }
+    # ----------------------------------------------------------------
+    get_course:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/openlms/courses/get
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    courseid: "{{ .body.courseid }}"
+            - name: get
+              type: step.openlms_course_get
+              config:
+                module: openlms
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get"
+
+    # ----------------------------------------------------------------
+    # Search Courses
+    # POST /api/v1/openlms/courses/search
+    # Body: { "criteriavalue": "CS" }
+    # ----------------------------------------------------------------
+    search_courses:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/openlms/courses/search
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    criterianame: "{{ default \"search\" .body.criterianame }}"
+                    criteriavalue: "{{ .body.criteriavalue }}"
+            - name: search
+              type: step.openlms_course_search
+              config:
+                module: openlms
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.search"
+
+    # ----------------------------------------------------------------
+    # Get Course Contents
+    # POST /api/v1/openlms/courses/contents
+    # Body: { "courseid": "2" }
+    # ----------------------------------------------------------------
+    get_course_contents:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/openlms/courses/contents
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    courseid: "{{ .body.courseid }}"
+            - name: get_contents
+              type: step.openlms_course_get_contents
+              config:
+                module: openlms
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get_contents"
+
+    # ----------------------------------------------------------------
+    # Enrol User
+    # POST /api/v1/openlms/enrol
+    # Body: { "userid": "2", "courseid": "2", "roleid": "5" }
+    # ----------------------------------------------------------------
+    enrol_user:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/openlms/enrol
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    userid: "{{ .body.userid }}"
+                    courseid: "{{ .body.courseid }}"
+                    roleid: "{{ default \"5\" .body.roleid }}"
+            - name: enrol
+              type: step.openlms_enrol_manual_enrol
+              config:
+                module: openlms
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.enrol"
+
+    # ----------------------------------------------------------------
+    # Get Enrolled Users
+    # POST /api/v1/openlms/enrol/users
+    # Body: { "courseid": "2" }
+    # ----------------------------------------------------------------
+    get_enrolled_users:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/openlms/enrol/users
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    courseid: "{{ .body.courseid }}"
+            - name: get_enrolled
+              type: step.openlms_enrol_get_enrolled_users
+              config:
+                module: openlms
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get_enrolled"
+
+    # ----------------------------------------------------------------
+    # Get Grades
+    # POST /api/v1/openlms/grades
+    # Body: { "courseid": "2", "userid": "2" }
+    # ----------------------------------------------------------------
+    get_grades:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/openlms/grades
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    courseid: "{{ .body.courseid }}"
+                    userid: "{{ default \"\" .body.userid }}"
+            - name: get_grades
+              type: step.openlms_grade_get_grades
+              config:
+                module: openlms
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get_grades"
+
+    # ----------------------------------------------------------------
+    # Get Grade Items
+    # POST /api/v1/openlms/grades/items
+    # Body: { "courseid": "2", "userid": "2" }
+    # ----------------------------------------------------------------
+    get_grade_items:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/openlms/grades/items
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    courseid: "{{ .body.courseid }}"
+                    userid: "{{ default \"\" .body.userid }}"
+            - name: get_items
+              type: step.openlms_grade_get_grade_items
+              config:
+                module: openlms
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get_items"

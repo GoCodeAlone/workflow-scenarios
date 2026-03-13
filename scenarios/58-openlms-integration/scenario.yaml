@@ -1,0 +1,17 @@
+name: OpenLMS Integration
+id: "58-openlms-integration"
+category: C
+description: |
+  Tests workflow-plugin-openlms step types against a mock Moodle Web Services server.
+  Validates user, course, enrollment, and grade operations.
+components:
+  - workflow (engine)
+  - workflow-plugin-openlms (external plugin)
+  - mock Moodle Web Services server
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh
