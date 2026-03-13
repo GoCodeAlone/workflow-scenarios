@@ -1,0 +1,362 @@
+# ============================================================
+# Scenario 54 — Okta Integration
+#
+# Tests workflow-plugin-okta step types against a mock Okta
+# API server running as a sidecar on :19054.
+#
+# The okta.provider module is configured with orgUrl pointing
+# at the local mock server so all REST calls are intercepted.
+#
+# Endpoints:
+#   GET  /healthz                                — health check
+#   POST /api/v1/okta/users                      — create user (step.okta_user_create)
+#   GET  /api/v1/okta/users/{userId}             — get user (step.okta_user_get)
+#   GET  /api/v1/okta/users                      — list users (step.okta_user_list)
+#   POST /api/v1/okta/users/{userId}             — update user (step.okta_user_update)
+#   DELETE /api/v1/okta/users/{userId}           — delete user (step.okta_user_delete)
+#   POST /api/v1/okta/groups                     — create group (step.okta_group_create)
+#   PUT  /api/v1/okta/groups/{groupId}/users/{userId} — add user to group (step.okta_group_add_user)
+#   GET  /api/v1/okta/groups/{groupId}/users     — list group members (step.okta_group_list_users)
+#   GET  /api/v1/okta/groups                     — list groups (step.okta_group_list)
+#   GET  /api/v1/okta/apps                       — list apps (step.okta_app_list)
+#   POST /api/v1/okta/users/{userId}/deactivate  — deactivate user (step.okta_user_deactivate)
+# ============================================================
+
+modules:
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: okta
+      type: okta.provider
+      config:
+        orgUrl: "http://localhost:19054"
+        apiToken: "test-api-token-00xx"
+
+workflows:
+    http:
+        router: router
+        server: server
+        routes: []
+
+pipelines:
+    # ----------------------------------------------------------------
+    # Health
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "54-okta-integration"
+
+    # ----------------------------------------------------------------
+    # Create User
+    # POST /api/v1/okta/users
+    # Body: { "firstName": "...", "lastName": "...", "email": "...", "login": "..." }
+    # ----------------------------------------------------------------
+    create_user:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/okta/users
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    firstName: "{{ default \"Jane\" .body.firstName }}"
+                    lastName: "{{ default \"Doe\" .body.lastName }}"
+                    email: "{{ default \"jane.doe@example.com\" .body.email }}"
+                    login: "{{ default \"jane.doe@example.com\" .body.login }}"
+            - name: create
+              type: step.okta_user_create
+              config:
+                module: okta
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.create"
+
+    # ----------------------------------------------------------------
+    # Get User
+    # GET /api/v1/okta/users/{userId}
+    # ----------------------------------------------------------------
+    get_user:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/okta/users/{userId}
+                method: GET
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    userId: "{{ .userId }}"
+            - name: fetch
+              type: step.okta_user_get
+              config:
+                module: okta
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.fetch"
+
+    # ----------------------------------------------------------------
+    # List Users
+    # GET /api/v1/okta/users
+    # ----------------------------------------------------------------
+    list_users:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/okta/users
+                method: GET
+        steps:
+            - name: list
+              type: step.okta_user_list
+              config:
+                module: okta
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list"
+
+    # ----------------------------------------------------------------
+    # Update User
+    # POST /api/v1/okta/users/{userId}
+    # Body: { "firstName": "...", "lastName": "..." }
+    # ----------------------------------------------------------------
+    update_user:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/okta/users/{userId}/update
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    userId: "{{ .userId }}"
+                    profile: ""
+            - name: prepare_profile
+              type: step.set
+              config:
+                values:
+                    userId: "{{ .userId }}"
+                    firstName: "{{ default \"Updated\" .body.firstName }}"
+                    lastName: "{{ default \"User\" .body.lastName }}"
+                    email: "{{ default \"updated@example.com\" .body.email }}"
+            - name: update
+              type: step.okta_user_update
+              config:
+                module: okta
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.update"
+
+    # ----------------------------------------------------------------
+    # Delete User
+    # DELETE /api/v1/okta/users/{userId}
+    # ----------------------------------------------------------------
+    delete_user:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/okta/users/{userId}
+                method: DELETE
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    userId: "{{ .userId }}"
+            - name: delete
+              type: step.okta_user_delete
+              config:
+                module: okta
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.delete"
+
+    # ----------------------------------------------------------------
+    # Create Group
+    # POST /api/v1/okta/groups
+    # Body: { "name": "...", "description": "..." }
+    # ----------------------------------------------------------------
+    create_group:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/okta/groups
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    name: "{{ default \"Test Group\" .body.name }}"
+                    description: "{{ default \"A test group\" .body.description }}"
+            - name: create
+              type: step.okta_group_create
+              config:
+                module: okta
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.create"
+
+    # ----------------------------------------------------------------
+    # List Groups
+    # GET /api/v1/okta/groups
+    # ----------------------------------------------------------------
+    list_groups:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/okta/groups
+                method: GET
+        steps:
+            - name: list
+              type: step.okta_group_list
+              config:
+                module: okta
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list"
+
+    # ----------------------------------------------------------------
+    # Add User to Group
+    # PUT /api/v1/okta/groups/{groupId}/users/{userId}
+    # ----------------------------------------------------------------
+    group_add_user:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/okta/groups/{groupId}/users/{userId}
+                method: PUT
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    groupId: "{{ .groupId }}"
+                    userId: "{{ .userId }}"
+            - name: add
+              type: step.okta_group_add_user
+              config:
+                module: okta
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.add"
+
+    # ----------------------------------------------------------------
+    # List Group Members
+    # GET /api/v1/okta/groups/{groupId}/users
+    # ----------------------------------------------------------------
+    group_list_users:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/okta/groups/{groupId}/users
+                method: GET
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    groupId: "{{ .groupId }}"
+            - name: list
+              type: step.okta_group_list_users
+              config:
+                module: okta
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list"
+
+    # ----------------------------------------------------------------
+    # List Apps
+    # GET /api/v1/okta/apps
+    # ----------------------------------------------------------------
+    list_apps:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/okta/apps
+                method: GET
+        steps:
+            - name: list
+              type: step.okta_app_list
+              config:
+                module: okta
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list"
+
+    # ----------------------------------------------------------------
+    # Deactivate User
+    # POST /api/v1/okta/users/{userId}/deactivate
+    # ----------------------------------------------------------------
+    deactivate_user:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/okta/users/{userId}/deactivate
+                method: POST
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    userId: "{{ .userId }}"
+            - name: deactivate
+              type: step.okta_user_deactivate
+              config:
+                module: okta
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.deactivate"

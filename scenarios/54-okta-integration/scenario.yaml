@@ -1,0 +1,17 @@
+name: Okta Integration
+id: "54-okta-integration"
+category: C
+description: |
+  Tests workflow-plugin-okta step types against a mock Okta API server.
+  Validates user CRUD, groups, and application listing.
+components:
+  - workflow (engine)
+  - workflow-plugin-okta (external plugin)
+  - mock Okta API server
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh
