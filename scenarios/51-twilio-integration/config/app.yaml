@@ -31,8 +31,8 @@ modules:
     - name: twilio
       type: twilio.provider
       config:
-        accountSid: "AC_test_account"
-        authToken: "test_auth_token"
+        accountSid: "ACtest0123456789abcdef0123456789"
+        authToken: "abcdef0123456789abcdef0123456789"
         baseURL: "http://localhost:19051"
 
 workflows:

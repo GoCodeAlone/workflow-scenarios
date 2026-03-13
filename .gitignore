@@ -7,3 +7,9 @@ scenarios/*/ui/dist/
 /cmd/sample-orders/sample-orders
 dist/
 .worktrees/
+
+# Scenario runtime artifacts
+scenarios/*/plugins/
+scenarios/*/mock/mock-*
+scenarios/*/*.db
+sample-orders

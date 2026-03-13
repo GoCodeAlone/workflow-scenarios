@@ -78,19 +78,23 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				},
 			},
 		}
-	case strings.Contains(q, "items_page_by_column_values") || strings.Contains(q, "items_page"):
+	case strings.Contains(q, "items_page"):
 		resp = map[string]interface{}{
 			"data": map[string]interface{}{
-				"items_page_by_column_values": map[string]interface{}{
-					"cursor": nil,
-					"items": []interface{}{
-						map[string]interface{}{
-							"id":   "9876543210",
-							"name": "Sample Item 1",
-						},
-						map[string]interface{}{
-							"id":   "9876543211",
-							"name": "Sample Item 2",
+				"boards": []interface{}{
+					map[string]interface{}{
+						"items_page": map[string]interface{}{
+							"cursor": nil,
+							"items": []interface{}{
+								map[string]interface{}{
+									"id":   "9876543210",
+									"name": "Sample Item 1",
+								},
+								map[string]interface{}{
+									"id":   "9876543211",
+									"name": "Sample Item 2",
+								},
+							},
 						},
 					},
 				},

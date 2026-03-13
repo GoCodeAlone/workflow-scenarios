@@ -100,7 +100,7 @@ func handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		"to":           to,
 		"from":         from,
 		"body":         body,
-		"date_created": time.Now().UTC().Format(time.RFC1123Z),
+		"date_created": time.Now().UTC().Format(time.RFC3339),
 		"direction":    "outbound-api",
 		"price":        nil,
 	}
@@ -150,7 +150,7 @@ func handleFetchMessage(w http.ResponseWriter, r *http.Request, msgSid string) {
 		"to":           "+15005550001",
 		"from":         "+15005550006",
 		"body":         "Fetched message body",
-		"date_created": time.Now().UTC().Format(time.RFC1123Z),
+		"date_created": time.Now().UTC().Format(time.RFC3339),
 		"direction":    "outbound-api",
 		"num_media":    "0",
 	})
@@ -169,7 +169,7 @@ func handleCreateCall(w http.ResponseWriter, r *http.Request) {
 		"to":           to,
 		"from":         from,
 		"direction":    "outbound-api",
-		"date_created": time.Now().UTC().Format(time.RFC1123Z),
+		"date_created": time.Now().UTC().Format(time.RFC3339),
 		"duration":     "0",
 	})
 }
@@ -240,7 +240,7 @@ func handleSendVerification(w http.ResponseWriter, r *http.Request, serviceSid s
 		"to":          to,
 		"channel":     channel,
 		"status":      "pending",
-		"date_created": time.Now().UTC().Format(time.RFC1123Z),
+		"date_created": time.Now().UTC().Format(time.RFC3339),
 	})
 }
 
@@ -254,7 +254,7 @@ func handleCheckVerification(w http.ResponseWriter, r *http.Request, serviceSid 
 		"channel":     "sms",
 		"status":      "approved",
 		"valid":       true,
-		"date_created": time.Now().UTC().Format(time.RFC1123Z),
+		"date_created": time.Now().UTC().Format(time.RFC3339),
 	})
 }
 
@@ -266,7 +266,7 @@ func handleAddPhoneNumber(w http.ResponseWriter, r *http.Request, serviceSid str
 		"service_sid":  serviceSid,
 		"phone_number": phone,
 		"country_code": "US",
-		"date_created": time.Now().UTC().Format(time.RFC1123Z),
+		"date_created": time.Now().UTC().Format(time.RFC3339),
 	})
 }
 

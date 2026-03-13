@@ -29,7 +29,7 @@ modules:
       config:
         apiToken: "test_api_token"
         apiVersion: "2026-04"
-        baseURL: "http://localhost:19052"
+        baseUrl: "http://localhost:19052/v2"
 
 workflows:
     http:
@@ -157,11 +157,21 @@ pipelines:
                 path: /api/v1/monday/items
                 method: GET
         steps:
+            - name: parse_request
+              type: step.request_parse
+              config:
+                query_params:
+                    - board_id
+            - name: prep
+              type: step.set
+              config:
+                values:
+                    board_id: "{{ default \"1234567890\" (index .steps \"parse_request\" \"query\" \"board_id\") }}"
             - name: list_items
               type: step.monday_list_items
               config:
                 module: monday
-                board_id: "{{ default \"1234567890\" .query.board_id }}"
+                board_id: "{{ index .steps \"prep\" \"board_id\" }}"
                 limit: 10
             - name: respond
               type: step.json_response
@@ -214,11 +224,21 @@ pipelines:
                 path: /api/v1/monday/groups
                 method: GET
         steps:
+            - name: parse_request
+              type: step.request_parse
+              config:
+                query_params:
+                    - board_id
+            - name: prep
+              type: step.set
+              config:
+                values:
+                    board_id: "{{ default \"1234567890\" (index .steps \"parse_request\" \"query\" \"board_id\") }}"
             - name: list_groups
               type: step.monday_list_groups
               config:
                 module: monday
-                board_id: "{{ default \"1234567890\" .query.board_id }}"
+                board_id: "{{ index .steps \"prep\" \"board_id\" }}"
             - name: respond
               type: step.json_response
               config:
