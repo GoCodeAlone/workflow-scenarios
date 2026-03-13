@@ -1,0 +1,17 @@
+name: LaunchDarkly Integration
+id: "56-launchdarkly-integration"
+category: C
+description: |
+  Tests workflow-plugin-launchdarkly step types against a mock LaunchDarkly API server.
+  Validates feature flag CRUD, projects, environments, and segments.
+components:
+  - workflow (engine)
+  - workflow-plugin-launchdarkly (external plugin)
+  - mock LaunchDarkly API server
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh

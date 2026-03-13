@@ -1,0 +1,382 @@
+# ============================================================
+# Scenario 56 — LaunchDarkly Integration
+#
+# Tests workflow-plugin-launchdarkly step types against a mock
+# LaunchDarkly API server running as a sidecar on :19056.
+#
+# The launchdarkly.provider module is configured with an apiUrl
+# that redirects all API calls to the local mock server.
+#
+# Endpoints:
+#   GET  /healthz                                  — health check
+#   POST /api/v1/ld/flags/create                   — create flag
+#   GET  /api/v1/ld/flags/{flagKey}                — get flag
+#   GET  /api/v1/ld/flags                          — list flags
+#   POST /api/v1/ld/flags/{flagKey}/toggle         — toggle flag (update)
+#   DELETE via POST /api/v1/ld/flags/{flagKey}/delete — delete flag
+#   POST /api/v1/ld/projects/create                — create project
+#   GET  /api/v1/ld/projects                       — list projects
+#   GET  /api/v1/ld/projects/{projKey}             — get project
+#   GET  /api/v1/ld/environments/{projKey}         — list environments
+#   POST /api/v1/ld/segments/create                — create segment
+#   GET  /api/v1/ld/segments                       — list segments
+# ============================================================
+
+modules:
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: launchdarkly
+      type: launchdarkly.provider
+      config:
+        apiKey: "api-test-key-12345"
+        apiUrl: "http://localhost:19056/api/v2"
+
+workflows:
+    http:
+        router: router
+        server: server
+        routes: []
+
+pipelines:
+    # ----------------------------------------------------------------
+    # Health
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "56-launchdarkly-integration"
+
+    # ----------------------------------------------------------------
+    # Create Flag
+    # POST /api/v1/ld/flags/create
+    # Body: { "projectKey": "...", "flagKey": "...", "name": "...", "kind": "boolean" }
+    # ----------------------------------------------------------------
+    create_flag:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/ld/flags/create
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    projectKey: "{{ default \"default\" .body.projectKey }}"
+                    flagKey: "{{ .body.flagKey }}"
+                    name: "{{ default \"\" .body.name }}"
+                    kind: "{{ default \"boolean\" .body.kind }}"
+                    description: "{{ default \"\" .body.description }}"
+            - name: create
+              type: step.launchdarkly_flag_create
+              config:
+                module: launchdarkly
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.create"
+
+    # ----------------------------------------------------------------
+    # Get Flag
+    # GET /api/v1/ld/flags/{flagKey}?projectKey=...
+    # ----------------------------------------------------------------
+    get_flag:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/ld/flags/{flagKey}
+                method: GET
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    projectKey: "default"
+                    flagKey: "{{ .flagKey }}"
+            - name: get
+              type: step.launchdarkly_flag_get
+              config:
+                module: launchdarkly
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get"
+
+    # ----------------------------------------------------------------
+    # List Flags
+    # GET /api/v1/ld/flags
+    # ----------------------------------------------------------------
+    list_flags:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/ld/flags
+                method: GET
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    projectKey: "default"
+            - name: list
+              type: step.launchdarkly_flag_list
+              config:
+                module: launchdarkly
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list"
+
+    # ----------------------------------------------------------------
+    # Toggle Flag (Update)
+    # POST /api/v1/ld/flags/{flagKey}/toggle
+    # Body: { "on": true }
+    # ----------------------------------------------------------------
+    toggle_flag:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/ld/flags/{flagKey}/toggle
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    projectKey: "default"
+                    flagKey: "{{ .flagKey }}"
+            - name: toggle
+              type: step.launchdarkly_flag_update
+              config:
+                module: launchdarkly
+                patch:
+                    comment: "Toggled via workflow"
+                    patch:
+                        - op: replace
+                          path: /on
+                          value: true
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.toggle"
+
+    # ----------------------------------------------------------------
+    # Delete Flag
+    # POST /api/v1/ld/flags/{flagKey}/delete
+    # ----------------------------------------------------------------
+    delete_flag:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/ld/flags/{flagKey}/delete
+                method: POST
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    projectKey: "default"
+                    flagKey: "{{ .flagKey }}"
+            - name: delete
+              type: step.launchdarkly_flag_delete
+              config:
+                module: launchdarkly
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.delete"
+
+    # ----------------------------------------------------------------
+    # Create Project
+    # POST /api/v1/ld/projects/create
+    # Body: { "projectKey": "...", "name": "..." }
+    # ----------------------------------------------------------------
+    create_project:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/ld/projects/create
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    projectKey: "{{ .body.projectKey }}"
+                    name: "{{ default \"\" .body.name }}"
+            - name: create
+              type: step.launchdarkly_project_create
+              config:
+                module: launchdarkly
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.create"
+
+    # ----------------------------------------------------------------
+    # List Projects
+    # GET /api/v1/ld/projects
+    # ----------------------------------------------------------------
+    list_projects:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/ld/projects
+                method: GET
+        steps:
+            - name: list
+              type: step.launchdarkly_project_list
+              config:
+                module: launchdarkly
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list"
+
+    # ----------------------------------------------------------------
+    # Get Project
+    # GET /api/v1/ld/projects/{projKey}
+    # ----------------------------------------------------------------
+    get_project:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/ld/projects/{projKey}
+                method: GET
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    projectKey: "{{ .projKey }}"
+            - name: get
+              type: step.launchdarkly_project_get
+              config:
+                module: launchdarkly
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.get"
+
+    # ----------------------------------------------------------------
+    # List Environments
+    # GET /api/v1/ld/environments/{projKey}
+    # ----------------------------------------------------------------
+    list_environments:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/ld/environments/{projKey}
+                method: GET
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    projectKey: "{{ .projKey }}"
+            - name: list
+              type: step.launchdarkly_environment_list
+              config:
+                module: launchdarkly
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list"
+
+    # ----------------------------------------------------------------
+    # Create Segment
+    # POST /api/v1/ld/segments/create
+    # Body: { "projectKey": "...", "environmentKey": "...", "segmentKey": "...", "name": "..." }
+    # ----------------------------------------------------------------
+    create_segment:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/ld/segments/create
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    projectKey: "{{ default \"default\" .body.projectKey }}"
+                    environmentKey: "{{ default \"production\" .body.environmentKey }}"
+                    segmentKey: "{{ .body.segmentKey }}"
+                    name: "{{ .body.name }}"
+                    description: "{{ default \"\" .body.description }}"
+            - name: create
+              type: step.launchdarkly_segment_create
+              config:
+                module: launchdarkly
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.create"
+
+    # ----------------------------------------------------------------
+    # List Segments
+    # GET /api/v1/ld/segments?projectKey=...&environmentKey=...
+    # ----------------------------------------------------------------
+    list_segments:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/ld/segments
+                method: GET
+        steps:
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    projectKey: "default"
+                    environmentKey: "production"
+            - name: list
+              type: step.launchdarkly_segment_list
+              config:
+                module: launchdarkly
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.list"
