@@ -1,0 +1,18 @@
+name: Slack Messaging
+id: "60-slack-messaging"
+category: C
+description: |
+  Tests workflow-plugin-slack step types against a mock Slack API server
+  running as a sidecar on :19060.
+  Validates send message, send blocks, thread reply, and set topic operations.
+components:
+  - workflow (engine)
+  - workflow-plugin-slack (external plugin)
+  - mock Slack API server
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh

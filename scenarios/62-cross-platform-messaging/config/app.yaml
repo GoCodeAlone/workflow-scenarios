@@ -1,0 +1,172 @@
+# ============================================================
+# Scenario 62 — Cross-Platform Messaging
+#
+# Tests a cross-platform broadcast pipeline that sends a message
+# to Discord, Slack, and Teams simultaneously.
+#
+# Mock servers:
+#   Discord API   → :19062
+#   Slack API     → :19063
+#   Teams Graph   → :19064
+#
+# Endpoints:
+#   GET  /healthz                      — health check
+#   POST /api/v1/broadcast             — broadcast to all 3 platforms
+#   POST /api/v1/relay/discord-to-slack — relay Discord message to Slack
+# ============================================================
+
+modules:
+    - name: server
+      type: http.server
+      config:
+        address: ":18062"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: discord
+      type: discord.provider
+      config:
+        token: "mock_discord_token_abc123"
+        baseURL: "http://localhost:19062"
+    - name: slack
+      type: slack.provider
+      config:
+        token: "mock_slack_token_xoxb_abc123"
+        baseURL: "http://localhost:19063"
+    - name: teams
+      type: teams.provider
+      config:
+        tenantId: "mock-tenant-id"
+        clientId: "mock-client-id"
+        clientSecret: "mock-client-secret"
+        baseURL: "http://localhost:19064"
+
+workflows:
+    http:
+        router: router
+        server: server
+        routes: []
+
+pipelines:
+    # ----------------------------------------------------------------
+    # Health
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "62-cross-platform-messaging"
+
+    # ----------------------------------------------------------------
+    # Broadcast Message
+    # POST /api/v1/broadcast
+    # Body: {
+    #   "message": "Hello everyone!",
+    #   "discord_channel": "123456789",
+    #   "slack_channel": "C1234567890",
+    #   "teams_team_id": "team-abc",
+    #   "teams_channel_id": "channel-xyz"
+    # }
+    # ----------------------------------------------------------------
+    broadcast:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/broadcast
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+
+            # Set Discord params and send
+            - name: set_discord
+              type: step.set
+              config:
+                values:
+                    channel_id: "{{ .body.discord_channel }}"
+                    content: "{{ .body.message }}"
+            - name: send_discord
+              type: step.discord_send_message
+              config:
+                module: discord
+
+            # Set Slack params and send
+            - name: set_slack
+              type: step.set
+              config:
+                values:
+                    channel_id: "{{ .body.slack_channel }}"
+                    content: "{{ .body.message }}"
+            - name: send_slack
+              type: step.slack_send_message
+              config:
+                module: slack
+
+            # Set Teams params and send
+            - name: set_teams
+              type: step.set
+              config:
+                values:
+                    team_id: "{{ .body.teams_team_id }}"
+                    channel_id: "{{ .body.teams_channel_id }}"
+                    content: "{{ .body.message }}"
+            - name: send_teams
+              type: step.teams_send_message
+              config:
+                module: teams
+
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    broadcast: true
+                    discord_message_id: "{{ index .steps \"send_discord\" \"id\" }}"
+                    slack_ts: "{{ index .steps \"send_slack\" \"ts\" }}"
+                    teams_message_id: "{{ index .steps \"send_teams\" \"id\" }}"
+
+    # ----------------------------------------------------------------
+    # Discord-to-Slack Relay
+    # POST /api/v1/relay/discord-to-slack
+    # Body: { "message": "original message text", "slack_channel": "C1234567890" }
+    # ----------------------------------------------------------------
+    relay_discord_to_slack:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/relay/discord-to-slack
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    channel_id: "{{ .body.slack_channel }}"
+                    content: "[Discord] {{ .body.message }}"
+            - name: relay
+              type: step.slack_send_message
+              config:
+                module: slack
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    relayed: true
+                    slack_ts: "{{ index .steps \"relay\" \"ts\" }}"
+                    slack_channel: "{{ index .steps \"relay\" \"channel\" }}"

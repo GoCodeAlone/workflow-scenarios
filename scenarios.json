@@ -651,6 +651,54 @@
       "passCount": 0,
       "failCount": 0,
       "notes": "Tests workflow-plugin-turnio step types against a mock turn.io API server. Validates WhatsApp messaging, contacts, templates, flows, and rate limit tracking."
+    },
+    "59-discord-messaging": {
+      "status": "testable",
+      "namespace": "wf-scenario-59",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 12,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": false,
+      "notes": "Tests workflow-plugin-discord step types against a mock Discord API server on :19059. Validates send message, send embed, add reaction, and create thread operations."
+    },
+    "60-slack-messaging": {
+      "status": "testable",
+      "namespace": "wf-scenario-60",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 13,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": false,
+      "notes": "Tests workflow-plugin-slack step types against a mock Slack API server on :19060. Validates send message, send blocks, thread reply, and set topic operations."
+    },
+    "61-teams-messaging": {
+      "status": "testable",
+      "namespace": "wf-scenario-61",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 12,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": false,
+      "notes": "Tests workflow-plugin-teams step types against a mock Microsoft Graph API server on :19061. Validates send message, send adaptive card, reply message, and create channel operations."
+    },
+    "62-cross-platform-messaging": {
+      "status": "testable",
+      "namespace": "wf-scenario-62",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 15,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": false,
+      "notes": "Cross-platform broadcast pipeline using Discord, Slack, and Teams plugins simultaneously. Mock servers on :19062 (Discord), :19063 (Slack), :19064 (Teams). Tests broadcast delivery, per-platform message ID collection, and Discord-to-Slack relay with [Discord] prefix."
     }
   }
 }

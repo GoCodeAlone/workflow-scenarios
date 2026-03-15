@@ -1,0 +1,187 @@
+# ============================================================
+# Scenario 59 — Discord Messaging
+#
+# Tests workflow-plugin-discord step types against a mock Discord
+# API server running as a sidecar on :19059.
+#
+# The discord.provider module is configured with a baseURL that
+# redirects all Discord API calls to the local mock server.
+#
+# Endpoints:
+#   GET  /healthz                   — health check
+#   POST /api/v1/discord/send       — send message (step.discord_send_message)
+#   POST /api/v1/discord/embed      — send embed (step.discord_send_embed)
+#   POST /api/v1/discord/react      — add reaction (step.discord_add_reaction)
+#   POST /api/v1/discord/thread     — create thread (step.discord_create_thread)
+# ============================================================
+
+modules:
+    - name: server
+      type: http.server
+      config:
+        address: ":18059"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: discord
+      type: discord.provider
+      config:
+        token: "mock_discord_token_abc123"
+        baseURL: "http://localhost:19059"
+
+workflows:
+    http:
+        router: router
+        server: server
+        routes: []
+
+pipelines:
+    # ----------------------------------------------------------------
+    # Health
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "59-discord-messaging"
+
+    # ----------------------------------------------------------------
+    # Send Message
+    # POST /api/v1/discord/send
+    # Body: { "channel_id": "123456789", "content": "Hello!" }
+    # ----------------------------------------------------------------
+    send_message:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/discord/send
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    channel_id: "{{ .body.channel_id }}"
+                    content: "{{ .body.content }}"
+            - name: send
+              type: step.discord_send_message
+              config:
+                module: discord
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.send"
+
+    # ----------------------------------------------------------------
+    # Send Embed
+    # POST /api/v1/discord/embed
+    # Body: { "channel_id": "123456789", "title": "My Title", "description": "...", "color": "0x00FF00" }
+    # ----------------------------------------------------------------
+    send_embed:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/discord/embed
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    channel_id: "{{ .body.channel_id }}"
+                    title: "{{ .body.title }}"
+                    description: "{{ .body.description }}"
+                    color: "{{ default \"0x00FF00\" .body.color }}"
+            - name: send
+              type: step.discord_send_embed
+              config:
+                module: discord
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.send"
+
+    # ----------------------------------------------------------------
+    # Add Reaction
+    # POST /api/v1/discord/react
+    # Body: { "channel_id": "123456789", "message_id": "987654321", "emoji": "👍" }
+    # ----------------------------------------------------------------
+    add_reaction:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/discord/react
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    channel_id: "{{ .body.channel_id }}"
+                    message_id: "{{ .body.message_id }}"
+                    emoji: "{{ .body.emoji }}"
+            - name: react
+              type: step.discord_add_reaction
+              config:
+                module: discord
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.react"
+
+    # ----------------------------------------------------------------
+    # Create Thread
+    # POST /api/v1/discord/thread
+    # Body: { "channel_id": "123456789", "name": "My Thread", "message_id": "" }
+    # ----------------------------------------------------------------
+    create_thread:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/discord/thread
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    channel_id: "{{ .body.channel_id }}"
+                    name: "{{ .body.name }}"
+                    message_id: "{{ default \"\" .body.message_id }}"
+            - name: create
+              type: step.discord_create_thread
+              config:
+                module: discord
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.create"

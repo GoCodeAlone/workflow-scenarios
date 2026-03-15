@@ -1,0 +1,18 @@
+name: Teams Messaging
+id: "61-teams-messaging"
+category: C
+description: |
+  Tests workflow-plugin-teams step types against a mock Microsoft Graph API server
+  running as a sidecar on :19061.
+  Validates send message, send card, reply message, and create channel operations.
+components:
+  - workflow (engine)
+  - workflow-plugin-teams (external plugin)
+  - mock Microsoft Graph API server
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh

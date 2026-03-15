@@ -1,0 +1,23 @@
+name: Cross-Platform Messaging
+id: "62-cross-platform-messaging"
+category: C
+description: |
+  Tests a cross-platform broadcast pipeline that sends a single message to Discord,
+  Slack, and Teams simultaneously using all three messaging plugins.
+  Uses mock API sidecars for each platform (ports 19062, 19063, 19064).
+  Validates broadcast delivery, message ID collection, and relay pipelines.
+components:
+  - workflow (engine)
+  - workflow-plugin-discord (external plugin)
+  - workflow-plugin-slack (external plugin)
+  - workflow-plugin-teams (external plugin)
+  - mock Discord API server
+  - mock Slack API server
+  - mock Microsoft Graph API server
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh

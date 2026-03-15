@@ -1,0 +1,18 @@
+name: Discord Messaging
+id: "59-discord-messaging"
+category: C
+description: |
+  Tests workflow-plugin-discord step types against a mock Discord API server
+  running as a sidecar on :19059.
+  Validates send message, send embed, add reaction, and create thread operations.
+components:
+  - workflow (engine)
+  - workflow-plugin-discord (external plugin)
+  - mock Discord API server
+status: testable
+version: "1.0"
+image: workflow-server:local
+port: 8080
+tests:
+  type: bash
+  script: test/run.sh

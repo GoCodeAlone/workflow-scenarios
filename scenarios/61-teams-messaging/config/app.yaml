@@ -1,0 +1,190 @@
+# ============================================================
+# Scenario 61 — Teams Messaging
+#
+# Tests workflow-plugin-teams step types against a mock Microsoft
+# Graph API server running as a sidecar on :19061.
+#
+# The teams.provider module is configured with a baseURL that
+# redirects all Graph API calls to the local mock server.
+#
+# Endpoints:
+#   GET  /healthz                      — health check
+#   POST /api/v1/teams/send            — send message (step.teams_send_message)
+#   POST /api/v1/teams/card            — send adaptive card (step.teams_send_card)
+#   POST /api/v1/teams/reply           — reply to message (step.teams_reply_message)
+#   POST /api/v1/teams/channel         — create channel (step.teams_create_channel)
+# ============================================================
+
+modules:
+    - name: server
+      type: http.server
+      config:
+        address: ":18061"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: teams
+      type: teams.provider
+      config:
+        tenantId: "mock-tenant-id"
+        clientId: "mock-client-id"
+        clientSecret: "mock-client-secret"
+        baseURL: "http://localhost:19061"
+
+workflows:
+    http:
+        router: router
+        server: server
+        routes: []
+
+pipelines:
+    # ----------------------------------------------------------------
+    # Health
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "61-teams-messaging"
+
+    # ----------------------------------------------------------------
+    # Send Message
+    # POST /api/v1/teams/send
+    # Body: { "team_id": "team-abc", "channel_id": "channel-xyz", "content": "Hello!" }
+    # ----------------------------------------------------------------
+    send_message:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/teams/send
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    team_id: "{{ .body.team_id }}"
+                    channel_id: "{{ .body.channel_id }}"
+                    content: "{{ .body.content }}"
+            - name: send
+              type: step.teams_send_message
+              config:
+                module: teams
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.send"
+
+    # ----------------------------------------------------------------
+    # Send Adaptive Card
+    # POST /api/v1/teams/card
+    # Body: { "team_id": "team-abc", "channel_id": "channel-xyz", "card": {...} }
+    # ----------------------------------------------------------------
+    send_card:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/teams/card
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    team_id: "{{ .body.team_id }}"
+                    channel_id: "{{ .body.channel_id }}"
+                    card: "{{ .body.card }}"
+            - name: send
+              type: step.teams_send_card
+              config:
+                module: teams
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.send"
+
+    # ----------------------------------------------------------------
+    # Reply to Message
+    # POST /api/v1/teams/reply
+    # Body: { "team_id": "team-abc", "channel_id": "channel-xyz", "message_id": "msg-123", "content": "Reply!" }
+    # ----------------------------------------------------------------
+    reply_message:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/teams/reply
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    team_id: "{{ .body.team_id }}"
+                    channel_id: "{{ .body.channel_id }}"
+                    message_id: "{{ .body.message_id }}"
+                    content: "{{ .body.content }}"
+            - name: reply
+              type: step.teams_reply_message
+              config:
+                module: teams
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.reply"
+
+    # ----------------------------------------------------------------
+    # Create Channel
+    # POST /api/v1/teams/channel
+    # Body: { "team_id": "team-abc", "name": "new-channel", "description": "..." }
+    # ----------------------------------------------------------------
+    create_channel:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/teams/channel
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    team_id: "{{ .body.team_id }}"
+                    name: "{{ .body.name }}"
+                    description: "{{ default \"\" .body.description }}"
+            - name: create
+              type: step.teams_create_channel
+              config:
+                module: teams
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.create"

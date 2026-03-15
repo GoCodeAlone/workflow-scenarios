@@ -1,0 +1,185 @@
+# ============================================================
+# Scenario 60 — Slack Messaging
+#
+# Tests workflow-plugin-slack step types against a mock Slack
+# API server running as a sidecar on :19060.
+#
+# The slack.provider module is configured with a baseURL that
+# redirects all Slack API calls to the local mock server.
+#
+# Endpoints:
+#   GET  /healthz                      — health check
+#   POST /api/v1/slack/send            — send message (step.slack_send_message)
+#   POST /api/v1/slack/blocks          — send blocks (step.slack_send_blocks)
+#   POST /api/v1/slack/thread          — thread reply (step.slack_send_thread_reply)
+#   POST /api/v1/slack/topic           — set topic (step.slack_set_topic)
+# ============================================================
+
+modules:
+    - name: server
+      type: http.server
+      config:
+        address: ":18060"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: slack
+      type: slack.provider
+      config:
+        token: "mock_slack_token_xoxb_abc123"
+        baseURL: "http://localhost:19060"
+
+workflows:
+    http:
+        router: router
+        server: server
+        routes: []
+
+pipelines:
+    # ----------------------------------------------------------------
+    # Health
+    # ----------------------------------------------------------------
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "60-slack-messaging"
+
+    # ----------------------------------------------------------------
+    # Send Message
+    # POST /api/v1/slack/send
+    # Body: { "channel_id": "C1234567890", "content": "Hello!" }
+    # ----------------------------------------------------------------
+    send_message:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/slack/send
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    channel_id: "{{ .body.channel_id }}"
+                    content: "{{ .body.content }}"
+            - name: send
+              type: step.slack_send_message
+              config:
+                module: slack
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.send"
+
+    # ----------------------------------------------------------------
+    # Send Blocks
+    # POST /api/v1/slack/blocks
+    # Body: { "channel_id": "C1234567890", "blocks": [...], "text": "fallback" }
+    # ----------------------------------------------------------------
+    send_blocks:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/slack/blocks
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    channel_id: "{{ .body.channel_id }}"
+                    text: "{{ default \"Notification\" .body.text }}"
+                    blocks: "{{ .body.blocks }}"
+            - name: send
+              type: step.slack_send_blocks
+              config:
+                module: slack
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.send"
+
+    # ----------------------------------------------------------------
+    # Thread Reply
+    # POST /api/v1/slack/thread
+    # Body: { "channel_id": "C1234567890", "thread_ts": "1234567890.123456", "content": "Reply!" }
+    # ----------------------------------------------------------------
+    thread_reply:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/slack/thread
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    channel_id: "{{ .body.channel_id }}"
+                    thread_ts: "{{ .body.thread_ts }}"
+                    content: "{{ .body.content }}"
+            - name: reply
+              type: step.slack_send_thread_reply
+              config:
+                module: slack
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.reply"
+
+    # ----------------------------------------------------------------
+    # Set Topic
+    # POST /api/v1/slack/topic
+    # Body: { "channel_id": "C1234567890", "topic": "New topic text" }
+    # ----------------------------------------------------------------
+    set_topic:
+        trigger:
+            type: http
+            config:
+                path: /api/v1/slack/topic
+                method: POST
+        steps:
+            - name: parse
+              type: step.request_parse
+              config:
+                parse_body: true
+            - name: prepare
+              type: step.set
+              config:
+                values:
+                    channel_id: "{{ .body.channel_id }}"
+                    topic: "{{ .body.topic }}"
+            - name: update
+              type: step.slack_set_topic
+              config:
+                module: slack
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body_from: "steps.update"
