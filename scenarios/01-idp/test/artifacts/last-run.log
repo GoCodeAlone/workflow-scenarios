@@ -1,1 +1,20 @@
-
+Forwarding from 127.0.0.1:18001 -> 8080
+Forwarding from [::1]:18001 -> 8080
+Handling connection for 18001
+Ensuring admin user is seeded...
+Handling connection for 18001
+{"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGV4YW1wbGUuY29tIiwiZXhwIjoxNzc0MTk5NjA4LCJpYXQiOjE3NzQxOTYwMDgsImlzcyI6InNjZW5hcmlvLTAxLWlkcCIsImp0aSI6IjRlNjdkMGQxLTQ1YjUtNGYyMy1iY2NmLWVjMGYwNGEwMjc2ZCIsIm5hbWUiOiJBZG1pbiBVc2VyIiwicm9sZSI6ImFkbWluIiwic3ViIjoiMSJ9.hkh7CL3w3UzVz8qm61-zx123gwTBFjL02o23gpzQknk","user":{"createdAt":"2026-03-22T16:13:28.818925877Z","email":"admin@example.com","id":"1","name":"Admin User","role":"admin"}}
+Handling connection for 18001
+PASS: Health check returns ok
+Handling connection for 18001
+PASS: Login returns JWT token
+Handling connection for 18001
+PASS: Profile returns user data
+Handling connection for 18001
+PASS: Unauthenticated profile request returns 401
+Handling connection for 18001
+PASS: Setup endpoint returns 403 when users already exist
+Handling connection for 18001
+PASS: Wrong password returns 401
+Handling connection for 18001
+PASS: Admin can create new users

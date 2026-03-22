@@ -82,9 +82,13 @@ fi
 cat > "${TMPDIR_TEST}/register.json" <<ENDJSON
 {"email":"${TEST_EMAIL}","password":"${TEST_PASSWORD}","name":"${TEST_NAME}"}
 ENDJSON
-REG_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${BASE}/api/v1/auth/register" \
+REG_RESP=$(curl -s -w "\n%{http_code}" -X POST "${BASE}/api/v1/auth/register" \
     -H "Content-Type: application/json" \
     -d "@${TMPDIR_TEST}/register.json" 2>/dev/null)
+REG_CODE=$(echo "$REG_RESP" | tail -1)
+REG_BODY=$(echo "$REG_RESP" | head -1)
+# Registration returns tenant_id; capture it for later API key tests
+REG_TENANT_ID=$(echo "$REG_BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('tenant_id',''))" 2>/dev/null || echo "")
 if [ "$REG_CODE" = "201" ] || [ "$REG_CODE" = "200" ]; then
     echo "PASS: User registration returns success (HTTP ${REG_CODE})"
 else
@@ -175,11 +179,13 @@ else
 fi
 
 # ─── Test 12-14: API key lifecycle (requires provisioned tenant) ─────────────
-# Provision a tenant for this user so the auth step injects auth_tenant_id into JWT context
-TENANT_ID=""
-if [ -n "$TOKEN" ] && echo "$TOKEN" | grep -q "^eyJ"; then
+# Registration already creates a tenant for the user. Use that tenant_id directly.
+# If not captured from registration, fall back to provisioning with a distinct email.
+TENANT_ID="$REG_TENANT_ID"
+if [ -z "$TENANT_ID" ] && [ -n "$TOKEN" ] && echo "$TOKEN" | grep -q "^eyJ"; then
+    FALLBACK_EMAIL="s05tenant-${TIMESTAMP}@example.com"
     cat > "${TMPDIR_TEST}/tenant.json" <<ENDJSON
-{"email":"${TEST_EMAIL}","company_name":"TestCo-${TIMESTAMP}","plan":"free"}
+{"email":"${FALLBACK_EMAIL}","company_name":"TestCo-${TIMESTAMP}","plan":"free"}
 ENDJSON
     TENANT_RESP=$(curl -s -X POST "${BASE}/api/v1/tenants" \
         -H "Authorization: Bearer ${TOKEN}" \

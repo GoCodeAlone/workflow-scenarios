@@ -29,6 +29,8 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+            - name: data
+              mountPath: /data
           resources:
             limits:
               cpu: 200m
@@ -40,3 +42,5 @@ spec:
         - name: config
           configMap:
             name: app
+        - name: data
+          emptyDir: {}

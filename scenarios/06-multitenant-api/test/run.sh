@@ -48,8 +48,8 @@ fi
 REG2_RESP=$(curl -s -X POST "${BASE}/api/v1/auth/register" \
     -H "Content-Type: application/json" \
     --data "{\"email\":\"${EMAIL2}\",\"password\":\"${PASS}\",\"name\":\"User Two\"}" 2>/dev/null || echo "")
-USER2_ID=$(echo "$REG2_RESP" | python3 -c "import json,sys; v=json.load(sys.stdin); print(v if isinstance(v,str) else v.get('user_id',''))" 2>/dev/null || echo "")
-if [ -n "$USER2_ID" ] && [ "$USER2_ID" != "null" ]; then
+USER2_TENANT_ID=$(echo "$REG2_RESP" | python3 -c "import json,sys; v=json.load(sys.stdin); print(v if isinstance(v,str) else v.get('tenant_id',''))" 2>/dev/null || echo "")
+if [ -n "$USER2_TENANT_ID" ] && [ "$USER2_TENANT_ID" != "null" ]; then
     echo "PASS: Register user 2 returns user ID"
 else
     echo "FAIL: Register user 2 did not return user ID: $REG2_RESP"
@@ -169,12 +169,15 @@ else
 fi
 
 # ── Test 13: Provision tenant for user 1 ─────────────────────────────────────
+# Registration already creates a tenant; provisioning a second tenant for the
+# same email violates the unique constraint. Use a distinct email here.
 TENANT_RESP=""
+TENANT_EMAIL="s06tenant-${TS}@example.com"
 if [ -n "$TOKEN1" ]; then
     TENANT_RESP=$(curl -s -X POST "${BASE}/api/v1/tenants" \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer ${TOKEN1}" \
-        --data "{\"email\":\"${EMAIL1}\",\"company_name\":\"TestCo-${TS}\"}" 2>/dev/null || echo "")
+        --data "{\"email\":\"${TENANT_EMAIL}\",\"company_name\":\"TestCo-${TS}\"}" 2>/dev/null || echo "")
     TENANT_ID=$(echo "$TENANT_RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('tenant_id',''))" 2>/dev/null || echo "")
     if [ -n "$TENANT_ID" ] && [ "$TENANT_ID" != "null" ]; then
         echo "PASS: Provision tenant returns tenant ID"

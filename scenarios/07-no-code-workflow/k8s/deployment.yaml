@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: workflow-server
-          image: workflow-server-admin:local
+          image: workflow-server:local
           imagePullPolicy: Never
           args: ["-config", "/app/app.yaml", "-data-dir", "/app/data"]
           env:
@@ -35,7 +35,7 @@ spec:
               mountPath: /app/app.yaml
               subPath: app.yaml
             - name: data
-              mountPath: /app/data/data
+              mountPath: /app/data
           resources:
             limits:
               cpu: 500m

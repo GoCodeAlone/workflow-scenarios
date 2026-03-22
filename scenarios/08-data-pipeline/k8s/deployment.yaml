@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: workflow-server
-          image: workflow-server-bento:local
+          image: workflow-server:local
           imagePullPolicy: Never
           args: ["-config", "/app.yaml", "-data-dir", "/data"]
           env:
