@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-03-22T18:36:17.105957Z",
+  "lastUpdated": "2026-03-22T18:54:03.464381Z",
   "componentVersions": {
     "workflow": "v0.2.15",
     "workflow-cloud": "v0.1.0",
@@ -30,14 +30,14 @@
       "blockers": []
     },
     "03-ai-agent": {
-      "status": "failed",
+      "status": "passed",
       "namespace": "default",
       "deployed": true,
-      "lastTested": "2026-03-22T16:28:34.248999Z",
-      "lastResult": "fail",
+      "lastTested": "2026-03-22T18:47:05.839275Z",
+      "lastResult": "pass",
       "testCount": 10,
-      "passCount": 7,
-      "failCount": 3,
+      "passCount": 10,
+      "failCount": 0,
       "blockers": []
     },
     "04-cli-tool": {
@@ -52,14 +52,14 @@
       "blockers": []
     },
     "05-saas-webapp": {
-      "status": "failed",
+      "status": "passed",
       "namespace": "default",
       "deployed": true,
-      "lastTested": "2026-03-22T16:17:20.110032Z",
-      "lastResult": "fail",
+      "lastTested": "2026-03-22T18:42:51.824768Z",
+      "lastResult": "pass",
       "testCount": 14,
-      "passCount": 13,
-      "failCount": 1,
+      "passCount": 14,
+      "failCount": 0,
       "blockers": []
     },
     "06-multitenant-api": {
@@ -164,27 +164,27 @@
       "blockers": []
     },
     "15-progressive-tasks": {
-      "status": "failed",
+      "status": "passed",
       "namespace": "wf-scenario-15",
       "deployed": true,
-      "lastTested": "2026-02-26T08:54:35.455958Z",
-      "lastResult": "fail",
-      "testCount": 11,
-      "passCount": 0,
-      "failCount": 11,
+      "lastTested": "2026-03-22T18:52:53.191901Z",
+      "lastResult": "pass",
+      "testCount": 31,
+      "passCount": 31,
+      "failCount": 0,
       "progressivePhases": 3,
       "persistenceVerified": true,
       "notes": "ignore_error on step.db_exec added to engine; parse_headers on step.request_parse added; auth enforcement via header check + conditional routing; INSERT OR IGNORE for idempotent category creation.",
       "blockers": []
     },
     "16-progressive-orders": {
-      "status": "failed",
+      "status": "passed",
       "namespace": "wf-scenario-16",
       "deployed": true,
-      "lastTested": "2026-02-26T08:57:15.225329Z",
-      "lastResult": "fail",
-      "testCount": 0,
-      "passCount": 0,
+      "lastTested": "2026-03-22T18:54:03.463903Z",
+      "lastResult": "pass",
+      "testCount": 30,
+      "passCount": 30,
       "failCount": 0,
       "progressivePhases": 3,
       "persistenceVerified": true,
