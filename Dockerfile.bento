@@ -1,0 +1,3 @@
+FROM workflow-server:local
+COPY --chown=65532:65532 scenarios/08-data-pipeline/plugins/bento/bento /data/plugins/bento/bento
+COPY --chown=65532:65532 scenarios/08-data-pipeline/plugins/bento/plugin.json /data/plugins/bento/plugin.json

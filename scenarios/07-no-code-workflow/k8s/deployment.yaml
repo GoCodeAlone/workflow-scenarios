@@ -17,14 +17,14 @@ spec:
     spec:
       containers:
         - name: workflow-server
-          image: workflow-server:local
+          image: workflow-server-admin:local
           imagePullPolicy: Never
-          args: ["-config", "/app/app.yaml", "-data-dir", "/app/data"]
+          args: ["-config", "/app/app.yaml", "-data-dir", "/data"]
           env:
             - name: JWT_SECRET
               value: "scenario-07-jwt-secret-for-testing"
             - name: WORKFLOW_DATA_DIR
-              value: "/app/data"
+              value: "/data"
           ports:
             - name: http
               containerPort: 8080

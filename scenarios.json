@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-03-22T17:56:41.803930Z",
+  "lastUpdated": "2026-03-22T18:36:17.105957Z",
   "componentVersions": {
     "workflow": "v0.2.15",
     "workflow-cloud": "v0.1.0",
@@ -74,26 +74,26 @@
       "blockers": []
     },
     "07-no-code-workflow": {
-      "status": "failed",
+      "status": "passed",
       "namespace": "wf-scenario-07",
       "deployed": true,
-      "lastTested": "2026-03-22T16:28:48.228881Z",
-      "lastResult": "fail",
-      "testCount": 7,
-      "passCount": 1,
-      "failCount": 6,
+      "lastTested": "2026-03-22T18:36:10.059933Z",
+      "lastResult": "pass",
+      "testCount": 11,
+      "passCount": 11,
+      "failCount": 0,
       "persistenceVerified": true,
       "blockers": []
     },
     "08-data-pipeline": {
-      "status": "failed",
+      "status": "passed",
       "namespace": "wf-scenario-08",
       "deployed": true,
-      "lastTested": "2026-02-26T08:51:09.852643Z",
-      "lastResult": "fail",
+      "lastTested": "2026-03-22T18:36:17.105825Z",
+      "lastResult": "pass",
       "testCount": 13,
-      "passCount": 0,
-      "failCount": 13,
+      "passCount": 13,
+      "failCount": 0,
       "persistenceVerified": true,
       "blockers": []
     },

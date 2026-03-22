@@ -1,0 +1,3 @@
+FROM workflow-server:local
+COPY --chown=65532:65532 scenarios/07-no-code-workflow/plugins/admin/admin /data/plugins/admin/admin
+COPY --chown=65532:65532 scenarios/07-no-code-workflow/plugins/admin/plugin.json /data/plugins/admin/plugin.json
