@@ -1,0 +1,3 @@
+FROM workflow-server:local
+COPY --chown=65532:65532 scenarios/58-openlms-integration/plugins/workflow-plugin-openlms/workflow-plugin-openlms-linux /data/plugins/workflow-plugin-openlms/workflow-plugin-openlms
+COPY --chown=65532:65532 scenarios/58-openlms-integration/plugins/workflow-plugin-openlms/plugin.json /data/plugins/workflow-plugin-openlms/plugin.json

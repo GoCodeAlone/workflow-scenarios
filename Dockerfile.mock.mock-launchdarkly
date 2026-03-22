@@ -1,0 +1,4 @@
+FROM busybox:latest
+COPY scenarios/56-launchdarkly-integration/mock/mock-launchdarkly-linux /mock-launchdarkly
+RUN chmod +x /mock-launchdarkly
+ENTRYPOINT ["/mock-launchdarkly"]

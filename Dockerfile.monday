@@ -1,0 +1,3 @@
+FROM workflow-server:local
+COPY --chown=65532:65532 scenarios/52-monday-integration/plugins/workflow-plugin-monday/workflow-plugin-monday-linux /data/plugins/workflow-plugin-monday/workflow-plugin-monday
+COPY --chown=65532:65532 scenarios/52-monday-integration/plugins/workflow-plugin-monday/plugin.json /data/plugins/workflow-plugin-monday/plugin.json

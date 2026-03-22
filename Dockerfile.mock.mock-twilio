@@ -1,0 +1,4 @@
+FROM busybox:latest
+COPY scenarios/63-twilio-integration/mock/mock-twilio-linux /mock-twilio
+RUN chmod +x /mock-twilio
+ENTRYPOINT ["/mock-twilio"]

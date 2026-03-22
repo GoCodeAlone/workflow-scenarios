@@ -23,11 +23,13 @@ func main() {
 	}
 	mux := http.NewServeMux()
 
-	// Microsoft Graph API v1.0 Teams endpoints
-	// POST /v1.0/teams/{team_id}/channels/{channel_id}/messages               — send message / card
-	// POST /v1.0/teams/{team_id}/channels/{channel_id}/messages/{msg_id}/replies — reply
-	// POST /v1.0/teams/{team_id}/channels                                     — create channel
-	mux.HandleFunc("/v1.0/teams/", func(w http.ResponseWriter, r *http.Request) {
+	// Microsoft Graph API Teams endpoints.
+	// The Graph SDK uses {+baseurl}/teams/... where baseurl = http://localhost:19061,
+	// so paths are /teams/... (no /v1.0/ prefix).
+	// POST /teams/{team_id}/channels/{channel_id}/messages               — send message / card
+	// POST /teams/{team_id}/channels/{channel_id}/messages/{msg_id}/replies — reply
+	// POST /teams/{team_id}/channels                                     — create channel
+	mux.HandleFunc("/teams/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		log.Printf("Teams mock: %s %s", r.Method, path)
 

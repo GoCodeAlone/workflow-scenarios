@@ -1,0 +1,3 @@
+FROM workflow-server:local
+COPY --chown=65532:65532 scenarios/56-launchdarkly-integration/plugins/workflow-plugin-launchdarkly/workflow-plugin-launchdarkly-linux /data/plugins/workflow-plugin-launchdarkly/workflow-plugin-launchdarkly
+COPY --chown=65532:65532 scenarios/56-launchdarkly-integration/plugins/workflow-plugin-launchdarkly/plugin.json /data/plugins/workflow-plugin-launchdarkly/plugin.json

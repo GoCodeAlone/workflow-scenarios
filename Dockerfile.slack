@@ -1,0 +1,3 @@
+FROM workflow-server:local
+COPY --chown=65532:65532 scenarios/60-slack-messaging/plugins/workflow-plugin-slack/workflow-plugin-slack-linux /data/plugins/workflow-plugin-slack/workflow-plugin-slack
+COPY --chown=65532:65532 scenarios/60-slack-messaging/plugins/workflow-plugin-slack/plugin.json /data/plugins/workflow-plugin-slack/plugin.json

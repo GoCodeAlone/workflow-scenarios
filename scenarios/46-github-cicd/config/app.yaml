@@ -111,10 +111,19 @@ pipelines:
                 path: /webhooks/github
                 method: POST
         steps:
+            - name: parse_headers
+              type: step.request_parse
+              config:
+                parse_headers: ["X-Hub-Signature-256", "X-GitHub-Event"]
+            - name: extract_sig
+              type: step.set
+              config:
+                values:
+                    hub_sig: '{{ index .steps "parse_headers" "headers" "X-Hub-Signature-256" | default "" }}'
             - name: check_signature
               type: step.conditional
               config:
-                field: headers.X-Hub-Signature-256
+                field: steps.extract_sig.hub_sig
                 routes:
                     "": missing_signature
                 default: gen_event_id
@@ -138,20 +147,18 @@ pipelines:
                     VALUES (?, ?, ?, ?, ?)
                 params:
                     - "{{ index .steps \"gen_event_id\" \"event_id\" }}"
-                    - "{{ default \"push\" .headers.X-GitHub-Event }}"
+                    - '{{ index .steps "parse_headers" "headers" "X-GitHub-Event" | default "push" }}'
                     - "{{ default \"\" .body.action }}"
                     - "{{ default \"\" .body.repository.full_name }}"
-                    - "{{ .headers.X-Hub-Signature-256 }}"
+                    - '{{ index .steps "extract_sig" "hub_sig" | default "" }}'
             - name: respond
               type: step.json_response
               config:
                 status: 200
-                body_template: |
-                    {
-                      "received": true,
-                      "event_id": "{{ index .steps \"gen_event_id\" \"event_id\" }}",
-                      "event": "{{ default \"push\" .headers.X-GitHub-Event }}"
-                    }
+                body:
+                    received: true
+                    event_id: '{{ index .steps "gen_event_id" "event_id" }}'
+                    event: '{{ index .steps "parse_headers" "headers" "X-GitHub-Event" | default "push" }}'
     # ----------------------------------------------------------------
     # Dispatch Workflow Run
     # POST /api/v1/actions/dispatch
@@ -305,7 +312,7 @@ pipelines:
               config:
                 database: db
                 query: "SELECT id, repo, workflow, ref, status, conclusion, created_at FROM workflow_runs ORDER BY created_at DESC LIMIT 50"
-                mode: many
+                mode: list
             - name: respond
               type: step.json_response
               config:

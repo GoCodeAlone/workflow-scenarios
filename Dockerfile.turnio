@@ -1,0 +1,3 @@
+FROM workflow-server:local
+COPY --chown=65532:65532 scenarios/53-turnio-integration/plugins/workflow-plugin-turnio/workflow-plugin-turnio-linux /data/plugins/workflow-plugin-turnio/workflow-plugin-turnio
+COPY --chown=65532:65532 scenarios/53-turnio-integration/plugins/workflow-plugin-turnio/plugin.json /data/plugins/workflow-plugin-turnio/plugin.json

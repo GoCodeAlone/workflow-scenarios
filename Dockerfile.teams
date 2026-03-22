@@ -1,0 +1,3 @@
+FROM workflow-server:local
+COPY --chown=65532:65532 scenarios/61-teams-messaging/plugins/workflow-plugin-teams/workflow-plugin-teams-linux /data/plugins/workflow-plugin-teams/workflow-plugin-teams
+COPY --chown=65532:65532 scenarios/61-teams-messaging/plugins/workflow-plugin-teams/plugin.json /data/plugins/workflow-plugin-teams/plugin.json

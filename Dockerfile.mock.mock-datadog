@@ -1,0 +1,4 @@
+FROM busybox:latest
+COPY scenarios/55-datadog-integration/mock/mock-datadog-linux /mock-datadog
+RUN chmod +x /mock-datadog
+ENTRYPOINT ["/mock-datadog"]

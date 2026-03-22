@@ -1,0 +1,3 @@
+FROM workflow-server:local
+COPY --chown=65532:65532 scenarios/54-okta-integration/plugins/workflow-plugin-okta/workflow-plugin-okta-linux /data/plugins/workflow-plugin-okta/workflow-plugin-okta
+COPY --chown=65532:65532 scenarios/54-okta-integration/plugins/workflow-plugin-okta/plugin.json /data/plugins/workflow-plugin-okta/plugin.json

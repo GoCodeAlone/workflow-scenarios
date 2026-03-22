@@ -1,0 +1,4 @@
+FROM busybox:latest
+COPY scenarios/60-slack-messaging/mock/mock-slack-linux /mock-slack
+RUN chmod +x /mock-slack
+ENTRYPOINT ["/mock-slack"]

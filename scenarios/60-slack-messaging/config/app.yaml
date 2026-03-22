@@ -19,14 +19,15 @@ modules:
     - name: server
       type: http.server
       config:
-        address: ":18060"
+        address: ":8080"
     - name: router
       type: http.router
       dependsOn: [server]
     - name: slack
       type: slack.provider
       config:
-        token: "mock_slack_token_xoxb_abc123"
+        bot_token: "mock_slack_token_xoxb_abc123"
+        mock_mode: true
         baseURL: "http://localhost:19060"
 
 workflows:
@@ -79,7 +80,7 @@ pipelines:
             - name: send
               type: step.slack_send_message
               config:
-                module: slack
+                provider: slack
             - name: respond
               type: step.json_response
               config:
@@ -108,11 +109,11 @@ pipelines:
                 values:
                     channel_id: "{{ .body.channel_id }}"
                     text: "{{ default \"Notification\" .body.text }}"
-                    blocks: "{{ .body.blocks }}"
+                    blocks: "{{ json .body.blocks }}"
             - name: send
               type: step.slack_send_blocks
               config:
-                module: slack
+                provider: slack
             - name: respond
               type: step.json_response
               config:
@@ -145,7 +146,7 @@ pipelines:
             - name: reply
               type: step.slack_send_thread_reply
               config:
-                module: slack
+                provider: slack
             - name: respond
               type: step.json_response
               config:
@@ -177,7 +178,7 @@ pipelines:
             - name: update
               type: step.slack_set_topic
               config:
-                module: slack
+                provider: slack
             - name: respond
               type: step.json_response
               config:

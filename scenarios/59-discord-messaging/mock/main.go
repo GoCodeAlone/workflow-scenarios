@@ -22,11 +22,11 @@ func main() {
 	}
 	mux := http.NewServeMux()
 
-	// Discord API v10 channel endpoints
-	// POST /api/v10/channels/{channel_id}/messages          — send message / embed
-	// POST /api/v10/channels/{channel_id}/threads           — create thread
-	// PUT  /api/v10/channels/{channel_id}/messages/{msg_id}/reactions/{emoji}/@me — add reaction
-	mux.HandleFunc("/api/v10/channels/", func(w http.ResponseWriter, r *http.Request) {
+	// Discord API channel endpoints (handles both v9 and v10)
+	// POST /api/v9/channels/{channel_id}/messages           — send message / embed
+	// POST /api/v9/channels/{channel_id}/threads            — create thread
+	// PUT  /api/v9/channels/{channel_id}/messages/{msg_id}/reactions/{emoji}/@me — add reaction
+	channelHandler := func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		log.Printf("Discord mock: %s %s", r.Method, path)
 
@@ -40,7 +40,9 @@ func main() {
 		default:
 			writeJSON(w, http.StatusNotFound, map[string]any{"code": 10003, "message": "Unknown Channel"})
 		}
-	})
+	}
+	mux.HandleFunc("/api/v9/channels/", channelHandler)
+	mux.HandleFunc("/api/v10/channels/", channelHandler)
 
 	addr := ":" + port
 	log.Printf("mock Discord API listening on %s", addr)
@@ -100,11 +102,16 @@ func handleAddReaction(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// extractChannelID pulls the channel ID segment from a path like /api/v10/channels/123456/...
+// extractChannelID pulls the channel ID segment from a path like /api/v9/channels/123456/...
 func extractChannelID(path string) string {
-	parts := strings.Split(strings.TrimPrefix(path, "/api/v10/channels/"), "/")
-	if len(parts) > 0 {
-		return parts[0]
+	// Strip the version prefix (v9, v10, etc.)
+	for _, prefix := range []string{"/api/v9/channels/", "/api/v10/channels/"} {
+		if strings.HasPrefix(path, prefix) {
+			parts := strings.Split(strings.TrimPrefix(path, prefix), "/")
+			if len(parts) > 0 {
+				return parts[0]
+			}
+		}
 	}
 	return "unknown"
 }

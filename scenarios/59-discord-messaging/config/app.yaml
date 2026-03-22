@@ -19,7 +19,7 @@ modules:
     - name: server
       type: http.server
       config:
-        address: ":18059"
+        address: ":8080"
     - name: router
       type: http.router
       dependsOn: [server]
@@ -28,6 +28,7 @@ modules:
       config:
         token: "mock_discord_token_abc123"
         baseURL: "http://localhost:19059"
+        mock_mode: true
 
 workflows:
     http:

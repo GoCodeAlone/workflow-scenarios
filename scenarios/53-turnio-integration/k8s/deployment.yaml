@@ -236,27 +236,25 @@ spec:
       containers:
         - name: mock-turnio
           image: mock-turnio:local
+          imagePullPolicy: Never
           ports:
             - containerPort: 19053
           env:
             - name: MOCK_PORT
               value: "19053"
         - name: workflow
-          image: workflow-server:local
+          image: workflow-server-turnio:local
+          imagePullPolicy: Never
           args: ["-config", "/config/app.yaml", "-data-dir", "/data"]
           ports:
             - containerPort: 8080
           volumeMounts:
             - name: config
               mountPath: /config
-            - name: data
-              mountPath: /data
       volumes:
         - name: config
           configMap:
             name: app
-        - name: data
-          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

@@ -49,7 +49,8 @@ func main() {
 	go func() {
 		defer wg.Done()
 		mux := http.NewServeMux()
-		mux.HandleFunc("/api/v10/channels/", func(w http.ResponseWriter, r *http.Request) {
+		// discordgo SDK uses API v9; handle both v9 and v10 for compatibility
+		discordChannelHandler := func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
 			log.Printf("[Discord] %s %s", r.Method, path)
 			reqLog.mu.Lock()
@@ -66,7 +67,9 @@ func main() {
 			default:
 				writeJSON(w, http.StatusNotFound, map[string]any{"code": 10003, "message": "Unknown Channel"})
 			}
-		})
+		}
+		mux.HandleFunc("/api/v9/channels/", discordChannelHandler)
+		mux.HandleFunc("/api/v10/channels/", discordChannelHandler)
 		// Request log endpoint for test assertions
 		mux.HandleFunc("/test/requests", func(w http.ResponseWriter, r *http.Request) {
 			reqLog.mu.Lock()
@@ -84,7 +87,8 @@ func main() {
 	go func() {
 		defer wg.Done()
 		mux := http.NewServeMux()
-		mux.HandleFunc("/api/chat.postMessage", func(w http.ResponseWriter, r *http.Request) {
+		// slack-go SDK with OptionAPIURL("http://host/") calls http://host/<method> (no /api/ prefix)
+		mux.HandleFunc("/chat.postMessage", func(w http.ResponseWriter, r *http.Request) {
 			_ = r.ParseForm()
 			n := slackTSCounter.Add(1)
 			channel := r.FormValue("channel")
@@ -92,7 +96,7 @@ func main() {
 			ts := fmt.Sprintf("17%010d.%06d", n, n)
 			log.Printf("[Slack] chat.postMessage channel=%s", channel)
 			reqLog.mu.Lock()
-			reqLog.slack = append(reqLog.slack, fmt.Sprintf("POST /api/chat.postMessage channel=%s", channel))
+			reqLog.slack = append(reqLog.slack, fmt.Sprintf("POST /chat.postMessage channel=%s", channel))
 			reqLog.mu.Unlock()
 			resp := map[string]any{
 				"ok":      true,
@@ -105,7 +109,7 @@ func main() {
 			}
 			writeJSON(w, http.StatusOK, resp)
 		})
-		mux.HandleFunc("/api/conversations.setTopic", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/conversations.setTopic", func(w http.ResponseWriter, r *http.Request) {
 			_ = r.ParseForm()
 			channel := r.FormValue("channel")
 			topic := r.FormValue("topic")
@@ -132,7 +136,8 @@ func main() {
 	go func() {
 		defer wg.Done()
 		mux := http.NewServeMux()
-		mux.HandleFunc("/v1.0/teams/", func(w http.ResponseWriter, r *http.Request) {
+		// Graph SDK uses {+baseurl}/teams/... so paths are /teams/... (no /v1.0/ prefix)
+		mux.HandleFunc("/teams/", func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
 			log.Printf("[Teams] %s %s", r.Method, path)
 			reqLog.mu.Lock()

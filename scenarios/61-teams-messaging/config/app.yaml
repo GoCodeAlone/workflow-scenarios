@@ -19,7 +19,7 @@ modules:
     - name: server
       type: http.server
       config:
-        address: ":18061"
+        address: ":8080"
     - name: router
       type: http.router
       dependsOn: [server]
@@ -30,6 +30,7 @@ modules:
         clientId: "mock-client-id"
         clientSecret: "mock-client-secret"
         baseURL: "http://localhost:19061"
+        mock_mode: true
 
 workflows:
     http:
@@ -111,7 +112,7 @@ pipelines:
                 values:
                     team_id: "{{ .body.team_id }}"
                     channel_id: "{{ .body.channel_id }}"
-                    card: "{{ .body.card }}"
+                    card: "{{ json .body.card }}"
             - name: send
               type: step.teams_send_card
               config:
@@ -177,7 +178,7 @@ pipelines:
               config:
                 values:
                     team_id: "{{ .body.team_id }}"
-                    name: "{{ .body.name }}"
+                    display_name: "{{ .body.name }}"
                     description: "{{ default \"\" .body.description }}"
             - name: create
               type: step.teams_create_channel

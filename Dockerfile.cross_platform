@@ -1,0 +1,7 @@
+FROM workflow-server:local
+COPY --chown=65532:65532 scenarios/62-cross-platform-messaging/plugins/workflow-plugin-discord/workflow-plugin-discord-linux /data/plugins/workflow-plugin-discord/workflow-plugin-discord
+COPY --chown=65532:65532 scenarios/62-cross-platform-messaging/plugins/workflow-plugin-discord/plugin.json /data/plugins/workflow-plugin-discord/plugin.json
+COPY --chown=65532:65532 scenarios/62-cross-platform-messaging/plugins/workflow-plugin-slack/workflow-plugin-slack-linux /data/plugins/workflow-plugin-slack/workflow-plugin-slack
+COPY --chown=65532:65532 scenarios/62-cross-platform-messaging/plugins/workflow-plugin-slack/plugin.json /data/plugins/workflow-plugin-slack/plugin.json
+COPY --chown=65532:65532 scenarios/62-cross-platform-messaging/plugins/workflow-plugin-teams/workflow-plugin-teams-linux /data/plugins/workflow-plugin-teams/workflow-plugin-teams
+COPY --chown=65532:65532 scenarios/62-cross-platform-messaging/plugins/workflow-plugin-teams/plugin.json /data/plugins/workflow-plugin-teams/plugin.json

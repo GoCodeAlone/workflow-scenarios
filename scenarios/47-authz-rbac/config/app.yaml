@@ -184,7 +184,7 @@ pipelines:
               config:
                 database: db
                 query: "SELECT id, role, resource, action, created_at FROM policies ORDER BY role, resource, action"
-                mode: many
+                mode: list
             - name: respond
               type: step.json_response
               config:
@@ -244,7 +244,7 @@ pipelines:
                 query: "SELECT role FROM user_roles WHERE user = ? ORDER BY role"
                 params:
                     - "{{ .user }}"
-                mode: many
+                mode: list
             - name: respond
               type: step.json_response
               config:

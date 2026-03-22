@@ -1,0 +1,3 @@
+FROM workflow-server:local
+COPY --chown=65532:65532 scenarios/55-datadog-integration/plugins/workflow-plugin-datadog/workflow-plugin-datadog-linux /data/plugins/workflow-plugin-datadog/workflow-plugin-datadog
+COPY --chown=65532:65532 scenarios/55-datadog-integration/plugins/workflow-plugin-datadog/plugin.json /data/plugins/workflow-plugin-datadog/plugin.json

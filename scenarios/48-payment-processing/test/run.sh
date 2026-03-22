@@ -40,7 +40,7 @@ CHARGE_ID=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.st
 CHARGE_STATUS=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
 [ "$CHARGE_STATUS" = "pending" ] && pass "New charge status is pending" || fail "New charge status is not pending (got: $CHARGE_STATUS)"
 
-CHARGE_AMOUNT=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('amount',''))" 2>/dev/null || echo "")
+CHARGE_AMOUNT=$(echo "$RESULT" | python3 -c "import sys,json; v=json.load(sys.stdin).get('amount',''); print(float(v) if v != '' else '')" 2>/dev/null || echo "")
 [ "$CHARGE_AMOUNT" = "50.0" ] && pass "Charge amount stored correctly (50.0)" || fail "Charge amount mismatch (got: $CHARGE_AMOUNT)"
 
 # Test 4: Get charge by ID

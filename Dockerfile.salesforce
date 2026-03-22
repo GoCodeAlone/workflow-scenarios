@@ -1,0 +1,3 @@
+FROM workflow-server:local
+COPY --chown=65532:65532 scenarios/57-salesforce-integration/plugins/workflow-plugin-salesforce/workflow-plugin-salesforce-linux /data/plugins/workflow-plugin-salesforce/workflow-plugin-salesforce
+COPY --chown=65532:65532 scenarios/57-salesforce-integration/plugins/workflow-plugin-salesforce/plugin.json /data/plugins/workflow-plugin-salesforce/plugin.json

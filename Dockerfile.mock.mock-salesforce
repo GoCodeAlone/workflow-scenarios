@@ -1,0 +1,4 @@
+FROM busybox:latest
+COPY scenarios/57-salesforce-integration/mock/mock-salesforce-linux /mock-salesforce
+RUN chmod +x /mock-salesforce
+ENTRYPOINT ["/mock-salesforce"]

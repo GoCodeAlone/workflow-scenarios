@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://localhost:19050}"
+BASE_URL="${BASE_URL:-http://localhost:18050}"
 PASS=0
 FAIL=0
 

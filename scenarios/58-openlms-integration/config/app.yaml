@@ -26,7 +26,7 @@ modules:
     - name: server
       type: http.server
       config:
-        address: ":18058"
+        address: ":8080"
     - name: router
       type: http.router
       dependsOn: [server]

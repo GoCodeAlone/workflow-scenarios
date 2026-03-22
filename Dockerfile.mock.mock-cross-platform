@@ -1,0 +1,4 @@
+FROM busybox:latest
+COPY scenarios/62-cross-platform-messaging/mock/mock-cross-platform-linux /mock-cross-platform
+RUN chmod +x /mock-cross-platform
+ENTRYPOINT ["/mock-cross-platform"]

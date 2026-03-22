@@ -22,8 +22,10 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Slack Web API endpoints
-	mux.HandleFunc("/api/chat.postMessage", handlePostMessage)
-	mux.HandleFunc("/api/conversations.setTopic", handleSetTopic)
+	// The slack-go SDK with OptionAPIURL("http://host/") calls http://host/<method>
+	// (no /api/ prefix, since the default base URL already includes /api/).
+	mux.HandleFunc("/chat.postMessage", handlePostMessage)
+	mux.HandleFunc("/conversations.setTopic", handleSetTopic)
 
 	addr := ":" + port
 	log.Printf("mock Slack API listening on %s", addr)

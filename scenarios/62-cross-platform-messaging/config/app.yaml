@@ -19,7 +19,7 @@ modules:
     - name: server
       type: http.server
       config:
-        address: ":18062"
+        address: ":8080"
     - name: router
       type: http.router
       dependsOn: [server]
@@ -28,11 +28,13 @@ modules:
       config:
         token: "mock_discord_token_abc123"
         baseURL: "http://localhost:19062"
+        mock_mode: true
     - name: slack
       type: slack.provider
       config:
-        token: "mock_slack_token_xoxb_abc123"
+        bot_token: "mock_slack_token_xoxb_abc123"
         baseURL: "http://localhost:19063"
+        mock_mode: true
     - name: teams
       type: teams.provider
       config:
@@ -40,6 +42,7 @@ modules:
         clientId: "mock-client-id"
         clientSecret: "mock-client-secret"
         baseURL: "http://localhost:19064"
+        mock_mode: true
 
 workflows:
     http:
@@ -99,7 +102,7 @@ pipelines:
             - name: send_discord
               type: step.discord_send_message
               config:
-                module: discord
+                provider: discord
 
             # Set Slack params and send
             - name: set_slack
@@ -111,7 +114,7 @@ pipelines:
             - name: send_slack
               type: step.slack_send_message
               config:
-                module: slack
+                provider: slack
 
             # Set Teams params and send
             - name: set_teams
@@ -124,7 +127,7 @@ pipelines:
             - name: send_teams
               type: step.teams_send_message
               config:
-                module: teams
+                provider: teams
 
             - name: respond
               type: step.json_response
@@ -132,8 +135,8 @@ pipelines:
                 status: 200
                 body:
                     broadcast: true
-                    discord_message_id: "{{ index .steps \"send_discord\" \"id\" }}"
-                    slack_ts: "{{ index .steps \"send_slack\" \"ts\" }}"
+                    discord_message_id: "{{ index .steps \"send_discord\" \"message_id\" }}"
+                    slack_ts: "{{ index .steps \"send_slack\" \"timestamp\" }}"
                     teams_message_id: "{{ index .steps \"send_teams\" \"id\" }}"
 
     # ----------------------------------------------------------------
@@ -161,12 +164,12 @@ pipelines:
             - name: relay
               type: step.slack_send_message
               config:
-                module: slack
+                provider: slack
             - name: respond
               type: step.json_response
               config:
                 status: 200
                 body:
                     relayed: true
-                    slack_ts: "{{ index .steps \"relay\" \"ts\" }}"
+                    slack_ts: "{{ index .steps \"relay\" \"timestamp\" }}"
                     slack_channel: "{{ index .steps \"relay\" \"channel\" }}"
