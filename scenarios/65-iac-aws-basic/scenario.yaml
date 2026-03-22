@@ -1,0 +1,23 @@
+name: IaC AWS Basic
+id: "65-iac-aws-basic"
+category: C
+description: |
+  Config-validation scenario for a basic AWS infrastructure stack.
+  Exercises iac.provider (provider: aws), iac.state (backend: memory),
+  and three infra resource modules: infra.vpc, infra.database (RDS),
+  and infra.container_service (ECS Fargate).
+
+  No live cloud API calls — validates YAML config syntax and module wiring only.
+components:
+  - wfctl (config validation)
+  - iac.provider (provider: aws)
+  - iac.state (backend: memory)
+  - infra.vpc
+  - infra.database
+  - infra.container_service
+status: testable
+tags:
+  - iac
+  - aws
+  - config-validation
+  - local-only

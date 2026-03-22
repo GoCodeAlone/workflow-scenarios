@@ -1,0 +1,28 @@
+name: IaC OpenTofu HCL Generation
+id: "67-iac-tofu-generate"
+category: C
+description: |
+  Config-validation scenario for the OpenTofu HCL generation plugin.
+  The tofu.generator module reads infra resource module definitions from
+  the workflow config and emits .tf files into an output directory.
+
+  Tests that the config is valid and that step.tofu_generate pipelines
+  are wired correctly. Validates that expected .tf file paths appear in
+  pipeline output config.
+
+  No live Tofu execution — config-validation and file-generation testing only.
+components:
+  - wfctl (config validation)
+  - tofu.generator
+  - iac.provider (provider: aws)
+  - iac.state (backend: memory)
+  - infra.vpc
+  - infra.database
+  - infra.container_service
+status: testable
+tags:
+  - iac
+  - tofu
+  - hcl
+  - config-validation
+  - local-only

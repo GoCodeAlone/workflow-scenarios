@@ -1,0 +1,201 @@
+# ============================================================
+# Scenario 66 — IaC Multi-Cloud
+#
+# Provider-agnostic infrastructure config. The iac.provider
+# module reads IAC_PROVIDER from the environment to select
+# between aws and digitalocean at runtime.
+#
+# Infra resources (vpc, database, container_service) are
+# defined once and reference the shared provider module,
+# so the same config deploys to either cloud.
+#
+# Config-validation only — no live API calls.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Provider is resolved at runtime from IAC_PROVIDER env var.
+  # Supported values: aws, digitalocean
+  - name: cloud-provider
+    type: iac.provider
+    config:
+      provider: "{{ config \"iac_provider\" | default \"aws\" }}"
+      credentials: env
+      region: "{{ config \"cloud_region\" | default \"us-east-1\" }}"
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  - name: vpc
+    type: infra.vpc
+    config:
+      name: shared-vpc
+      cidr: "10.0.0.0/16"
+      provider: cloud-provider
+
+  - name: database
+    type: infra.database
+    config:
+      name: shared-db
+      engine: postgres
+      version: "16"
+      size: s
+      provider: cloud-provider
+
+  - name: app-service
+    type: infra.container_service
+    config:
+      name: shared-app
+      image: nginx:latest
+      size: s
+      replicas: 2
+      provider: cloud-provider
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "66-iac-multi-cloud"
+
+  iac-plan:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/plan
+        method: POST
+    steps:
+      - name: plan_vpc
+        type: step.iac_plan
+        config:
+          platform: vpc
+          resource_id: shared-vpc
+          state_store: iac-state
+      - name: plan_db
+        type: step.iac_plan
+        config:
+          platform: database
+          resource_id: shared-db
+          state_store: iac-state
+      - name: plan_app
+        type: step.iac_plan
+        config:
+          platform: app-service
+          resource_id: shared-app
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: planned
+            resources: [shared-vpc, shared-db, shared-app]
+
+  iac-apply:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/apply
+        method: POST
+    steps:
+      - name: apply_vpc
+        type: step.iac_apply
+        config:
+          platform: vpc
+          resource_id: shared-vpc
+          state_store: iac-state
+      - name: apply_db
+        type: step.iac_apply
+        config:
+          platform: database
+          resource_id: shared-db
+          state_store: iac-state
+      - name: apply_app
+        type: step.iac_apply
+        config:
+          platform: app-service
+          resource_id: shared-app
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: applied
+            resources: [shared-vpc, shared-db, shared-app]
+
+  iac-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/status
+        method: GET
+    steps:
+      - name: status_app
+        type: step.iac_status
+        config:
+          platform: app-service
+          resource_id: shared-app
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  iac-destroy:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac
+        method: DELETE
+    steps:
+      - name: destroy_app
+        type: step.iac_destroy
+        config:
+          platform: app-service
+          resource_id: shared-app
+          state_store: iac-state
+      - name: destroy_db
+        type: step.iac_destroy
+        config:
+          platform: database
+          resource_id: shared-db
+          state_store: iac-state
+      - name: destroy_vpc
+        type: step.iac_destroy
+        config:
+          platform: vpc
+          resource_id: shared-vpc
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: destroyed

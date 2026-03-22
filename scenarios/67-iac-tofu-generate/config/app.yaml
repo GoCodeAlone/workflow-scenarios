@@ -1,0 +1,175 @@
+# ============================================================
+# Scenario 67 — IaC OpenTofu HCL Generation
+#
+# Demonstrates the tofu.generator plugin that translates
+# workflow infra module definitions into OpenTofu (.tf) HCL.
+#
+# Resources:
+#   - VPC (10.0.0.0/16, us-east-1)
+#   - RDS PostgreSQL 16
+#   - ECS Fargate container service
+#
+# The step.tofu_generate step writes .tf files to the configured
+# outputDir. Tests verify that the pipeline config is valid and
+# that the output paths are correctly referenced.
+#
+# Config-validation only — no live Tofu execution.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: aws-provider
+    type: iac.provider
+    config:
+      provider: aws
+      credentials: env
+      region: us-east-1
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  - name: tofu-gen
+    type: tofu.generator
+    config:
+      outputDir: /tmp/tofu-output
+      providerSource: hashicorp/aws
+      providerVersion: "~> 5.0"
+      backendType: local
+
+  - name: vpc
+    type: infra.vpc
+    config:
+      name: app-vpc
+      cidr: "10.0.0.0/16"
+      region: us-east-1
+      provider: aws-provider
+
+  - name: database
+    type: infra.database
+    config:
+      name: app-db
+      engine: postgres
+      version: "16"
+      size: db.t3.micro
+      region: us-east-1
+      provider: aws-provider
+
+  - name: app-service
+    type: infra.container_service
+    config:
+      name: app-svc
+      image: nginx:latest
+      size: s
+      replicas: 2
+      region: us-east-1
+      provider: aws-provider
+      launchType: fargate
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "67-iac-tofu-generate"
+
+  # Generate HCL for all infra resources
+  tofu-generate:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tofu/generate
+        method: POST
+    steps:
+      - name: gen_vpc
+        type: step.tofu_generate
+        config:
+          generator: tofu-gen
+          platform: vpc
+          resource_id: app-vpc
+          outputFile: vpc.tf
+      - name: gen_db
+        type: step.tofu_generate
+        config:
+          generator: tofu-gen
+          platform: database
+          resource_id: app-db
+          outputFile: database.tf
+      - name: gen_app
+        type: step.tofu_generate
+        config:
+          generator: tofu-gen
+          platform: app-service
+          resource_id: app-svc
+          outputFile: ecs.tf
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: generated
+            files: [vpc.tf, database.tf, ecs.tf]
+            outputDir: /tmp/tofu-output
+
+  # Validate generated HCL (tofu validate)
+  tofu-validate:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tofu/validate
+        method: POST
+    steps:
+      - name: validate
+        type: step.tofu_validate
+        config:
+          generator: tofu-gen
+          workingDir: /tmp/tofu-output
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.validate"
+
+  # Plan (dry-run, no apply)
+  tofu-plan:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tofu/plan
+        method: POST
+    steps:
+      - name: plan
+        type: step.tofu_plan
+        config:
+          generator: tofu-gen
+          workingDir: /tmp/tofu-output
+          stateStore: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.plan"

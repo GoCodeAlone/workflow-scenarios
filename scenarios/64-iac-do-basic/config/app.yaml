@@ -1,0 +1,198 @@
+# ============================================================
+# Scenario 64 — IaC DigitalOcean Basic
+#
+# Defines a minimal DigitalOcean infrastructure stack:
+#   - VPC (10.0.0.0/16, nyc3)
+#   - Managed PostgreSQL 16 database (size: db-s-1vcpu-1gb)
+#   - App Platform container service (nginx:latest, 2 replicas)
+#
+# Config-validation only — no live API calls.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: do-provider
+    type: iac.provider
+    config:
+      provider: digitalocean
+      credentials: env          # reads DIGITALOCEAN_TOKEN from environment
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  - name: vpc
+    type: infra.vpc
+    config:
+      name: staging-vpc
+      cidr: "10.0.0.0/16"
+      region: nyc3
+      provider: do-provider
+
+  - name: database
+    type: infra.database
+    config:
+      name: staging-db
+      engine: postgres
+      version: "16"
+      size: db-s-1vcpu-1gb
+      region: nyc3
+      provider: do-provider
+
+  - name: app-service
+    type: infra.container_service
+    config:
+      name: staging-app
+      image: nginx:latest
+      size: professional-xs
+      replicas: 2
+      region: nyc3
+      provider: do-provider
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "64-iac-do-basic"
+
+  iac-plan:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/plan
+        method: POST
+    steps:
+      - name: plan_vpc
+        type: step.iac_plan
+        config:
+          platform: vpc
+          resource_id: staging-vpc
+          state_store: iac-state
+      - name: plan_db
+        type: step.iac_plan
+        config:
+          platform: database
+          resource_id: staging-db
+          state_store: iac-state
+      - name: plan_app
+        type: step.iac_plan
+        config:
+          platform: app-service
+          resource_id: staging-app
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: planned
+            resources: [staging-vpc, staging-db, staging-app]
+
+  iac-apply:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/apply
+        method: POST
+    steps:
+      - name: apply_vpc
+        type: step.iac_apply
+        config:
+          platform: vpc
+          resource_id: staging-vpc
+          state_store: iac-state
+      - name: apply_db
+        type: step.iac_apply
+        config:
+          platform: database
+          resource_id: staging-db
+          state_store: iac-state
+      - name: apply_app
+        type: step.iac_apply
+        config:
+          platform: app-service
+          resource_id: staging-app
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: applied
+            resources: [staging-vpc, staging-db, staging-app]
+
+  iac-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/status
+        method: GET
+    steps:
+      - name: status_app
+        type: step.iac_status
+        config:
+          platform: app-service
+          resource_id: staging-app
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  iac-destroy:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac
+        method: DELETE
+    steps:
+      - name: destroy_app
+        type: step.iac_destroy
+        config:
+          platform: app-service
+          resource_id: staging-app
+          state_store: iac-state
+      - name: destroy_db
+        type: step.iac_destroy
+        config:
+          platform: database
+          resource_id: staging-db
+          state_store: iac-state
+      - name: destroy_vpc
+        type: step.iac_destroy
+        config:
+          platform: vpc
+          resource_id: staging-vpc
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: destroyed

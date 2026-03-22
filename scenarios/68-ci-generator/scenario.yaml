@@ -1,0 +1,28 @@
+name: CI Generator
+id: "68-ci-generator"
+category: C
+description: |
+  Config-validation scenario for the ci.generator plugin.
+  Tests that GitHub Actions and GitLab CI workflow files can be generated
+  from a workflow engine config using step.ci_generate and step.ci_validate.
+
+  Covers:
+    - ci.generator module (provider: github, provider: gitlab)
+    - step.ci_generate producing .github/workflows/ci.yml and .gitlab-ci.yml
+    - step.ci_validate checking generated CI file syntax
+    - step.ci_diff comparing generated output against a baseline
+
+  No live CI execution — config-validation and file-generation testing only.
+components:
+  - wfctl (config validation)
+  - ci.generator (provider: github + provider: gitlab)
+  - step.ci_generate
+  - step.ci_validate
+  - step.ci_diff
+status: testable
+tags:
+  - ci
+  - github-actions
+  - gitlab-ci
+  - config-validation
+  - local-only

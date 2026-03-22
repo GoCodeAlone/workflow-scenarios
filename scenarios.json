@@ -699,6 +699,66 @@
       "failCount": 0,
       "localOnly": false,
       "notes": "Cross-platform broadcast pipeline using Discord, Slack, and Teams plugins simultaneously. Mock servers on :19062 (Discord), :19063 (Slack), :19064 (Teams). Tests broadcast delivery, per-platform message ID collection, and Discord-to-Slack relay with [Discord] prefix."
+    },
+    "64-iac-do-basic": {
+      "status": "testable",
+      "namespace": "wf-scenario-64",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 12,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Config-validation scenario for a basic DigitalOcean IaC stack. Validates iac.provider (provider: digitalocean), iac.state (backend: memory), infra.vpc, infra.database (postgres 16), and infra.container_service (nginx:latest, 2 replicas). No live cloud API calls."
+    },
+    "65-iac-aws-basic": {
+      "status": "testable",
+      "namespace": "wf-scenario-65",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 12,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Config-validation scenario for a basic AWS IaC stack. Validates iac.provider (provider: aws), iac.state (backend: memory), infra.vpc, infra.database (RDS postgres 16), and infra.container_service (ECS Fargate, nginx:latest, 2 replicas). No live cloud API calls."
+    },
+    "66-iac-multi-cloud": {
+      "status": "testable",
+      "namespace": "wf-scenario-66",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 12,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Config-validation scenario for provider-agnostic IaC. The same config targets aws or digitalocean via IAC_PROVIDER env var. Validates that wfctl validate passes for both providers and that all infra modules reference a single shared cloud-provider module."
+    },
+    "67-iac-tofu-generate": {
+      "status": "testable",
+      "namespace": "wf-scenario-67",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 11,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Config-validation scenario for the tofu.generator plugin. Validates that step.tofu_generate steps produce vpc.tf, database.tf, and ecs.tf output file references. Also tests step.tofu_validate and step.tofu_plan pipeline wiring. No live Tofu execution."
+    },
+    "68-ci-generator": {
+      "status": "testable",
+      "namespace": "wf-scenario-68",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 13,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Config-validation scenario for the ci.generator plugin. Validates two generator modules (provider: github, provider: gitlab), step.ci_generate steps producing .github/workflows/ci.yml and .gitlab-ci.yml, step.ci_validate, and step.ci_diff. No live CI execution."
     }
   }
 }

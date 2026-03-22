@@ -1,0 +1,28 @@
+name: IaC Multi-Cloud
+id: "66-iac-multi-cloud"
+category: C
+description: |
+  Config-validation scenario demonstrating provider-agnostic IaC config.
+  The same infra module definitions are validated with provider swapped via
+  the IAC_PROVIDER environment variable (aws or digitalocean).
+
+  Tests that a single workflow config can target multiple cloud providers
+  by changing only the iac.provider credentials block. Validates YAML
+  syntax and module wiring for both provider values.
+
+  No live cloud API calls — config-validation only.
+components:
+  - wfctl (config validation)
+  - iac.provider (provider: aws + provider: digitalocean)
+  - iac.state (backend: memory)
+  - infra.vpc
+  - infra.database
+  - infra.container_service
+status: testable
+tags:
+  - iac
+  - multi-cloud
+  - aws
+  - digitalocean
+  - config-validation
+  - local-only

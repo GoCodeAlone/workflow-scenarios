@@ -1,0 +1,211 @@
+# ============================================================
+# Scenario 65 — IaC AWS Basic
+#
+# Defines a minimal AWS infrastructure stack:
+#   - VPC (10.1.0.0/16, us-east-1)
+#   - RDS PostgreSQL 16 (db.t3.micro)
+#   - ECS Fargate container service (nginx:latest, 2 replicas)
+#
+# Config-validation only — no live API calls.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: aws-provider
+    type: iac.provider
+    config:
+      provider: aws
+      credentials: env          # reads AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY from environment
+      region: us-east-1
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  - name: vpc
+    type: infra.vpc
+    config:
+      name: prod-vpc
+      cidr: "10.1.0.0/16"
+      region: us-east-1
+      provider: aws-provider
+      subnets:
+        - cidr: "10.1.1.0/24"
+          az: us-east-1a
+          public: true
+        - cidr: "10.1.2.0/24"
+          az: us-east-1b
+          public: false
+
+  - name: database
+    type: infra.database
+    config:
+      name: prod-db
+      engine: postgres
+      version: "16"
+      size: db.t3.micro
+      region: us-east-1
+      provider: aws-provider
+      multiAz: false
+      storageGb: 20
+
+  - name: app-service
+    type: infra.container_service
+    config:
+      name: prod-app
+      image: nginx:latest
+      size: s
+      replicas: 2
+      region: us-east-1
+      provider: aws-provider
+      launchType: fargate
+      cpu: 256
+      memoryMb: 512
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "65-iac-aws-basic"
+
+  iac-plan:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/plan
+        method: POST
+    steps:
+      - name: plan_vpc
+        type: step.iac_plan
+        config:
+          platform: vpc
+          resource_id: prod-vpc
+          state_store: iac-state
+      - name: plan_db
+        type: step.iac_plan
+        config:
+          platform: database
+          resource_id: prod-db
+          state_store: iac-state
+      - name: plan_app
+        type: step.iac_plan
+        config:
+          platform: app-service
+          resource_id: prod-app
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: planned
+            resources: [prod-vpc, prod-db, prod-app]
+
+  iac-apply:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/apply
+        method: POST
+    steps:
+      - name: apply_vpc
+        type: step.iac_apply
+        config:
+          platform: vpc
+          resource_id: prod-vpc
+          state_store: iac-state
+      - name: apply_db
+        type: step.iac_apply
+        config:
+          platform: database
+          resource_id: prod-db
+          state_store: iac-state
+      - name: apply_app
+        type: step.iac_apply
+        config:
+          platform: app-service
+          resource_id: prod-app
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: applied
+            resources: [prod-vpc, prod-db, prod-app]
+
+  iac-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac/status
+        method: GET
+    steps:
+      - name: status_app
+        type: step.iac_status
+        config:
+          platform: app-service
+          resource_id: prod-app
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."
+
+  iac-destroy:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/iac
+        method: DELETE
+    steps:
+      - name: destroy_app
+        type: step.iac_destroy
+        config:
+          platform: app-service
+          resource_id: prod-app
+          state_store: iac-state
+      - name: destroy_db
+        type: step.iac_destroy
+        config:
+          platform: database
+          resource_id: prod-db
+          state_store: iac-state
+      - name: destroy_vpc
+        type: step.iac_destroy
+        config:
+          platform: vpc
+          resource_id: prod-vpc
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: destroyed

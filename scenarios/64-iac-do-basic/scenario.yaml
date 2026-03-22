@@ -1,0 +1,22 @@
+name: IaC DigitalOcean Basic
+id: "64-iac-do-basic"
+category: C
+description: |
+  Config-validation scenario for a basic DigitalOcean IaC stack.
+  Exercises iac.provider (provider: digitalocean), iac.state (backend: memory),
+  and three infra resource modules: infra.vpc, infra.database, infra.container_service.
+
+  No live cloud API calls — validates YAML config syntax and module wiring only.
+components:
+  - wfctl (config validation)
+  - iac.provider (provider: digitalocean)
+  - iac.state (backend: memory)
+  - infra.vpc
+  - infra.database
+  - infra.container_service
+status: testable
+tags:
+  - iac
+  - digitalocean
+  - config-validation
+  - local-only
