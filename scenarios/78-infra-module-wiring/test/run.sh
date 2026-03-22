@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Scenario 65 — IaC AWS Basic
-# Config-validation only: validates YAML syntax and module wiring via wfctl.
-# No live cloud API calls, no k8s required.
+# Scenario 78 — Infra Module Wiring
+# Config-validation only: validates iac.provider → infra.* → step.iac_* delegation chain.
+# Tests that all infra modules explicitly reference the provider by name and that
+# all IaC step configs reference iac-state by name.
 set -uo pipefail
 
-SCENARIO="65-iac-aws-basic"
+SCENARIO="78-infra-module-wiring"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENARIO_DIR="$(dirname "$SCRIPT_DIR")"
 WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$SCENARIO_DIR/../../.." && pwd)/workflow}"
@@ -25,9 +26,10 @@ echo ""
 # Locate wfctl binary
 WFCTL=""
 for candidate in \
+    "${WFCTL_BIN:-}" \
     "$(which wfctl 2>/dev/null)" \
     "$WORKFLOW_REPO/bin/wfctl" \
-    "${WFCTL_BIN:-}"; do
+    "/tmp/wfctl"; do
     if [ -n "$candidate" ] && [ -x "$candidate" ]; then
         WFCTL="$candidate"
         break
@@ -56,25 +58,29 @@ OUTPUT=$("$WFCTL" validate --skip-unknown-types "$CONFIG" 2>&1)
 EXIT=$?
 [ "$EXIT" -eq 0 ] && pass "wfctl validate passes" || fail "wfctl validate failed: $OUTPUT"
 
-# Test 4: iac.provider with provider: aws
+# Test 4: root provider (aws-provider)
 grep -q "type: iac.provider" "$CONFIG" \
     && pass "iac.provider module defined" \
     || fail "iac.provider module missing"
+
+grep -q "name: aws-provider" "$CONFIG" \
+    && pass "iac.provider named aws-provider" \
+    || fail "iac.provider missing name: aws-provider"
 
 grep -q "provider: aws" "$CONFIG" \
     && pass "iac.provider uses provider: aws" \
     || fail "iac.provider missing provider: aws"
 
-# Test 5: iac.state backend: memory
+# Test 5: iac.state named iac-state
 grep -q "type: iac.state" "$CONFIG" \
     && pass "iac.state module defined" \
     || fail "iac.state module missing"
 
-grep -q "backend: memory" "$CONFIG" \
-    && pass "iac.state uses backend: memory" \
-    || fail "iac.state missing backend: memory"
+grep -q "name: iac-state" "$CONFIG" \
+    && pass "iac.state named iac-state" \
+    || fail "iac.state missing name: iac-state"
 
-# Test 6: infra resource modules
+# Test 6: infra modules referencing aws-provider explicitly
 grep -q "type: infra.vpc" "$CONFIG" \
     && pass "infra.vpc module defined" \
     || fail "infra.vpc module missing"
@@ -87,41 +93,43 @@ grep -q "type: infra.container_service" "$CONFIG" \
     && pass "infra.container_service module defined" \
     || fail "infra.container_service module missing"
 
-# Test 7: ECS Fargate config
-grep -q "launchType: fargate" "$CONFIG" \
-    && pass "container_service launchType is fargate" \
-    || fail "container_service launchType not set to fargate"
+# Count provider references (each infra module should have provider: aws-provider)
+PROVIDER_REFS=$(grep -c "provider: aws-provider" "$CONFIG" || echo "0")
+[ "$PROVIDER_REFS" -ge 3 ] \
+    && pass "at least 3 infra modules reference provider: aws-provider ($PROVIDER_REFS found)" \
+    || fail "expected at least 3 provider: aws-provider references (found $PROVIDER_REFS)"
 
-# Test 8: RDS PostgreSQL 16
-grep -q "engine: postgres" "$CONFIG" \
-    && pass "database engine is postgres" \
-    || fail "database engine not set to postgres"
+# Test 7: IaC steps reference iac-state
+STATE_REFS=$(grep -c "state_store: iac-state" "$CONFIG" || echo "0")
+[ "$STATE_REFS" -ge 3 ] \
+    && pass "at least 3 IaC steps reference state_store: iac-state ($STATE_REFS found)" \
+    || fail "expected at least 3 state_store: iac-state references (found $STATE_REFS)"
 
-grep -q 'version: "16"' "$CONFIG" \
-    && pass "database version is 16" \
-    || fail "database version not set to 16"
-
-# Test 9: nginx:latest with 2 replicas
-grep -q "image: nginx:latest" "$CONFIG" \
-    && pass "container_service image is nginx:latest" \
-    || fail "container_service image not set"
-
-grep -q "replicas: 2" "$CONFIG" \
-    && pass "container_service replicas: 2" \
-    || fail "container_service replicas not set to 2"
-
-# Test 10: IaC pipeline steps
+# Test 8: plan and apply steps
 grep -q "type: step.iac_plan" "$CONFIG" \
-    && pass "step.iac_plan pipeline step defined" \
+    && pass "step.iac_plan defined" \
     || fail "step.iac_plan missing"
 
 grep -q "type: step.iac_apply" "$CONFIG" \
-    && pass "step.iac_apply pipeline step defined" \
+    && pass "step.iac_apply defined" \
     || fail "step.iac_apply missing"
 
-grep -q "type: step.iac_destroy" "$CONFIG" \
-    && pass "step.iac_destroy pipeline step defined" \
-    || fail "step.iac_destroy missing"
+grep -q "type: step.iac_status" "$CONFIG" \
+    && pass "step.iac_status defined" \
+    || fail "step.iac_status missing"
+
+# Test 9: pipelines
+grep -q "plan-all:" "$CONFIG" \
+    && pass "plan-all pipeline defined" \
+    || fail "plan-all pipeline missing"
+
+grep -q "apply-all:" "$CONFIG" \
+    && pass "apply-all pipeline defined" \
+    || fail "apply-all pipeline missing"
+
+grep -q "status-check:" "$CONFIG" \
+    && pass "status-check pipeline defined" \
+    || fail "status-check pipeline missing"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed, $SKIP skipped"

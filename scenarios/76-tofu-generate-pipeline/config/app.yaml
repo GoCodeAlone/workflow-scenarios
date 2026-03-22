@@ -1,0 +1,289 @@
+# ============================================================
+# Scenario 76 — Tofu Generate Pipeline (Multi-Cloud)
+#
+# Defines one tofu.generator per cloud provider:
+#   - aws-tofu:   hashicorp/aws  ~> 5.0
+#   - gcp-tofu:   hashicorp/google ~> 5.0
+#   - azure-tofu: hashicorp/azurerm ~> 3.0
+#   - do-tofu:    digitalocean/digitalocean ~> 2.0
+#
+# Uses step.iac_generate_hcl to produce provider-specific
+# Terraform module files in per-provider output directories.
+#
+# Config-validation only — no live Tofu execution.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # AWS Tofu generator
+  - name: aws-tofu
+    type: tofu.generator
+    config:
+      outputDir: /tmp/tofu-output/aws
+      providerSource: hashicorp/aws
+      providerVersion: "~> 5.0"
+      backendType: s3
+
+  # GCP Tofu generator
+  - name: gcp-tofu
+    type: tofu.generator
+    config:
+      outputDir: /tmp/tofu-output/gcp
+      providerSource: hashicorp/google
+      providerVersion: "~> 5.0"
+      backendType: gcs
+
+  # Azure Tofu generator
+  - name: azure-tofu
+    type: tofu.generator
+    config:
+      outputDir: /tmp/tofu-output/azure
+      providerSource: hashicorp/azurerm
+      providerVersion: "~> 3.0"
+      backendType: azurerm
+
+  # DigitalOcean Tofu generator
+  - name: do-tofu
+    type: tofu.generator
+    config:
+      outputDir: /tmp/tofu-output/digitalocean
+      providerSource: digitalocean/digitalocean
+      providerVersion: "~> 2.0"
+      backendType: local
+
+  # Cloud providers (for infra module definitions)
+  - name: aws-provider
+    type: iac.provider
+    config:
+      provider: aws
+      credentials: env
+      region: us-east-1
+
+  - name: gcp-provider
+    type: iac.provider
+    config:
+      provider: gcp
+      credentials: env
+      region: us-central1
+      project: my-gcp-project
+
+  - name: azure-provider
+    type: iac.provider
+    config:
+      provider: azure
+      credentials: env
+      region: eastus
+
+  - name: do-provider
+    type: iac.provider
+    config:
+      provider: digitalocean
+      credentials: env
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  # Infra resources for each cloud
+  - name: aws-vpc
+    type: infra.vpc
+    config:
+      name: aws-vpc
+      cidr: "10.1.0.0/16"
+      region: us-east-1
+      provider: aws-provider
+
+  - name: gcp-vpc
+    type: infra.vpc
+    config:
+      name: gcp-vpc
+      cidr: "10.2.0.0/16"
+      region: us-central1
+      provider: gcp-provider
+
+  - name: azure-vpc
+    type: infra.vpc
+    config:
+      name: azure-vnet
+      cidr: "10.3.0.0/16"
+      region: eastus
+      provider: azure-provider
+
+  - name: do-vpc
+    type: infra.vpc
+    config:
+      name: do-vpc
+      cidr: "10.4.0.0/16"
+      region: nyc3
+      provider: do-provider
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "76-tofu-generate-pipeline"
+
+  # Generate HCL for AWS
+  generate-aws:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tofu/generate/aws
+        method: POST
+    steps:
+      - name: gen_vpc
+        type: step.iac_generate_hcl
+        config:
+          generator: aws-tofu
+          platform: vpc
+          resource_id: aws-vpc
+          outputFile: vpc.tf
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: generated
+            provider: aws
+            files: [vpc.tf]
+
+  # Generate HCL for GCP
+  generate-gcp:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tofu/generate/gcp
+        method: POST
+    steps:
+      - name: gen_vpc
+        type: step.iac_generate_hcl
+        config:
+          generator: gcp-tofu
+          platform: vpc
+          resource_id: gcp-vpc
+          outputFile: vpc.tf
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: generated
+            provider: gcp
+            files: [vpc.tf]
+
+  # Generate HCL for Azure
+  generate-azure:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tofu/generate/azure
+        method: POST
+    steps:
+      - name: gen_vpc
+        type: step.iac_generate_hcl
+        config:
+          generator: azure-tofu
+          platform: vpc
+          resource_id: azure-vnet
+          outputFile: vnet.tf
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: generated
+            provider: azure
+            files: [vnet.tf]
+
+  # Generate HCL for DigitalOcean
+  generate-do:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tofu/generate/do
+        method: POST
+    steps:
+      - name: gen_vpc
+        type: step.iac_generate_hcl
+        config:
+          generator: do-tofu
+          platform: vpc
+          resource_id: do-vpc
+          outputFile: vpc.tf
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: generated
+            provider: digitalocean
+            files: [vpc.tf]
+
+  # Generate HCL for all providers
+  generate-all:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tofu/generate/all
+        method: POST
+    steps:
+      - name: gen_aws
+        type: step.iac_generate_hcl
+        config:
+          generator: aws-tofu
+          platform: vpc
+          resource_id: aws-vpc
+          outputFile: vpc.tf
+      - name: gen_gcp
+        type: step.iac_generate_hcl
+        config:
+          generator: gcp-tofu
+          platform: vpc
+          resource_id: gcp-vpc
+          outputFile: vpc.tf
+      - name: gen_azure
+        type: step.iac_generate_hcl
+        config:
+          generator: azure-tofu
+          platform: vpc
+          resource_id: azure-vnet
+          outputFile: vnet.tf
+      - name: gen_do
+        type: step.iac_generate_hcl
+        config:
+          generator: do-tofu
+          platform: vpc
+          resource_id: do-vpc
+          outputFile: vpc.tf
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: generated
+            providers: [aws, gcp, azure, digitalocean]

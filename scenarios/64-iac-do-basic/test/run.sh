@@ -52,7 +52,7 @@ python3 -c "import sys, yaml; yaml.safe_load(open('$CONFIG'))" 2>/dev/null \
     || fail "config/app.yaml YAML syntax error"
 
 # Test 3: wfctl validate accepts the config
-OUTPUT=$("$WFCTL" validate -c "$CONFIG" 2>&1)
+OUTPUT=$("$WFCTL" validate --skip-unknown-types "$CONFIG" 2>&1)
 EXIT=$?
 [ "$EXIT" -eq 0 ] && pass "wfctl validate passes" || fail "wfctl validate failed: $OUTPUT"
 

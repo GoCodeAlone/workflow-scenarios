@@ -1,0 +1,31 @@
+name: Infra Module Wiring
+id: "78-infra-module-wiring"
+category: C
+description: |
+  Config-validation scenario testing the infra module → provider delegation chain.
+  Verifies that iac.provider, infra.database, and infra.container_service are
+  correctly wired via explicit provider references. Tests the dependency chain
+  and ensures modules resolve their provider at validation time.
+
+  Covers:
+    - iac.provider (provider: aws) as named dependency
+    - infra.database + infra.container_service referencing provider by name
+    - iac.state referenced by step.iac_plan/apply
+    - Module dependency chain: provider → infra resources → pipeline steps
+
+  No live cloud API calls — config-validation only.
+components:
+  - wfctl (config validation)
+  - iac.provider (provider: aws)
+  - iac.state (backend: memory)
+  - infra.database
+  - infra.container_service
+  - step.iac_plan
+  - step.iac_apply
+status: testable
+tags:
+  - iac
+  - module-wiring
+  - provider
+  - config-validation
+  - local-only

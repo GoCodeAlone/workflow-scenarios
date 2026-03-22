@@ -1,0 +1,298 @@
+# ============================================================
+# Scenario 74 — IaC Full Stack
+#
+# Exercises all 13 infra.* module types in a single config:
+#   infra.vpc, infra.database, infra.cache, infra.container_service,
+#   infra.load_balancer, infra.dns, infra.registry,
+#   infra.firewall, infra.iam_role, infra.storage,
+#   infra.certificate, infra.cdn, infra.secret
+#
+# Config-validation only — no live cloud API calls.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: aws-provider
+    type: iac.provider
+    config:
+      provider: aws
+      credentials: env
+      region: us-east-1
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  # 1. Networking
+  - name: vpc
+    type: infra.vpc
+    config:
+      name: prod-vpc
+      cidr: "10.0.0.0/16"
+      region: us-east-1
+      provider: aws-provider
+      subnets:
+        - cidr: "10.0.1.0/24"
+          zone: us-east-1a
+          public: true
+        - cidr: "10.0.2.0/24"
+          zone: us-east-1b
+          public: false
+
+  # 2. Database
+  - name: database
+    type: infra.database
+    config:
+      name: prod-db
+      engine: postgres
+      version: "16"
+      size: m
+      region: us-east-1
+      provider: aws-provider
+      multiAZ: true
+      backupRetentionDays: 7
+
+  # 3. Cache
+  - name: cache
+    type: infra.cache
+    config:
+      name: prod-cache
+      engine: redis
+      version: "7.2"
+      size: s
+      region: us-east-1
+      provider: aws-provider
+      replicas: 1
+
+  # 4. Container service
+  - name: app-service
+    type: infra.container_service
+    config:
+      name: prod-app
+      image: myapp:latest
+      size: m
+      replicas: 4
+      region: us-east-1
+      provider: aws-provider
+      launchType: fargate
+
+  # 5. Load balancer
+  - name: load-balancer
+    type: infra.load_balancer
+    config:
+      name: prod-alb
+      type: application
+      region: us-east-1
+      provider: aws-provider
+      healthCheck:
+        path: /healthz
+        interval: 30
+        threshold: 2
+
+  # 6. DNS
+  - name: dns
+    type: infra.dns
+    config:
+      name: prod-dns
+      zone: example.com
+      provider: aws-provider
+      records:
+        - name: api.example.com
+          type: A
+          target: load-balancer
+
+  # 7. Container registry
+  - name: registry
+    type: infra.registry
+    config:
+      name: prod-registry
+      provider: aws-provider
+      region: us-east-1
+      scanOnPush: true
+
+  # 8. Firewall
+  - name: firewall
+    type: infra.firewall
+    config:
+      name: prod-fw
+      provider: aws-provider
+      rules:
+        - direction: inbound
+          protocol: tcp
+          port: 443
+          source: 0.0.0.0/0
+        - direction: inbound
+          protocol: tcp
+          port: 80
+          source: 0.0.0.0/0
+        - direction: outbound
+          protocol: all
+          destination: 0.0.0.0/0
+
+  # 9. IAM role
+  - name: app-role
+    type: infra.iam_role
+    config:
+      name: prod-app-role
+      provider: aws-provider
+      policies:
+        - arn: arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+        - arn: arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+      trustPrincipals:
+        - ecs-tasks.amazonaws.com
+
+  # 10. Object storage
+  - name: storage
+    type: infra.storage
+    config:
+      name: prod-assets
+      provider: aws-provider
+      region: us-east-1
+      versioning: true
+      encryption: AES256
+      lifecycleRules:
+        - prefix: logs/
+          expirationDays: 90
+
+  # 11. TLS certificate
+  - name: certificate
+    type: infra.certificate
+    config:
+      name: prod-cert
+      provider: aws-provider
+      domain: example.com
+      altDomains:
+        - "*.example.com"
+        - api.example.com
+      validationMethod: dns
+
+  # 12. CDN
+  - name: cdn
+    type: infra.cdn
+    config:
+      name: prod-cdn
+      provider: aws-provider
+      origin: prod-assets
+      defaultTtl: 3600
+      certificate: prod-cert
+      customDomain: cdn.example.com
+
+  # 13. Secret store
+  - name: app-secrets
+    type: infra.secret
+    config:
+      name: prod-app-secrets
+      provider: aws-provider
+      region: us-east-1
+      keys:
+        - DB_PASSWORD
+        - JWT_SECRET
+        - API_KEY
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "74-iac-full-stack"
+
+  stack-plan:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/stack/plan
+        method: POST
+    steps:
+      - name: plan_vpc
+        type: step.iac_plan
+        config:
+          platform: vpc
+          resource_id: prod-vpc
+          state_store: iac-state
+      - name: plan_db
+        type: step.iac_plan
+        config:
+          platform: database
+          resource_id: prod-db
+          state_store: iac-state
+      - name: plan_cache
+        type: step.iac_plan
+        config:
+          platform: cache
+          resource_id: prod-cache
+          state_store: iac-state
+      - name: plan_app
+        type: step.iac_plan
+        config:
+          platform: app-service
+          resource_id: prod-app
+          state_store: iac-state
+      - name: plan_lb
+        type: step.iac_plan
+        config:
+          platform: load-balancer
+          resource_id: prod-alb
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: planned
+            resources: [prod-vpc, prod-db, prod-cache, prod-app, prod-alb]
+
+  stack-apply:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/stack/apply
+        method: POST
+    steps:
+      - name: apply_vpc
+        type: step.iac_apply
+        config:
+          platform: vpc
+          resource_id: prod-vpc
+          state_store: iac-state
+      - name: apply_db
+        type: step.iac_apply
+        config:
+          platform: database
+          resource_id: prod-db
+          state_store: iac-state
+      - name: apply_app
+        type: step.iac_apply
+        config:
+          platform: app-service
+          resource_id: prod-app
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: applied

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Scenario 68 — CI Generator
-# Config-validation only: validates YAML syntax and ci.generator module wiring.
-# Tests that both GitHub Actions and GitLab CI generator modules are defined
-# with correct provider values and that generate/validate/diff steps are present.
+# Scenario 77 — CI Generate Multi-Platform
+# Config-validation only: validates GitHub Actions + GitLab CI generation
+# in a single config. Tests coexistence of both ci.generator modules and
+# that step.ci_generate, step.ci_validate, and step.ci_diff are present.
 set -uo pipefail
 
-SCENARIO="68-ci-generator"
+SCENARIO="77-ci-generate-multi-platform"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENARIO_DIR="$(dirname "$SCRIPT_DIR")"
 WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$SCENARIO_DIR/../../.." && pwd)/workflow}"
@@ -26,9 +26,10 @@ echo ""
 # Locate wfctl binary
 WFCTL=""
 for candidate in \
+    "${WFCTL_BIN:-}" \
     "$(which wfctl 2>/dev/null)" \
     "$WORKFLOW_REPO/bin/wfctl" \
-    "${WFCTL_BIN:-}"; do
+    "/tmp/wfctl"; do
     if [ -n "$candidate" ] && [ -x "$candidate" ]; then
         WFCTL="$candidate"
         break
@@ -57,11 +58,11 @@ OUTPUT=$("$WFCTL" validate --skip-unknown-types "$CONFIG" 2>&1)
 EXIT=$?
 [ "$EXIT" -eq 0 ] && pass "wfctl validate passes" || fail "wfctl validate failed: $OUTPUT"
 
-# Test 4: ci.generator modules for both providers
+# Test 4: both ci.generator modules
 CI_GENERATOR_COUNT=$(grep -c "type: ci.generator" "$CONFIG" || echo "0")
 [ "$CI_GENERATOR_COUNT" -ge 2 ] \
-    && pass "at least 2 ci.generator modules defined ($CI_GENERATOR_COUNT found)" \
-    || fail "expected at least 2 ci.generator modules (found $CI_GENERATOR_COUNT)"
+    && pass "2 ci.generator modules defined ($CI_GENERATOR_COUNT found)" \
+    || fail "expected 2 ci.generator modules (found $CI_GENERATOR_COUNT)"
 
 grep -q "provider: github" "$CONFIG" \
     && pass "ci.generator with provider: github defined" \
@@ -71,20 +72,32 @@ grep -q "provider: gitlab" "$CONFIG" \
     && pass "ci.generator with provider: gitlab defined" \
     || fail "ci.generator missing provider: gitlab"
 
-# Test 5: step.ci_generate steps
-CI_GENERATE_STEPS=$(grep -c "type: step.ci_generate" "$CONFIG" || echo "0")
-[ "$CI_GENERATE_STEPS" -ge 2 ] \
-    && pass "at least 2 step.ci_generate steps defined ($CI_GENERATE_STEPS found)" \
-    || fail "expected at least 2 step.ci_generate steps (found $CI_GENERATE_STEPS)"
+# Test 5: generator config fields
+grep -q "defaultBranch: main" "$CONFIG" \
+    && pass "ci.generator defaultBranch: main configured" \
+    || fail "ci.generator defaultBranch: main missing"
 
-# Test 6: GitHub Actions output file
+grep -q "goVersion:" "$CONFIG" \
+    && pass "ci.generator goVersion configured" \
+    || fail "ci.generator goVersion missing"
+
+grep -q "runnerOS:" "$CONFIG" \
+    && pass "github ci.generator runnerOS configured" \
+    || fail "github ci.generator runnerOS missing"
+
+# Test 6: step.ci_generate for both platforms
+CI_GENERATE_COUNT=$(grep -c "type: step.ci_generate" "$CONFIG" || echo "0")
+[ "$CI_GENERATE_COUNT" -ge 3 ] \
+    && pass "at least 3 step.ci_generate steps defined ($CI_GENERATE_COUNT found)" \
+    || fail "expected at least 3 step.ci_generate steps (found $CI_GENERATE_COUNT)"
+
+# Test 7: output files
 grep -q '\.github/workflows/ci\.yml' "$CONFIG" \
-    && pass "GitHub Actions output file .github/workflows/ci.yml referenced" \
+    && pass "GitHub Actions output file .github/workflows/ci.yml defined" \
     || fail "GitHub Actions output file reference missing"
 
-# Test 7: GitLab CI output file
 grep -q '\.gitlab-ci\.yml' "$CONFIG" \
-    && pass "GitLab CI output file .gitlab-ci.yml referenced" \
+    && pass "GitLab CI output file .gitlab-ci.yml defined" \
     || fail "GitLab CI output file reference missing"
 
 # Test 8: validate and diff steps
@@ -96,16 +109,7 @@ grep -q "type: step.ci_diff" "$CONFIG" \
     && pass "step.ci_diff step defined" \
     || fail "step.ci_diff step missing"
 
-# Test 9: generator config has required fields
-grep -q "defaultBranch:" "$CONFIG" \
-    && pass "ci.generator defaultBranch configured" \
-    || fail "ci.generator defaultBranch missing"
-
-grep -q "goVersion:" "$CONFIG" \
-    && pass "ci.generator goVersion configured" \
-    || fail "ci.generator goVersion missing"
-
-# Test 10: pipelines are present
+# Test 9: platform-specific pipelines
 grep -q "generate-github:" "$CONFIG" \
     && pass "generate-github pipeline defined" \
     || fail "generate-github pipeline missing"
@@ -114,9 +118,9 @@ grep -q "generate-gitlab:" "$CONFIG" \
     && pass "generate-gitlab pipeline defined" \
     || fail "generate-gitlab pipeline missing"
 
-grep -q "validate-ci:" "$CONFIG" \
-    && pass "validate-ci pipeline defined" \
-    || fail "validate-ci pipeline missing"
+grep -q "generate-all:" "$CONFIG" \
+    && pass "generate-all pipeline defined" \
+    || fail "generate-all pipeline missing"
 
 grep -q "diff-ci:" "$CONFIG" \
     && pass "diff-ci pipeline defined" \

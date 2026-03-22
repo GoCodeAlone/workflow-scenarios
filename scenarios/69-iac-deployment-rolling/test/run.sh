@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Scenario 67 — IaC OpenTofu HCL Generation
-# Config-validation only: validates YAML syntax and tofu.generator module wiring.
-# Tests that expected .tf output file references are present in the config.
+# Scenario 69 — IaC Deployment Rolling
+# Config-validation only: validates YAML syntax and rolling deployment wiring.
+# Tests that infra.container_service, step.deploy_rolling, and step.deploy_verify
+# are correctly defined with expected rolling update parameters.
 set -uo pipefail
 
-SCENARIO="67-iac-tofu-generate"
+SCENARIO="69-iac-deployment-rolling"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENARIO_DIR="$(dirname "$SCRIPT_DIR")"
 WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$SCENARIO_DIR/../../.." && pwd)/workflow}"
@@ -25,9 +26,10 @@ echo ""
 # Locate wfctl binary
 WFCTL=""
 for candidate in \
+    "${WFCTL_BIN:-}" \
     "$(which wfctl 2>/dev/null)" \
     "$WORKFLOW_REPO/bin/wfctl" \
-    "${WFCTL_BIN:-}"; do
+    "/tmp/wfctl"; do
     if [ -n "$candidate" ] && [ -x "$candidate" ]; then
         WFCTL="$candidate"
         break
@@ -56,64 +58,63 @@ OUTPUT=$("$WFCTL" validate --skip-unknown-types "$CONFIG" 2>&1)
 EXIT=$?
 [ "$EXIT" -eq 0 ] && pass "wfctl validate passes" || fail "wfctl validate failed: $OUTPUT"
 
-# Test 4: tofu.generator module
-grep -q "type: tofu.generator" "$CONFIG" \
-    && pass "tofu.generator module defined" \
-    || fail "tofu.generator module missing"
-
-grep -q "outputDir:" "$CONFIG" \
-    && pass "tofu.generator outputDir configured" \
-    || fail "tofu.generator outputDir missing"
-
-# Test 5: iac.provider and iac.state
+# Test 4: iac.provider and iac.state
 grep -q "type: iac.provider" "$CONFIG" \
     && pass "iac.provider module defined" \
     || fail "iac.provider module missing"
+
+grep -q "provider: digitalocean" "$CONFIG" \
+    && pass "iac.provider uses provider: digitalocean" \
+    || fail "iac.provider missing provider: digitalocean"
 
 grep -q "type: iac.state" "$CONFIG" \
     && pass "iac.state module defined" \
     || fail "iac.state module missing"
 
-# Test 6: infra resource modules
-grep -q "type: infra.vpc" "$CONFIG" \
-    && pass "infra.vpc module defined" \
-    || fail "infra.vpc module missing"
-
-grep -q "type: infra.database" "$CONFIG" \
-    && pass "infra.database module defined" \
-    || fail "infra.database module missing"
-
+# Test 5: infra.container_service with rollingUpdate config
 grep -q "type: infra.container_service" "$CONFIG" \
     && pass "infra.container_service module defined" \
     || fail "infra.container_service module missing"
 
-# Test 7: step.tofu_generate steps for each resource
-GENERATE_STEPS=$(grep -c "type: step.tofu_generate" "$CONFIG" || echo "0")
-[ "$GENERATE_STEPS" -ge 3 ] \
-    && pass "at least 3 step.tofu_generate steps defined ($GENERATE_STEPS found)" \
-    || fail "expected at least 3 step.tofu_generate steps (found $GENERATE_STEPS)"
+grep -q "rollingUpdate:" "$CONFIG" \
+    && pass "rollingUpdate config block defined" \
+    || fail "rollingUpdate config block missing"
 
-# Test 8: expected .tf output files referenced
-grep -q "outputFile: vpc.tf" "$CONFIG" \
-    && pass "vpc.tf output file referenced" \
-    || fail "vpc.tf output file reference missing"
+grep -q "maxSurge:" "$CONFIG" \
+    && pass "rollingUpdate.maxSurge defined" \
+    || fail "rollingUpdate.maxSurge missing"
 
-grep -q "outputFile: database.tf" "$CONFIG" \
-    && pass "database.tf output file referenced" \
-    || fail "database.tf output file reference missing"
+grep -q "maxUnavailable:" "$CONFIG" \
+    && pass "rollingUpdate.maxUnavailable defined" \
+    || fail "rollingUpdate.maxUnavailable missing"
 
-grep -q "outputFile: ecs.tf" "$CONFIG" \
-    && pass "ecs.tf output file referenced" \
-    || fail "ecs.tf output file reference missing"
+grep -q "healthCheckPath:" "$CONFIG" \
+    && pass "healthCheckPath defined" \
+    || fail "healthCheckPath missing"
 
-# Test 9: tofu validate and plan steps
-grep -q "type: step.tofu_validate" "$CONFIG" \
-    && pass "step.tofu_validate step defined" \
-    || fail "step.tofu_validate step missing"
+# Test 6: step.deploy_rolling with required fields
+grep -q "type: step.deploy_rolling" "$CONFIG" \
+    && pass "step.deploy_rolling step defined" \
+    || fail "step.deploy_rolling step missing"
 
-grep -q "type: step.tofu_plan" "$CONFIG" \
-    && pass "step.tofu_plan step defined" \
-    || fail "step.tofu_plan step missing"
+grep -q "service: app-service" "$CONFIG" \
+    && pass "step.deploy_rolling references service: app-service" \
+    || fail "step.deploy_rolling missing service reference"
+
+# Test 7: step.deploy_verify present
+grep -q "type: step.deploy_verify" "$CONFIG" \
+    && pass "step.deploy_verify step defined" \
+    || fail "step.deploy_verify step missing"
+
+# Test 8: deploy-rolling pipeline
+grep -q "deploy-rolling:" "$CONFIG" \
+    && pass "deploy-rolling pipeline defined" \
+    || fail "deploy-rolling pipeline missing"
+
+# Test 9: deploy-status pipeline
+grep -q "deploy-status:" "$CONFIG" \
+    && pass "deploy-status pipeline defined" \
+    || fail "deploy-status pipeline missing"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed, $SKIP skipped"

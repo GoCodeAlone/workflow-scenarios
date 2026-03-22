@@ -759,6 +759,126 @@
       "failCount": 0,
       "localOnly": true,
       "notes": "Config-validation scenario for the ci.generator plugin. Validates two generator modules (provider: github, provider: gitlab), step.ci_generate steps producing .github/workflows/ci.yml and .gitlab-ci.yml, step.ci_validate, and step.ci_diff. No live CI execution."
+    },
+    "69-iac-deployment-rolling": {
+      "status": "testable",
+      "namespace": "wf-scenario-69",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 12,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Config-validation scenario for rolling deployments. Validates infra.container_service with rollingUpdate config (maxSurge, maxUnavailable, healthCheckPath), step.deploy_rolling referencing the service, and step.deploy_verify. iac.provider: digitalocean, iac.state: memory."
+    },
+    "70-iac-deployment-blue-green": {
+      "status": "testable",
+      "namespace": "wf-scenario-70",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 13,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Config-validation scenario for blue-green deployments. Validates two infra.container_service modules (blue + green), infra.load_balancer with health check, step.deploy_blue_green with blueService/greenService/loadBalancer references, and a rollback pipeline. iac.provider: aws."
+    },
+    "71-iac-deployment-canary": {
+      "status": "testable",
+      "namespace": "wf-scenario-71",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 14,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Config-validation scenario for canary deployments. Validates stable + canary infra.container_service modules, step.deploy_canary with 3 stages (5%/25%/100%) and metric gates (error_rate, p99_latency_ms), plus canary-promote and canary-abort pipelines. iac.provider: gcp."
+    },
+    "72-iac-state-backends": {
+      "status": "testable",
+      "namespace": "wf-scenario-72",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 18,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Config-validation scenario testing all 6 iac.state backend types: memory, filesystem (path), postgres (connectionString), gcs (bucket+prefix), azure_blob (storageAccount+container), s3 (bucket+region+encrypt). Each backend has a dedicated plan pipeline."
+    },
+    "73-iac-sizing-tiers": {
+      "status": "testable",
+      "namespace": "wf-scenario-73",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 16,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Config-validation scenario testing all 5 sizing tiers (xs/s/m/l/xl) for infra.database and infra.container_service. Also validates resource hint overrides (cpu, memory, storage) on the xl tier. iac.provider: aws, iac.state: memory."
+    },
+    "74-iac-full-stack": {
+      "status": "testable",
+      "namespace": "wf-scenario-74",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 20,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Config-validation scenario exercising all 13 infra.* module types: vpc, database, cache, container_service, load_balancer, dns, registry, firewall, iam_role, storage, certificate, cdn, secret. Full production-grade AWS stack. iac.provider: aws, iac.state: memory."
+    },
+    "75-deployment-pipeline": {
+      "status": "testable",
+      "namespace": "wf-scenario-75",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 14,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Config-validation scenario for end-to-end CI/CD pipeline: step.iac_plan → step.iac_apply → step.container_build → step.deploy_rolling → step.deploy_verify. Includes infra.registry and a rollback pipeline. iac.provider: digitalocean."
+    },
+    "76-tofu-generate-pipeline": {
+      "status": "testable",
+      "namespace": "wf-scenario-76",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 15,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Config-validation scenario for HCL generation across 4 providers: aws (hashicorp/aws ~>5.0), gcp (hashicorp/google ~>5.0), azure (hashicorp/azurerm ~>3.0), digitalocean (digitalocean/digitalocean ~>2.0). One tofu.generator and per-cloud step.iac_generate_hcl steps plus generate-all pipeline."
+    },
+    "77-ci-generate-multi-platform": {
+      "status": "testable",
+      "namespace": "wf-scenario-77",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 16,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Config-validation scenario for generating GitHub Actions (.github/workflows/ci.yml) and GitLab CI (.gitlab-ci.yml) from a single config. Two ci.generator modules coexist, step.ci_generate for both platforms, step.ci_validate, step.ci_diff. Includes generate-all and diff-ci pipelines."
+    },
+    "78-infra-module-wiring": {
+      "status": "testable",
+      "namespace": "wf-scenario-78",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 15,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Config-validation scenario testing the iac.provider → infra.* → step.iac_* dependency chain. All infra modules (vpc, database, container_service) explicitly reference provider: aws-provider; all IaC steps reference state_store: iac-state. Validates plan-all, apply-all, status-check pipelines."
     }
   }
 }

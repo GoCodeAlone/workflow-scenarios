@@ -1,0 +1,27 @@
+name: IaC Sizing Tiers
+id: "73-iac-sizing-tiers"
+category: C
+description: |
+  Config-validation scenario testing all 5 sizing tiers (xs/s/m/l/xl) for
+  infra.database and infra.container_service modules. Also tests resource hint
+  overrides (cpu, memory, storage) applied on top of tier defaults.
+
+  Covers:
+    - infra.database at sizes: xs, s, m, l, xl
+    - infra.container_service at sizes: xs, s, m, l, xl
+    - Resource hint overrides: cpu, memory, storage
+    - iac.provider (provider: aws) and iac.state (backend: memory)
+
+  No live cloud API calls — config-validation only.
+components:
+  - wfctl (config validation)
+  - iac.provider (provider: aws)
+  - iac.state (backend: memory)
+  - infra.database (5 sizes)
+  - infra.container_service (5 sizes)
+status: testable
+tags:
+  - iac
+  - sizing
+  - config-validation
+  - local-only

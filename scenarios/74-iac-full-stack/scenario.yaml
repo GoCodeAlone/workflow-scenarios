@@ -1,0 +1,36 @@
+name: IaC Full Stack
+id: "74-iac-full-stack"
+category: C
+description: |
+  Config-validation scenario exercising all 13 infra.* module types in a single
+  config. Builds a complete production-grade infrastructure stack including
+  networking, compute, data, security, and observability resources.
+
+  Covers all infra.* types:
+    - infra.vpc, infra.database, infra.cache, infra.container_service
+    - infra.load_balancer, infra.dns, infra.registry
+    - infra.firewall, infra.iam_role, infra.storage
+    - infra.certificate, infra.cdn, infra.secret
+
+  No live cloud API calls — config-validation only.
+components:
+  - wfctl (config validation)
+  - iac.provider (provider: aws)
+  - iac.state (backend: memory)
+  - infra.vpc
+  - infra.database
+  - infra.cache
+  - infra.container_service
+  - infra.load_balancer
+  - infra.dns
+  - infra.registry
+  - infra.firewall
+  - infra.iam_role
+  - infra.storage
+  - infra.certificate
+status: testable
+tags:
+  - iac
+  - full-stack
+  - config-validation
+  - local-only

@@ -1,0 +1,30 @@
+name: IaC Deployment Blue-Green
+id: "70-iac-deployment-blue-green"
+category: C
+description: |
+  Config-validation scenario for blue-green deployments using infra.container_service
+  and step.deploy_blue_green with health check configuration. Verifies that blue/green
+  environments are correctly defined and traffic switching is wired.
+
+  Covers:
+    - iac.provider (provider: aws)
+    - iac.state (backend: memory)
+    - infra.container_service (blue + green)
+    - step.deploy_blue_green with health check gates
+    - step.deploy_verify for health check validation
+
+  No live cloud API calls — config-validation only.
+components:
+  - wfctl (config validation)
+  - iac.provider (provider: aws)
+  - iac.state (backend: memory)
+  - infra.container_service
+  - step.deploy_blue_green
+  - step.deploy_verify
+status: testable
+tags:
+  - iac
+  - deployment
+  - blue-green
+  - config-validation
+  - local-only

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Scenario 65 — IaC AWS Basic
-# Config-validation only: validates YAML syntax and module wiring via wfctl.
-# No live cloud API calls, no k8s required.
+# Scenario 75 — Deployment Pipeline
+# Config-validation only: validates end-to-end CI/CD pipeline wiring.
+# Tests that step.iac_plan → step.iac_apply → step.container_build →
+# step.deploy_rolling → step.deploy_verify are all present in sequence.
 set -uo pipefail
 
-SCENARIO="65-iac-aws-basic"
+SCENARIO="75-deployment-pipeline"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENARIO_DIR="$(dirname "$SCRIPT_DIR")"
 WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$SCENARIO_DIR/../../.." && pwd)/workflow}"
@@ -25,9 +26,10 @@ echo ""
 # Locate wfctl binary
 WFCTL=""
 for candidate in \
+    "${WFCTL_BIN:-}" \
     "$(which wfctl 2>/dev/null)" \
     "$WORKFLOW_REPO/bin/wfctl" \
-    "${WFCTL_BIN:-}"; do
+    "/tmp/wfctl"; do
     if [ -n "$candidate" ] && [ -x "$candidate" ]; then
         WFCTL="$candidate"
         break
@@ -56,72 +58,66 @@ OUTPUT=$("$WFCTL" validate --skip-unknown-types "$CONFIG" 2>&1)
 EXIT=$?
 [ "$EXIT" -eq 0 ] && pass "wfctl validate passes" || fail "wfctl validate failed: $OUTPUT"
 
-# Test 4: iac.provider with provider: aws
+# Test 4: infrastructure modules
 grep -q "type: iac.provider" "$CONFIG" \
     && pass "iac.provider module defined" \
     || fail "iac.provider module missing"
 
-grep -q "provider: aws" "$CONFIG" \
-    && pass "iac.provider uses provider: aws" \
-    || fail "iac.provider missing provider: aws"
+grep -q "provider: digitalocean" "$CONFIG" \
+    && pass "iac.provider uses provider: digitalocean" \
+    || fail "iac.provider missing provider: digitalocean"
 
-# Test 5: iac.state backend: memory
 grep -q "type: iac.state" "$CONFIG" \
     && pass "iac.state module defined" \
     || fail "iac.state module missing"
 
-grep -q "backend: memory" "$CONFIG" \
-    && pass "iac.state uses backend: memory" \
-    || fail "iac.state missing backend: memory"
-
-# Test 6: infra resource modules
-grep -q "type: infra.vpc" "$CONFIG" \
-    && pass "infra.vpc module defined" \
-    || fail "infra.vpc module missing"
-
-grep -q "type: infra.database" "$CONFIG" \
-    && pass "infra.database module defined" \
-    || fail "infra.database module missing"
+grep -q "type: infra.registry" "$CONFIG" \
+    && pass "infra.registry module defined" \
+    || fail "infra.registry module missing"
 
 grep -q "type: infra.container_service" "$CONFIG" \
     && pass "infra.container_service module defined" \
     || fail "infra.container_service module missing"
 
-# Test 7: ECS Fargate config
-grep -q "launchType: fargate" "$CONFIG" \
-    && pass "container_service launchType is fargate" \
-    || fail "container_service launchType not set to fargate"
-
-# Test 8: RDS PostgreSQL 16
-grep -q "engine: postgres" "$CONFIG" \
-    && pass "database engine is postgres" \
-    || fail "database engine not set to postgres"
-
-grep -q 'version: "16"' "$CONFIG" \
-    && pass "database version is 16" \
-    || fail "database version not set to 16"
-
-# Test 9: nginx:latest with 2 replicas
-grep -q "image: nginx:latest" "$CONFIG" \
-    && pass "container_service image is nginx:latest" \
-    || fail "container_service image not set"
-
-grep -q "replicas: 2" "$CONFIG" \
-    && pass "container_service replicas: 2" \
-    || fail "container_service replicas not set to 2"
-
-# Test 10: IaC pipeline steps
+# Test 5: all pipeline steps in the deploy sequence
 grep -q "type: step.iac_plan" "$CONFIG" \
-    && pass "step.iac_plan pipeline step defined" \
+    && pass "step.iac_plan defined" \
     || fail "step.iac_plan missing"
 
 grep -q "type: step.iac_apply" "$CONFIG" \
-    && pass "step.iac_apply pipeline step defined" \
+    && pass "step.iac_apply defined" \
     || fail "step.iac_apply missing"
 
-grep -q "type: step.iac_destroy" "$CONFIG" \
-    && pass "step.iac_destroy pipeline step defined" \
-    || fail "step.iac_destroy missing"
+grep -q "type: step.container_build" "$CONFIG" \
+    && pass "step.container_build defined" \
+    || fail "step.container_build missing"
+
+grep -q "type: step.deploy_rolling" "$CONFIG" \
+    && pass "step.deploy_rolling defined" \
+    || fail "step.deploy_rolling missing"
+
+grep -q "type: step.deploy_verify" "$CONFIG" \
+    && pass "step.deploy_verify defined" \
+    || fail "step.deploy_verify missing"
+
+# Test 6: container_build config
+grep -q "registry: prod-registry" "$CONFIG" \
+    && pass "container_build references prod-registry" \
+    || fail "container_build registry reference missing"
+
+grep -q "push: true" "$CONFIG" \
+    && pass "container_build push: true configured" \
+    || fail "container_build push: true missing"
+
+# Test 7: deploy pipeline
+grep -q "deploy-pipeline:" "$CONFIG" \
+    && pass "deploy-pipeline pipeline defined" \
+    || fail "deploy-pipeline pipeline missing"
+
+# Test 8: rollback pipeline
+grep -q "rollback-pipeline:" "$CONFIG" \
+    && pass "rollback-pipeline pipeline defined" \
+    || fail "rollback-pipeline pipeline missing"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed, $SKIP skipped"

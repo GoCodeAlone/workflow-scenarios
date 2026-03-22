@@ -1,0 +1,184 @@
+# ============================================================
+# Scenario 71 — IaC Deployment Canary
+#
+# Canary deployment using infra.container_service and
+# step.deploy_canary with metric gates and staged rollout:
+# 5% → 25% → 100% traffic.
+#
+# Config-validation only — no live cloud API calls.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: gcp-provider
+    type: iac.provider
+    config:
+      provider: gcp
+      credentials: env
+      region: us-central1
+      project: my-gcp-project
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  - name: stable-service
+    type: infra.container_service
+    config:
+      name: app-stable
+      image: myapp:stable
+      size: m
+      replicas: 10
+      region: us-central1
+      provider: gcp-provider
+      platform: cloud-run
+
+  - name: canary-service
+    type: infra.container_service
+    config:
+      name: app-canary
+      image: myapp:canary
+      size: m
+      replicas: 1
+      region: us-central1
+      provider: gcp-provider
+      platform: cloud-run
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "71-iac-deployment-canary"
+
+  deploy-canary:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/deploy/canary
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: set_params
+        type: step.set
+        config:
+          values:
+            image: "{{ default \"myapp:canary\" .body.image }}"
+      - name: deploy
+        type: step.deploy_canary
+        config:
+          stableService: stable-service
+          canaryService: canary-service
+          image: "{{ .image }}"
+          stages:
+            - weight: 5
+              durationSeconds: 300
+              metricGates:
+                - metric: error_rate
+                  threshold: 0.01
+                  operator: lt
+                - metric: p99_latency_ms
+                  threshold: 500
+                  operator: lt
+            - weight: 25
+              durationSeconds: 600
+              metricGates:
+                - metric: error_rate
+                  threshold: 0.01
+                  operator: lt
+                - metric: p99_latency_ms
+                  threshold: 500
+                  operator: lt
+            - weight: 100
+              durationSeconds: 0
+      - name: verify
+        type: step.deploy_verify
+        config:
+          service: canary-service
+          healthCheckPath: /healthz
+          timeoutSeconds: 60
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: canary-deployed
+            strategy: canary
+            stages: 3
+
+  canary-promote:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/deploy/canary/promote
+        method: POST
+    steps:
+      - name: promote
+        type: step.deploy_canary
+        config:
+          stableService: stable-service
+          canaryService: canary-service
+          image: myapp:canary
+          stages:
+            - weight: 100
+              durationSeconds: 0
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: promoted
+            strategy: canary
+            weight: 100
+
+  canary-abort:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/deploy/canary/abort
+        method: POST
+    steps:
+      - name: abort
+        type: step.deploy_canary
+        config:
+          stableService: stable-service
+          canaryService: canary-service
+          image: myapp:stable
+          stages:
+            - weight: 0
+              durationSeconds: 0
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: aborted
+            strategy: canary
+            weight: 0

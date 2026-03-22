@@ -1,0 +1,235 @@
+# ============================================================
+# Scenario 77 — CI Generate Multi-Platform
+#
+# Generates CI/CD configs for both GitHub Actions and GitLab CI
+# in the same workflow config. Tests that two ci.generator
+# modules coexist and produce correct platform-specific outputs.
+#
+# Config-validation only — no live CI execution.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: github-ci
+    type: ci.generator
+    config:
+      provider: github
+      outputDir: /tmp/ci-output/github
+      defaultBranch: main
+      goVersion: "1.22"
+      nodeVersion: "20"
+      dockerRegistry: ghcr.io
+      runnerOS: ubuntu-24.04
+
+  - name: gitlab-ci
+    type: ci.generator
+    config:
+      provider: gitlab
+      outputDir: /tmp/ci-output/gitlab
+      defaultBranch: main
+      goVersion: "1.22"
+      nodeVersion: "20"
+      dockerRegistry: registry.gitlab.com
+      image: golang:1.22-alpine
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "77-ci-generate-multi-platform"
+
+  # Generate GitHub Actions CI
+  generate-github:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/ci/github/generate
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: generate
+        type: step.ci_generate
+        config:
+          generator: github-ci
+          outputFile: ".github/workflows/ci.yml"
+          jobs:
+            - name: test
+              steps: [checkout, setup-go, test, coverage]
+            - name: lint
+              steps: [checkout, setup-go, lint]
+            - name: build
+              steps: [checkout, setup-go, build, docker-build, docker-push]
+              needs: [test, lint]
+            - name: deploy-staging
+              steps: [checkout, deploy]
+              needs: [build]
+              environment: staging
+            - name: deploy-production
+              steps: [checkout, deploy]
+              needs: [deploy-staging]
+              environment: production
+      - name: validate
+        type: step.ci_validate
+        config:
+          generator: github-ci
+          file: ".github/workflows/ci.yml"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: generated
+            provider: github
+            file: ".github/workflows/ci.yml"
+            jobs: 5
+
+  # Generate GitLab CI pipeline
+  generate-gitlab:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/ci/gitlab/generate
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: generate
+        type: step.ci_generate
+        config:
+          generator: gitlab-ci
+          outputFile: ".gitlab-ci.yml"
+          stages: [test, lint, build, deploy]
+          jobs:
+            - name: test
+              stage: test
+              steps: [test, coverage]
+            - name: lint
+              stage: lint
+              steps: [lint]
+            - name: build
+              stage: build
+              steps: [build, docker-build, docker-push]
+            - name: deploy-staging
+              stage: deploy
+              steps: [deploy]
+              environment: staging
+            - name: deploy-production
+              stage: deploy
+              steps: [deploy]
+              environment: production
+              when: manual
+      - name: validate
+        type: step.ci_validate
+        config:
+          generator: gitlab-ci
+          file: ".gitlab-ci.yml"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: generated
+            provider: gitlab
+            file: ".gitlab-ci.yml"
+            stages: 4
+
+  # Generate both platforms in one call
+  generate-all:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/ci/generate/all
+        method: POST
+    steps:
+      - name: gen_github
+        type: step.ci_generate
+        config:
+          generator: github-ci
+          outputFile: ".github/workflows/ci.yml"
+          jobs:
+            - name: test
+              steps: [checkout, setup-go, test]
+            - name: build
+              steps: [checkout, setup-go, build]
+              needs: [test]
+      - name: gen_gitlab
+        type: step.ci_generate
+        config:
+          generator: gitlab-ci
+          outputFile: ".gitlab-ci.yml"
+          stages: [test, build]
+          jobs:
+            - name: test
+              stage: test
+              steps: [test]
+            - name: build
+              stage: build
+              steps: [build]
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: generated
+            platforms: [github, gitlab]
+            files:
+              - ".github/workflows/ci.yml"
+              - ".gitlab-ci.yml"
+
+  # Diff CI configs against baselines
+  diff-ci:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/ci/diff
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: set_params
+        type: step.set
+        config:
+          values:
+            provider: "{{ default \"github\" .body.provider }}"
+      - name: diff_github
+        type: step.ci_diff
+        config:
+          generator: github-ci
+          currentFile: ".github/workflows/ci.yml"
+          baselineFile: ".github/workflows/ci.baseline.yml"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.diff_github"

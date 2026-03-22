@@ -1,0 +1,158 @@
+# ============================================================
+# Scenario 70 — IaC Deployment Blue-Green
+#
+# Blue-green deployment using two infra.container_service
+# modules (blue + green) and step.deploy_blue_green with
+# health check gates and traffic switching.
+#
+# Config-validation only — no live cloud API calls.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: aws-provider
+    type: iac.provider
+    config:
+      provider: aws
+      credentials: env
+      region: us-east-1
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  - name: blue-service
+    type: infra.container_service
+    config:
+      name: app-blue
+      image: myapp:stable
+      size: s
+      replicas: 3
+      region: us-east-1
+      provider: aws-provider
+      launchType: fargate
+
+  - name: green-service
+    type: infra.container_service
+    config:
+      name: app-green
+      image: myapp:latest
+      size: s
+      replicas: 3
+      region: us-east-1
+      provider: aws-provider
+      launchType: fargate
+
+  - name: app-lb
+    type: infra.load_balancer
+    config:
+      name: app-alb
+      type: application
+      region: us-east-1
+      provider: aws-provider
+      healthCheck:
+        path: /healthz
+        interval: 15
+        threshold: 2
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "70-iac-deployment-blue-green"
+
+  deploy-blue-green:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/deploy/blue-green
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: set_params
+        type: step.set
+        config:
+          values:
+            image: "{{ default \"myapp:latest\" .body.image }}"
+            target: "{{ default \"green\" .body.target }}"
+      - name: deploy
+        type: step.deploy_blue_green
+        config:
+          blueService: blue-service
+          greenService: green-service
+          loadBalancer: app-lb
+          targetSlot: "{{ .target }}"
+          image: "{{ .image }}"
+          healthCheckPath: /healthz
+          healthCheckTimeoutSeconds: 60
+          cutoverDelaySeconds: 30
+      - name: verify
+        type: step.deploy_verify
+        config:
+          service: green-service
+          expectedReplicas: 3
+          healthCheckPath: /healthz
+          timeoutSeconds: 120
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: deployed
+            strategy: blue-green
+            activeSlot: green
+
+  rollback:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/deploy/rollback
+        method: POST
+    steps:
+      - name: rollback
+        type: step.deploy_blue_green
+        config:
+          blueService: blue-service
+          greenService: green-service
+          loadBalancer: app-lb
+          targetSlot: blue
+          image: myapp:stable
+          healthCheckPath: /healthz
+          healthCheckTimeoutSeconds: 60
+          cutoverDelaySeconds: 10
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: rolled-back
+            strategy: blue-green
+            activeSlot: blue

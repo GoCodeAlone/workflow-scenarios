@@ -82,7 +82,7 @@ if ! cmd_available "contract"; then
     skip "v1 contract generation — wfctl contract command not available"
     skip "v1 contract has expected endpoints — skipped (contract generation skipped)"
 else
-    if "$WFCTL" contract test "$V1_CONFIG" -output "$V1_CONTRACT" >/dev/null 2>&1; then
+    if "$WFCTL" contract test -output "$V1_CONTRACT" "$V1_CONFIG" >/dev/null 2>&1; then
         if [ -s "$V1_CONTRACT" ]; then
             pass "v1 contract generation produces output file"
         else
@@ -134,7 +134,7 @@ if ! cmd_available "contract"; then
     skip "v2 vs v1 breaking change check — skipped (contract generation skipped)"
     skip "v2 new endpoints detected as additions — skipped (contract generation skipped)"
 else
-    if "$WFCTL" contract test "$V2_CONFIG" -output "$V2_CONTRACT" >/dev/null 2>&1; then
+    if "$WFCTL" contract test -output "$V2_CONTRACT" "$V2_CONFIG" >/dev/null 2>&1; then
         if [ -s "$V2_CONTRACT" ]; then
             pass "v2 contract generation produces output file"
         else
@@ -189,7 +189,7 @@ if ! cmd_available "contract"; then
     skip "v3 path change flagged — skipped (contract generation skipped)"
     skip "v3 auth-added-to-public-endpoint flagged — skipped (contract generation skipped)"
 else
-    if "$WFCTL" contract test "$V3_CONFIG" -output "$V3_CONTRACT" >/dev/null 2>&1; then
+    if "$WFCTL" contract test -output "$V3_CONTRACT" "$V3_CONFIG" >/dev/null 2>&1; then
         if [ -s "$V3_CONTRACT" ]; then
             pass "v3 contract generation produces output file"
         else
@@ -289,7 +289,7 @@ if [ -z "$TMPL_CONFIG" ]; then
 elif ! cmd_available "contract"; then
     skip "Template round-trip contract — wfctl contract not available"
 else
-    if "$WFCTL" contract test "$TMPL_CONFIG" -output "$TMPL_CONTRACT" >/dev/null 2>&1; then
+    if "$WFCTL" contract test -output "$TMPL_CONTRACT" "$TMPL_CONFIG" >/dev/null 2>&1; then
         if [ -s "$TMPL_CONTRACT" ]; then
             pass "Template round-trip: contract generated from template config"
         else

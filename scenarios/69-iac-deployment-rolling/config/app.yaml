@@ -1,0 +1,132 @@
+# ============================================================
+# Scenario 69 — IaC Deployment Rolling
+#
+# Rolling deployment scenario using infra.container_service
+# and step.deploy_rolling. Verifies that the deployment step
+# config references a valid service module and that rolling
+# update parameters (maxSurge, maxUnavailable, healthCheck)
+# are correctly wired.
+#
+# Config-validation only — no live cloud API calls.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: do-provider
+    type: iac.provider
+    config:
+      provider: digitalocean
+      credentials: env
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  - name: app-service
+    type: infra.container_service
+    config:
+      name: rolling-app
+      image: myapp:latest
+      size: professional-xs
+      replicas: 4
+      region: nyc3
+      provider: do-provider
+      rollingUpdate:
+        maxSurge: 1
+        maxUnavailable: 0
+        healthCheckPath: /healthz
+        healthCheckInterval: 10s
+        healthCheckTimeout: 5s
+        healthCheckThreshold: 3
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "69-iac-deployment-rolling"
+
+  deploy-rolling:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/deploy/rolling
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: set_image
+        type: step.set
+        config:
+          values:
+            image: "{{ default \"myapp:latest\" .body.image }}"
+            service: "{{ default \"rolling-app\" .body.service }}"
+      - name: deploy
+        type: step.deploy_rolling
+        config:
+          service: app-service
+          image: "{{ .image }}"
+          maxSurge: 1
+          maxUnavailable: 0
+          healthCheckPath: /healthz
+          timeoutSeconds: 300
+      - name: verify
+        type: step.deploy_verify
+        config:
+          service: app-service
+          expectedReplicas: 4
+          healthCheckPath: /healthz
+          timeoutSeconds: 120
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: deployed
+            strategy: rolling
+            service: rolling-app
+
+  deploy-status:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/deploy/status
+        method: GET
+    steps:
+      - name: status
+        type: step.iac_status
+        config:
+          platform: app-service
+          resource_id: rolling-app
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "steps.status"

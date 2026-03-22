@@ -1,0 +1,29 @@
+name: Tofu Generate Pipeline (Multi-Cloud)
+id: "76-tofu-generate-pipeline"
+category: C
+description: |
+  Config-validation scenario for HCL generation across multiple cloud providers.
+  Defines one tofu.generator per provider (aws, gcp, azure, digitalocean) and
+  uses step.iac_generate_hcl to produce provider-specific Terraform modules.
+
+  Covers:
+    - tofu.generator with providerSource for aws, gcp, azure, digitalocean
+    - step.iac_generate_hcl with per-provider outputDir mappings
+    - Provider-specific resource types (VPC, database, container_service)
+
+  No live Tofu execution — config-validation only.
+components:
+  - wfctl (config validation)
+  - tofu.generator (provider: aws)
+  - tofu.generator (provider: gcp)
+  - tofu.generator (provider: azure)
+  - tofu.generator (provider: digitalocean)
+  - step.iac_generate_hcl
+status: testable
+tags:
+  - iac
+  - tofu
+  - multi-cloud
+  - hcl-generation
+  - config-validation
+  - local-only

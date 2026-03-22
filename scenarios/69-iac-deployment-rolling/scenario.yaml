@@ -1,0 +1,30 @@
+name: IaC Deployment Rolling
+id: "69-iac-deployment-rolling"
+category: C
+description: |
+  Config-validation scenario for rolling deployments using infra.container_service
+  and step.deploy_rolling. Verifies that the deployment step config references a
+  valid service module and that rolling update parameters are correctly wired.
+
+  Covers:
+    - iac.provider (provider: digitalocean)
+    - iac.state (backend: memory)
+    - infra.container_service with rolling update policy
+    - step.deploy_rolling referencing the service module
+    - step.deploy_verify for post-deploy health check
+
+  No live cloud API calls — config-validation only.
+components:
+  - wfctl (config validation)
+  - iac.provider (provider: digitalocean)
+  - iac.state (backend: memory)
+  - infra.container_service
+  - step.deploy_rolling
+  - step.deploy_verify
+status: testable
+tags:
+  - iac
+  - deployment
+  - rolling
+  - config-validation
+  - local-only

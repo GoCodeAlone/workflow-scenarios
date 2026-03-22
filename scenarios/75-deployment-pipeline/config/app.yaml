@@ -1,0 +1,181 @@
+# ============================================================
+# Scenario 75 — Deployment Pipeline
+#
+# End-to-end deployment pipeline combining IaC provisioning
+# with container build and rolling deployment:
+#
+#   step.iac_plan → step.iac_apply → step.container_build
+#   → step.deploy_rolling → step.deploy_verify
+#
+# Config-validation only — no live cloud API calls.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: do-provider
+    type: iac.provider
+    config:
+      provider: digitalocean
+      credentials: env
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  - name: registry
+    type: infra.registry
+    config:
+      name: prod-registry
+      provider: do-provider
+      region: nyc3
+
+  - name: app-service
+    type: infra.container_service
+    config:
+      name: prod-app
+      image: registry.digitalocean.com/my-org/myapp:latest
+      size: professional-xs
+      replicas: 3
+      region: nyc3
+      provider: do-provider
+      rollingUpdate:
+        maxSurge: 1
+        maxUnavailable: 0
+        healthCheckPath: /healthz
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "75-deployment-pipeline"
+
+  # Full CI/CD pipeline: provision → build → deploy → verify
+  deploy-pipeline:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/pipeline/deploy
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: set_params
+        type: step.set
+        config:
+          values:
+            image_tag: "{{ default \"latest\" .body.tag }}"
+            image: "registry.digitalocean.com/my-org/myapp:{{ default \"latest\" .body.tag }}"
+      - name: iac_plan
+        type: step.iac_plan
+        config:
+          platform: app-service
+          resource_id: prod-app
+          state_store: iac-state
+      - name: iac_apply
+        type: step.iac_apply
+        config:
+          platform: app-service
+          resource_id: prod-app
+          state_store: iac-state
+      - name: container_build
+        type: step.container_build
+        config:
+          registry: prod-registry
+          imageName: myapp
+          tag: "{{ .image_tag }}"
+          dockerfile: Dockerfile
+          contextPath: .
+          push: true
+      - name: deploy_rolling
+        type: step.deploy_rolling
+        config:
+          service: app-service
+          image: "{{ .image }}"
+          maxSurge: 1
+          maxUnavailable: 0
+          healthCheckPath: /healthz
+          timeoutSeconds: 300
+      - name: deploy_verify
+        type: step.deploy_verify
+        config:
+          service: app-service
+          expectedReplicas: 3
+          healthCheckPath: /healthz
+          timeoutSeconds: 120
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: deployed
+            image: "{{ .image }}"
+            strategy: rolling
+
+  # Rollback pipeline
+  rollback-pipeline:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/pipeline/rollback
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          parse_body: true
+      - name: set_params
+        type: step.set
+        config:
+          values:
+            rollback_tag: "{{ default \"stable\" .body.tag }}"
+            rollback_image: "registry.digitalocean.com/my-org/myapp:{{ default \"stable\" .body.tag }}"
+      - name: deploy_rolling
+        type: step.deploy_rolling
+        config:
+          service: app-service
+          image: "{{ .rollback_image }}"
+          maxSurge: 1
+          maxUnavailable: 0
+          healthCheckPath: /healthz
+          timeoutSeconds: 300
+      - name: deploy_verify
+        type: step.deploy_verify
+        config:
+          service: app-service
+          expectedReplicas: 3
+          healthCheckPath: /healthz
+          timeoutSeconds: 120
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: rolled-back
+            image: "{{ .rollback_image }}"

@@ -1,0 +1,31 @@
+name: IaC State Backends
+id: "72-iac-state-backends"
+category: C
+description: |
+  Config-validation scenario testing all supported iac.state backend types:
+  memory, filesystem, postgres, gcs, azure_blob, and s3. Each backend is defined
+  as a separate module with its required configuration fields.
+
+  Covers:
+    - iac.state backend: memory
+    - iac.state backend: filesystem (with path)
+    - iac.state backend: postgres (with connectionString)
+    - iac.state backend: gcs (with bucket + prefix)
+    - iac.state backend: azure_blob (with container + storageAccount)
+    - iac.state backend: s3 (with bucket + region + prefix)
+
+  No live cloud API calls — config-validation only.
+components:
+  - wfctl (config validation)
+  - iac.state (backend: memory)
+  - iac.state (backend: filesystem)
+  - iac.state (backend: postgres)
+  - iac.state (backend: gcs)
+  - iac.state (backend: azure_blob)
+  - iac.state (backend: s3)
+status: testable
+tags:
+  - iac
+  - state-backends
+  - config-validation
+  - local-only

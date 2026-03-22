@@ -1,0 +1,29 @@
+name: CI Generate Multi-Platform
+id: "77-ci-generate-multi-platform"
+category: C
+description: |
+  Config-validation scenario for generating CI/CD configs for both GitHub Actions
+  and GitLab CI in the same workflow config. Tests that both ci.generator modules
+  coexist and that step.ci_generate outputs valid platform-specific files.
+
+  Covers:
+    - ci.generator (provider: github_actions) producing .github/workflows/
+    - ci.generator (provider: gitlab_ci) producing .gitlab-ci.yml
+    - step.ci_generate for both platforms from a single pipeline
+    - Shared build matrix: test, build, deploy stages
+
+  No live CI execution — config-validation only.
+components:
+  - wfctl (config validation)
+  - ci.generator (provider: github)
+  - ci.generator (provider: gitlab)
+  - step.ci_generate
+  - step.ci_validate
+status: testable
+tags:
+  - ci
+  - github-actions
+  - gitlab-ci
+  - multi-platform
+  - config-validation
+  - local-only

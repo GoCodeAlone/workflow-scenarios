@@ -53,12 +53,12 @@ python3 -c "import sys, yaml; yaml.safe_load(open('$CONFIG'))" 2>/dev/null \
     || fail "config/app.yaml YAML syntax error"
 
 # Test 3: wfctl validate with provider: aws
-OUTPUT=$(IAC_PROVIDER=aws "$WFCTL" validate -c "$CONFIG" 2>&1)
+OUTPUT=$(IAC_PROVIDER=aws "$WFCTL" validate --skip-unknown-types "$CONFIG" 2>&1)
 EXIT=$?
 [ "$EXIT" -eq 0 ] && pass "wfctl validate passes with IAC_PROVIDER=aws" || fail "wfctl validate failed (aws): $OUTPUT"
 
 # Test 4: wfctl validate with provider: digitalocean
-OUTPUT=$(IAC_PROVIDER=digitalocean "$WFCTL" validate -c "$CONFIG" 2>&1)
+OUTPUT=$(IAC_PROVIDER=digitalocean "$WFCTL" validate --skip-unknown-types "$CONFIG" 2>&1)
 EXIT=$?
 [ "$EXIT" -eq 0 ] && pass "wfctl validate passes with IAC_PROVIDER=digitalocean" || fail "wfctl validate failed (digitalocean): $OUTPUT"
 

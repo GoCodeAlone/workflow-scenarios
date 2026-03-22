@@ -1,0 +1,194 @@
+# ============================================================
+# Scenario 78 — Infra Module Wiring
+#
+# Tests the infra module → provider delegation chain.
+# All infra modules reference the iac.provider by name,
+# and all IaC pipeline steps reference iac.state by name.
+#
+# Dependency chain:
+#   iac.provider (aws-provider)
+#     → infra.database (references provider: aws-provider)
+#     → infra.container_service (references provider: aws-provider)
+#       → step.iac_plan / step.iac_apply (references state_store: iac-state)
+#
+# Config-validation only — no live cloud API calls.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Root provider — all infra modules delegate here
+  - name: aws-provider
+    type: iac.provider
+    config:
+      provider: aws
+      credentials: env
+      region: us-east-1
+
+  # State store — all step.iac_* reference this
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  # Infra modules — each explicitly references aws-provider
+  - name: app-vpc
+    type: infra.vpc
+    config:
+      name: app-vpc
+      cidr: "10.0.0.0/16"
+      region: us-east-1
+      provider: aws-provider
+
+  - name: app-database
+    type: infra.database
+    config:
+      name: app-database
+      engine: postgres
+      version: "16"
+      size: s
+      region: us-east-1
+      provider: aws-provider
+
+  - name: app-service
+    type: infra.container_service
+    config:
+      name: app-service
+      image: myapp:latest
+      size: s
+      replicas: 2
+      region: us-east-1
+      provider: aws-provider
+      launchType: fargate
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "78-infra-module-wiring"
+
+  # Plan: all resources go through aws-provider → iac-state
+  plan-all:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/infra/plan
+        method: POST
+    steps:
+      - name: plan_vpc
+        type: step.iac_plan
+        config:
+          platform: vpc
+          resource_id: app-vpc
+          state_store: iac-state
+      - name: plan_db
+        type: step.iac_plan
+        config:
+          platform: database
+          resource_id: app-database
+          state_store: iac-state
+      - name: plan_app
+        type: step.iac_plan
+        config:
+          platform: app-service
+          resource_id: app-service
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: planned
+            provider: aws-provider
+            stateStore: iac-state
+            resources: [app-vpc, app-database, app-service]
+
+  # Apply: same provider chain
+  apply-all:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/infra/apply
+        method: POST
+    steps:
+      - name: apply_vpc
+        type: step.iac_apply
+        config:
+          platform: vpc
+          resource_id: app-vpc
+          state_store: iac-state
+      - name: apply_db
+        type: step.iac_apply
+        config:
+          platform: database
+          resource_id: app-database
+          state_store: iac-state
+      - name: apply_app
+        type: step.iac_apply
+        config:
+          platform: app-service
+          resource_id: app-service
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: applied
+            provider: aws-provider
+            stateStore: iac-state
+
+  # Status check verifies provider delegation
+  status-check:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/infra/status
+        method: GET
+    steps:
+      - name: status_vpc
+        type: step.iac_status
+        config:
+          platform: vpc
+          resource_id: app-vpc
+          state_store: iac-state
+      - name: status_db
+        type: step.iac_status
+        config:
+          platform: database
+          resource_id: app-database
+          state_store: iac-state
+      - name: status_app
+        type: step.iac_status
+        config:
+          platform: app-service
+          resource_id: app-service
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: "."

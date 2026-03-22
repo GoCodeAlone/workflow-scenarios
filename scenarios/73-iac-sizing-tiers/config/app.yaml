@@ -1,0 +1,226 @@
+# ============================================================
+# Scenario 73 — IaC Sizing Tiers
+#
+# Tests all 5 sizing tiers (xs/s/m/l/xl) for:
+#   - infra.database (managed PostgreSQL)
+#   - infra.container_service
+#
+# Also tests resource hint overrides (cpu, memory, storage)
+# on top of tier defaults.
+#
+# Config-validation only — no live cloud API calls.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: aws-provider
+    type: iac.provider
+    config:
+      provider: aws
+      credentials: env
+      region: us-east-1
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  # --- infra.database sizing tiers ---
+
+  - name: db-xs
+    type: infra.database
+    config:
+      name: db-xs
+      engine: postgres
+      version: "16"
+      size: xs
+      region: us-east-1
+      provider: aws-provider
+
+  - name: db-s
+    type: infra.database
+    config:
+      name: db-s
+      engine: postgres
+      version: "16"
+      size: s
+      region: us-east-1
+      provider: aws-provider
+
+  - name: db-m
+    type: infra.database
+    config:
+      name: db-m
+      engine: postgres
+      version: "16"
+      size: m
+      region: us-east-1
+      provider: aws-provider
+
+  - name: db-l
+    type: infra.database
+    config:
+      name: db-l
+      engine: postgres
+      version: "16"
+      size: l
+      region: us-east-1
+      provider: aws-provider
+
+  - name: db-xl
+    type: infra.database
+    config:
+      name: db-xl
+      engine: postgres
+      version: "16"
+      size: xl
+      region: us-east-1
+      provider: aws-provider
+      resources:
+        cpu: "4"
+        memory: "32Gi"
+        storage: "500Gi"
+
+  # --- infra.container_service sizing tiers ---
+
+  - name: svc-xs
+    type: infra.container_service
+    config:
+      name: svc-xs
+      image: myapp:latest
+      size: xs
+      replicas: 1
+      region: us-east-1
+      provider: aws-provider
+      launchType: fargate
+
+  - name: svc-s
+    type: infra.container_service
+    config:
+      name: svc-s
+      image: myapp:latest
+      size: s
+      replicas: 2
+      region: us-east-1
+      provider: aws-provider
+      launchType: fargate
+
+  - name: svc-m
+    type: infra.container_service
+    config:
+      name: svc-m
+      image: myapp:latest
+      size: m
+      replicas: 4
+      region: us-east-1
+      provider: aws-provider
+      launchType: fargate
+
+  - name: svc-l
+    type: infra.container_service
+    config:
+      name: svc-l
+      image: myapp:latest
+      size: l
+      replicas: 8
+      region: us-east-1
+      provider: aws-provider
+      launchType: fargate
+
+  - name: svc-xl
+    type: infra.container_service
+    config:
+      name: svc-xl
+      image: myapp:latest
+      size: xl
+      replicas: 16
+      region: us-east-1
+      provider: aws-provider
+      launchType: fargate
+      resources:
+        cpu: "4"
+        memory: "16Gi"
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "73-iac-sizing-tiers"
+
+  list-tiers:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tiers
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            databases: [db-xs, db-s, db-m, db-l, db-xl]
+            services: [svc-xs, svc-s, svc-m, svc-l, svc-xl]
+
+  plan-all:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tiers/plan
+        method: POST
+    steps:
+      - name: plan_db_xs
+        type: step.iac_plan
+        config:
+          platform: database
+          resource_id: db-xs
+          state_store: iac-state
+      - name: plan_db_xl
+        type: step.iac_plan
+        config:
+          platform: database
+          resource_id: db-xl
+          state_store: iac-state
+      - name: plan_svc_xs
+        type: step.iac_plan
+        config:
+          platform: app-service
+          resource_id: svc-xs
+          state_store: iac-state
+      - name: plan_svc_xl
+        type: step.iac_plan
+        config:
+          platform: app-service
+          resource_id: svc-xl
+          state_store: iac-state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: planned
+            tiers: [xs, s, m, l, xl]

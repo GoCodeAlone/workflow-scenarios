@@ -1,0 +1,244 @@
+# ============================================================
+# Scenario 72 — IaC State Backends
+#
+# Tests all six iac.state backend configurations:
+#   - memory (no external storage)
+#   - filesystem (local path)
+#   - postgres (connection string)
+#   - gcs (Google Cloud Storage bucket)
+#   - azure_blob (Azure Blob Storage container)
+#   - s3 (AWS S3 bucket)
+#
+# Each backend is defined as a separate module so wfctl
+# can validate all config blocks in a single pass.
+#
+# Config-validation only — no live storage connections.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: do-provider
+    type: iac.provider
+    config:
+      provider: digitalocean
+      credentials: env
+
+  # Backend: memory (no config required)
+  - name: state-memory
+    type: iac.state
+    config:
+      backend: memory
+
+  # Backend: filesystem (local path)
+  - name: state-filesystem
+    type: iac.state
+    config:
+      backend: filesystem
+      path: /tmp/iac-state/fs
+
+  # Backend: postgres (connection string)
+  - name: state-postgres
+    type: iac.state
+    config:
+      backend: postgres
+      connectionString: "postgres://user:pass@localhost:5432/iac_state?sslmode=disable"
+      table: iac_state_entries
+
+  # Backend: gcs (Google Cloud Storage)
+  - name: state-gcs
+    type: iac.state
+    config:
+      backend: gcs
+      bucket: my-iac-state-bucket
+      prefix: scenarios/72/
+      credentialsFile: /etc/gcp/service-account.json
+
+  # Backend: azure_blob (Azure Blob Storage)
+  - name: state-azure-blob
+    type: iac.state
+    config:
+      backend: azure_blob
+      storageAccount: myiacstatestorage
+      container: iac-state
+      blobPrefix: scenarios/72/
+
+  # Backend: s3 (AWS S3)
+  - name: state-s3
+    type: iac.state
+    config:
+      backend: s3
+      bucket: my-iac-state-bucket
+      region: us-east-1
+      prefix: scenarios/72/
+      encrypt: true
+
+  # A sample infra resource to test against each state backend
+  - name: test-vpc
+    type: infra.vpc
+    config:
+      name: test-vpc
+      cidr: "10.0.0.0/16"
+      region: nyc3
+      provider: do-provider
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "72-iac-state-backends"
+
+  # Plan using memory backend
+  plan-memory:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/state/memory/plan
+        method: POST
+    steps:
+      - name: plan
+        type: step.iac_plan
+        config:
+          platform: vpc
+          resource_id: test-vpc
+          state_store: state-memory
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: planned
+            backend: memory
+
+  # Plan using filesystem backend
+  plan-filesystem:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/state/filesystem/plan
+        method: POST
+    steps:
+      - name: plan
+        type: step.iac_plan
+        config:
+          platform: vpc
+          resource_id: test-vpc
+          state_store: state-filesystem
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: planned
+            backend: filesystem
+
+  # Plan using postgres backend
+  plan-postgres:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/state/postgres/plan
+        method: POST
+    steps:
+      - name: plan
+        type: step.iac_plan
+        config:
+          platform: vpc
+          resource_id: test-vpc
+          state_store: state-postgres
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: planned
+            backend: postgres
+
+  # Plan using gcs backend
+  plan-gcs:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/state/gcs/plan
+        method: POST
+    steps:
+      - name: plan
+        type: step.iac_plan
+        config:
+          platform: vpc
+          resource_id: test-vpc
+          state_store: state-gcs
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: planned
+            backend: gcs
+
+  # Plan using azure_blob backend
+  plan-azure-blob:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/state/azure-blob/plan
+        method: POST
+    steps:
+      - name: plan
+        type: step.iac_plan
+        config:
+          platform: vpc
+          resource_id: test-vpc
+          state_store: state-azure-blob
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: planned
+            backend: azure_blob
+
+  # Plan using s3 backend
+  plan-s3:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/state/s3/plan
+        method: POST
+    steps:
+      - name: plan
+        type: step.iac_plan
+        config:
+          platform: vpc
+          resource_id: test-vpc
+          state_store: state-s3
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: planned
+            backend: s3
