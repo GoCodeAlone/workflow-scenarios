@@ -3,7 +3,9 @@
 # Tests webhook receipt, workflow dispatch, status polling, and state transitions.
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://localhost:18046}"
+PORT=18046
+NAMESPACE="${NAMESPACE:-wf-scenario-46}"
+BASE_URL="${BASE_URL:-http://localhost:${PORT}}"
 PASS=0
 FAIL=0
 
@@ -13,6 +15,17 @@ fail() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
 echo ""
 echo "=== Scenario 46: GitHub CI/CD Integration ==="
 echo ""
+
+# Start port-forward if not already reachable
+if ! curl -sf --max-time 2 "${BASE_URL}/healthz" &>/dev/null; then
+    kubectl port-forward -n "$NAMESPACE" svc/workflow-server "${PORT}:8080" &>/dev/null &
+    PF_PID=$!
+    trap "kill $PF_PID 2>/dev/null || true" EXIT
+    for i in $(seq 1 30); do
+        if curl -sf --max-time 2 "${BASE_URL}/healthz" &>/dev/null; then break; fi
+        sleep 1
+    done
+fi
 
 # Test 1: Health check
 RESULT=$(curl -s "$BASE_URL/healthz")

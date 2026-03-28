@@ -4,7 +4,9 @@
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASE_URL="${BASE_URL:-http://localhost:18049}"
+PORT=18049
+NAMESPACE="${NAMESPACE:-wf-scenario-49}"
+BASE_URL="${BASE_URL:-http://localhost:${PORT}}"
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -13,8 +15,14 @@ pass() { PASS_COUNT=$((PASS_COUNT + 1)); echo "PASS: $1"; }
 fail() { FAIL_COUNT=$((FAIL_COUNT + 1)); echo "FAIL: $1"; }
 
 # ----------------------------------------------------------------
-# Wait for health
+# Start port-forward and wait for health
 # ----------------------------------------------------------------
+if ! curl -sf --max-time 2 "${BASE_URL}/healthz" &>/dev/null; then
+    kubectl port-forward -n "$NAMESPACE" svc/workflow-server "${PORT}:8080" &>/dev/null &
+    PF_PID=$!
+    trap "kill $PF_PID 2>/dev/null || true" EXIT
+fi
+
 echo "=== Waiting for service ==="
 for i in $(seq 1 30); do
   STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/healthz" 2>/dev/null || echo "000")

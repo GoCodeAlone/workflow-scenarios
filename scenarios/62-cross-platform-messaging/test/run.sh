@@ -4,7 +4,9 @@
 # Also tests Discord-to-Slack relay pipeline with message prefix.
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://localhost:18062}"
+PORT=18062
+NAMESPACE="${NAMESPACE:-wf-scenario-62}"
+BASE_URL="${BASE_URL:-http://localhost:${PORT}}"
 DISCORD_MOCK="${DISCORD_MOCK:-http://localhost:19062}"
 SLACK_MOCK="${SLACK_MOCK:-http://localhost:19063}"
 TEAMS_MOCK="${TEAMS_MOCK:-http://localhost:19064}"
@@ -16,6 +18,30 @@ fail() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
 
 echo ""
 echo "=== Scenario 62: Cross-Platform Messaging ==="
+
+# Start port-forward if not already reachable
+if ! curl -sf --max-time 2 "${BASE_URL}/healthz" &>/dev/null; then
+    kubectl port-forward -n "$NAMESPACE" svc/workflow-server "${PORT}:8080" &>/dev/null &
+    PF_PID=$!
+    trap "kill $PF_PID 2>/dev/null || true; kill \$PF_DISCORD 2>/dev/null || true; kill \$PF_SLACK 2>/dev/null || true; kill \$PF_TEAMS 2>/dev/null || true" EXIT
+    for i in $(seq 1 30); do
+        if curl -sf --max-time 2 "${BASE_URL}/healthz" &>/dev/null; then break; fi
+        sleep 1
+    done
+fi
+
+# Port-forward mock services (running in same pod as workflow-server)
+POD_NAME=$(kubectl get pods -n "$NAMESPACE" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+if [ -n "$POD_NAME" ]; then
+    kubectl port-forward -n "$NAMESPACE" "pod/$POD_NAME" 19062:19062 &>/dev/null &
+    PF_DISCORD=$!
+    kubectl port-forward -n "$NAMESPACE" "pod/$POD_NAME" 19063:19063 &>/dev/null &
+    PF_SLACK=$!
+    kubectl port-forward -n "$NAMESPACE" "pod/$POD_NAME" 19064:19064 &>/dev/null &
+    PF_TEAMS=$!
+    sleep 2
+fi
+
 echo ""
 
 # Test 1: Health check

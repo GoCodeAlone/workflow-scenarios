@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://localhost:8080}"
+PORT=18051
+NAMESPACE="${NAMESPACE:-wf-scenario-51}"
+BASE_URL="${BASE_URL:-http://localhost:${PORT}}"
 PASS=0
 FAIL=0
 
@@ -43,6 +45,18 @@ check_json() {
 }
 
 echo "=== Scenario 51: BMW IaC (DigitalOcean Mock) ==="
+
+# Start port-forward if not already reachable
+if ! curl -sf --max-time 2 "${BASE_URL}/healthz" &>/dev/null; then
+    kubectl port-forward -n "$NAMESPACE" svc/workflow "${PORT}:8080" &>/dev/null &
+    PF_PID=$!
+    trap "kill $PF_PID 2>/dev/null || true" EXIT
+    for i in $(seq 1 30); do
+        if curl -sf --max-time 2 "${BASE_URL}/healthz" &>/dev/null; then break; fi
+        sleep 1
+    done
+fi
+
 echo ""
 
 # Health check
