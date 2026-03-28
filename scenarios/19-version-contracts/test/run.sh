@@ -146,10 +146,10 @@ else
 
     # Test 2.3: Compare v2 against v1 — expect NO breaking changes
     if [ -s "$V1_CONTRACT" ] && [ -s "$V2_CONTRACT" ]; then
-        COMPARE_OUT=$("$WFCTL" contract compare \
+        COMPARE_OUT=$("$WFCTL" contract test \
             -baseline "$V1_CONTRACT" \
-            -candidate "$V2_CONTRACT" 2>&1 || true)
-        if echo "$COMPARE_OUT" | grep -qi "breaking"; then
+            "$V2_CONFIG" 2>&1 || true)
+        if echo "$COMPARE_OUT" | grep -qE "BREAKING|Breaking Changes:"; then
             fail "v2 vs v1 reported unexpected breaking changes: $COMPARE_OUT"
         else
             pass "v2 vs v1 comparison reports no breaking changes"
@@ -201,11 +201,11 @@ else
 
     # Test 3.3: Compare v3 against v1 — expect breaking changes
     if [ -s "$V1_CONTRACT" ] && [ -s "$V3_CONTRACT" ]; then
-        COMPARE_OUT=$("$WFCTL" contract compare \
+        COMPARE_OUT=$("$WFCTL" contract test \
             -baseline "$V1_CONTRACT" \
-            -candidate "$V3_CONTRACT" 2>&1 || true)
+            "$V3_CONFIG" 2>&1 || true)
 
-        if echo "$COMPARE_OUT" | grep -qi "breaking"; then
+        if echo "$COMPARE_OUT" | grep -qE "BREAKING|Breaking Changes:"; then
             pass "v3 vs v1 comparison correctly reports breaking changes"
         else
             fail "v3 vs v1 comparison should have reported breaking changes but did not: $COMPARE_OUT"

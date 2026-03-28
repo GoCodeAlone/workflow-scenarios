@@ -56,9 +56,17 @@ skip() { echo "SKIP: $1"; SKIP=$((SKIP + 1)); }
 # Check whether a wfctl sub-command exists by running it with --help and
 # checking the exit code.  Some sub-commands are being built and may not be
 # present yet.
+# Usage: cmd_available <cmd> [<subcmd>]
+# For commands that require a subcommand (e.g. "wfctl template validate"),
+# pass both levels so we invoke "$WFCTL $cmd $subcmd --help" which exits 0.
 cmd_available() {
-    local subcmd="$1"
-    "$WFCTL" "$subcmd" --help >/dev/null 2>&1
+    local cmd="$1"
+    local subcmd="${2:-}"
+    if [ -n "$subcmd" ]; then
+        "$WFCTL" "$cmd" "$subcmd" --help >/dev/null 2>&1
+    else
+        "$WFCTL" "$cmd" --help >/dev/null 2>&1
+    fi
 }
 
 # -----------------------------------------------------------------------
@@ -123,7 +131,7 @@ test_template() {
     # ------------------------------------------------------------------
     if [ -z "$CONFIG_FILE" ]; then
         skip "[$TEMPLATE] wfctl template validate — no config file"
-    elif ! cmd_available "template"; then
+    elif ! cmd_available "template" "validate"; then
         skip "[$TEMPLATE] wfctl template validate — command not available"
     else
         if "$WFCTL" template validate -config "$CONFIG_FILE" >/dev/null 2>&1; then
@@ -174,11 +182,11 @@ test_template() {
     # ------------------------------------------------------------------
     if [ -z "$CONFIG_FILE" ]; then
         skip "[$TEMPLATE] wfctl contract test — no config file"
-    elif ! cmd_available "contract"; then
+    elif ! cmd_available "contract" "test"; then
         skip "[$TEMPLATE] wfctl contract test — command not available"
     else
         CONTRACT_FILE="$OUT/contract.json"
-        if "$WFCTL" contract test "$CONFIG_FILE" -output "$CONTRACT_FILE" >/dev/null 2>&1; then
+        if "$WFCTL" contract test -output "$CONTRACT_FILE" "$CONFIG_FILE" >/dev/null 2>&1; then
             if [ -s "$CONTRACT_FILE" ]; then
                 pass "[$TEMPLATE] wfctl contract test generates contract"
             else
@@ -194,7 +202,7 @@ test_template() {
     # ------------------------------------------------------------------
     if [ -z "$CONFIG_FILE" ]; then
         skip "[$TEMPLATE] wfctl compat check — no config file"
-    elif ! cmd_available "compat"; then
+    elif ! cmd_available "compat" "check"; then
         skip "[$TEMPLATE] wfctl compat check — command not available"
     else
         if "$WFCTL" compat check "$CONFIG_FILE" >/dev/null 2>&1; then
@@ -227,7 +235,7 @@ if [ ! -d "$FULL_STACK_OUT" ]; then
     skip "full-stack UI scaffold — full-stack template directory missing"
 elif [ ! -f "$OPENAPI_SPEC" ]; then
     skip "full-stack UI scaffold — openapi.json not generated (api extract failed)"
-elif ! cmd_available "ui"; then
+elif ! cmd_available "ui" "scaffold"; then
     skip "full-stack UI scaffold — wfctl ui command not available"
 else
     mkdir -p "$UI_GEN_DIR"
