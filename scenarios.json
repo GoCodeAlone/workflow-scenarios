@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-03-28T22:44:10.268290Z",
+  "lastUpdated": "2026-03-29T05:18:48.635Z",
   "componentVersions": {
     "workflow": "v0.2.15",
     "workflow-cloud": "v0.1.0",
@@ -960,6 +960,50 @@
       "failCount": 0,
       "notes": "Tests workflow-plugin-openlms step types against a mock Moodle Web Services server. Validates course/user enrollment operations.",
       "lastTested": "2026-03-28T22:37:15.359402Z",
+      "lastResult": "pass"
+    },
+    "79-data-cdc-pipeline": {
+      "status": "passed",
+      "namespace": "wf-scenario-79",
+      "deployed": false,
+      "testCount": 29,
+      "passCount": 29,
+      "failCount": 0,
+      "notes": "Config-validation scenario testing CDC pipeline: PostgreSQL WAL capture via Bento, multi-tenant schema isolation (schema_per_tenant), Kafka output. Validates cdc.source, data.tenancy, messaging.kafka modules and all 6 CDC step types.",
+      "lastTested": "2026-03-29T05:18:48.635Z",
+      "lastResult": "pass"
+    },
+    "80-data-lakehouse-pipeline": {
+      "status": "passed",
+      "namespace": "wf-scenario-80",
+      "deployed": false,
+      "testCount": 37,
+      "passCount": 37,
+      "failCount": 0,
+      "notes": "Config-validation scenario testing lakehouse ingestion: Iceberg REST catalog, Parquet write with quality gates, schema registry BACKWARD_TRANSITIVE compatibility. Validates catalog.iceberg, lakehouse.table, quality.checks, catalog.schema_registry modules and all 10 step types.",
+      "lastTested": "2026-03-29T05:18:48.635Z",
+      "lastResult": "pass"
+    },
+    "81-data-timeseries-analytics": {
+      "status": "passed",
+      "namespace": "wf-scenario-81",
+      "deployed": false,
+      "testCount": 38,
+      "passCount": 38,
+      "failCount": 0,
+      "notes": "Config-validation scenario testing time-series analytics: InfluxDB + ClickHouse dual write, hourly downsampling (cron), z-score anomaly detection (cron), Druid Kafka supervisor for real-time OLAP. Validates all 3 TS modules and 8 step types.",
+      "lastTested": "2026-03-29T05:18:48.635Z",
+      "lastResult": "pass"
+    },
+    "82-data-graph-catalog": {
+      "status": "passed",
+      "namespace": "wf-scenario-82",
+      "deployed": false,
+      "testCount": 40,
+      "passCount": 40,
+      "failCount": 0,
+      "notes": "Config-validation scenario testing knowledge graph + data catalog: Neo4j entity extraction and graph building, DataHub lineage registration, OpenMetadata indexing, sequential schema migrations with backup. Validates 4 modules and 11 step types.",
+      "lastTested": "2026-03-29T05:18:48.635Z",
       "lastResult": "pass"
     }
   }

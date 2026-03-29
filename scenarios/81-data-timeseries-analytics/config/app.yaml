@@ -1,0 +1,273 @@
+# ============================================================
+# Scenario 81 — Data Time-Series Analytics
+#
+# Tests a time-series analytics pipeline where metrics from
+# multiple sources flow into InfluxDB and ClickHouse with
+# downsampling and anomaly detection.
+#
+# Module chain:
+#   timeseries.influxdb (real-time write/query)
+#     → timeseries.clickhouse (analytical queries)
+#       → timeseries.druid (real-time OLAP)
+#         → quality.checks (anomaly detection)
+#
+# Config-validation only — no live database connections.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # InfluxDB — real-time metrics ingestion and short-term storage
+  - name: influx
+    type: timeseries.influxdb
+    config:
+      url: http://influxdb.internal:8086
+      token: "${INFLUXDB_TOKEN}"
+      org: myorg
+      bucket: metrics
+      precision: ms
+      batchSize: 5000
+      flushIntervalMs: 1000
+      retryBufferLimit: 100
+      maxRetries: 3
+      retentionPolicy: 30d
+
+  # ClickHouse — columnar store for analytical time-series queries
+  - name: clickhouse
+    type: timeseries.clickhouse
+    config:
+      endpoints:
+        - clickhouse-1.internal:9000
+        - clickhouse-2.internal:9000
+      database: metrics
+      username: analytics
+      password: "${CLICKHOUSE_PASSWORD}"
+      cluster: analytics_cluster
+      compressionMethod: lz4
+      maxOpenConns: 10
+      dialTimeout: 5s
+      queryTimeout: 60s
+      ttlDays: 365
+
+  # Druid — real-time OLAP for complex aggregations
+  - name: druid
+    type: timeseries.druid
+    config:
+      coordinatorUrl: http://druid-coordinator.internal:8081
+      brokerUrl: http://druid-broker.internal:8082
+      overlordUrl: http://druid-overlord.internal:8090
+      routerUrl: http://druid-router.internal:8888
+      auth:
+        type: basic
+        username: druid-admin
+        password: "${DRUID_PASSWORD}"
+      defaultDataSource: metrics
+      queryTimeout: 30s
+
+  # Quality checks — includes anomaly detection
+  - name: quality-engine
+    type: quality.checks
+    config:
+      checks:
+        - name: spike_check
+          type: threshold
+          failAction: alert
+        - name: drop_check
+          type: drop_detection
+          failAction: alert
+        - name: anomaly_zscore
+          type: zscore
+          threshold: 3.0
+          windowSize: 100
+          failAction: warn
+      alertChannel: alerts-webhook
+      reportingEnabled: true
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "81-data-timeseries-analytics"
+
+  # Ingest metrics — write to InfluxDB (single) + ClickHouse (batch)
+  ingest_metrics:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/metrics
+        method: POST
+    steps:
+      - name: ts_write
+        type: step.ts_write
+        config:
+          module: influx
+          measurement: "${body.measurement}"
+          tags: "${body.tags}"
+          fields: "${body.fields}"
+          timestamp: "${body.timestamp}"
+      - name: ts_write_batch
+        type: step.ts_write_batch
+        config:
+          module: clickhouse
+          table: "${body.measurement}"
+          records: "${body.records}"
+          batchSize: 1000
+          asyncInsert: true
+      - name: respond
+        type: step.json_response
+        config:
+          status: 202
+          body:
+            influx: "${ts_write.written}"
+            clickhouse: "${ts_write_batch.inserted}"
+
+  # Downsample hourly — aggregate InfluxDB data to reduce cardinality
+  downsample_hourly:
+    trigger:
+      type: scheduler
+      config:
+        cron: "0 * * * *"
+        timezone: UTC
+    steps:
+      - name: ts_downsample
+        type: step.ts_downsample
+        config:
+          module: influx
+          sourceBucket: metrics
+          destBucket: metrics-1h
+          aggregation: mean
+          window: 1h
+          range: "-2h"
+          measurements:
+            - cpu_usage
+            - memory_usage
+            - request_latency
+      - name: ts_retention
+        type: step.ts_retention
+        config:
+          module: influx
+          bucket: metrics
+          retentionDuration: 720h
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            downsampled: "${ts_downsample.pointsWritten}"
+            retentionApplied: "${ts_retention.applied}"
+
+  # Anomaly scan — query recent metrics then run anomaly detection
+  anomaly_scan:
+    trigger:
+      type: scheduler
+      config:
+        cron: "*/15 * * * *"
+        timezone: UTC
+    steps:
+      - name: ts_query
+        type: step.ts_query
+        config:
+          module: influx
+          query: |
+            from(bucket: "metrics")
+              |> range(start: -30m)
+              |> filter(fn: (r) => r._measurement == "request_latency")
+              |> mean()
+          format: records
+      - name: quality_anomaly
+        type: step.quality_anomaly
+        config:
+          engine: quality-engine
+          data: "${ts_query.records}"
+          method: zscore
+          threshold: 3.0
+          field: _value
+          notifyOnAnomaly: true
+          alertLabel: "latency-anomaly"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            pointsAnalyzed: "${ts_query.count}"
+            anomaliesFound: "${quality_anomaly.anomalyCount}"
+            anomalies: "${quality_anomaly.anomalies}"
+
+  # Druid ingest — Kafka supervisor spec for real-time OLAP
+  druid_ingest:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/druid/ingest
+        method: POST
+    steps:
+      - name: ts_druid_ingest
+        type: step.ts_druid_ingest
+        config:
+          module: druid
+          dataSource: "${body.dataSource}"
+          supervisorSpec:
+            type: kafka
+            dataSchema:
+              dataSource: "${body.dataSource}"
+              timestampSpec:
+                column: event_time
+                format: iso
+              dimensionsSpec:
+                dimensions: "${body.dimensions}"
+              granularitySpec:
+                segmentGranularity: HOUR
+                queryGranularity: MINUTE
+            ioConfig:
+              topic: "${body.kafkaTopic}"
+              consumerProperties:
+                bootstrapServers: kafka-1.internal:9092
+            tuningConfig:
+              type: kafka
+              maxRowsPerSegment: 5000000
+      - name: ts_druid_query
+        type: step.ts_druid_query
+        config:
+          module: druid
+          query:
+            queryType: topN
+            dataSource: "${body.dataSource}"
+            granularity: minute
+            dimension: service
+            threshold: 10
+            metric: count
+            intervals: ["${body.interval}"]
+            aggregations:
+              - type: count
+                name: count
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            supervisorId: "${ts_druid_ingest.supervisorId}"
+            status: "${ts_druid_ingest.status}"
+            queryResult: "${ts_druid_query.result}"

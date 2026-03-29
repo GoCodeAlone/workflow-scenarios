@@ -1,0 +1,234 @@
+# ============================================================
+# Scenario 80 — Data Lakehouse Pipeline
+#
+# Tests a lakehouse ingestion pipeline where CDC events land
+# in Iceberg tables with quality checks and schema registry.
+#
+# Module chain:
+#   catalog.iceberg (REST catalog) → lakehouse.table (read/write)
+#     → quality.checks (validation rules)
+#       → catalog.schema_registry (compatibility enforcement)
+#
+# Config-validation only — no live catalog connections.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Iceberg REST catalog — manages table metadata and snapshots
+  - name: iceberg-catalog
+    type: catalog.iceberg
+    config:
+      endpoint: http://iceberg-rest.internal:8181
+      warehouse: s3://data-warehouse/iceberg
+      namespace: analytics
+      credentials:
+        type: s3
+        region: us-east-1
+        roleArn: "arn:aws:iam::123456789:role/iceberg-catalog-role"
+      cacheEnabled: true
+      cacheTtlSeconds: 300
+
+  # Lakehouse table operations module
+  - name: lakehouse
+    type: lakehouse.table
+    config:
+      catalog: iceberg-catalog
+      defaultNamespace: analytics
+      writeFormat: parquet
+      compressionCodec: zstd
+      partitionStrategy: day
+      targetFileSizeBytes: 134217728
+      mergeOnRead: false
+      sortOrder:
+        - field: event_time
+          direction: asc
+
+  # Data quality checks — validate ingested data
+  - name: quality-engine
+    type: quality.checks
+    config:
+      checks:
+        - name: null_check
+          type: not_null
+          failAction: quarantine
+        - name: freshness_check
+          type: freshness
+          maxAgeMinutes: 60
+          failAction: warn
+        - name: volume_check
+          type: row_count
+          minRows: 1
+          failAction: warn
+        - name: schema_drift_check
+          type: schema_match
+          failAction: reject
+      quarantineTable: analytics.quarantine
+      reportingEnabled: true
+
+  # Schema registry — enforce compatibility across producers
+  - name: schema-registry
+    type: catalog.schema_registry
+    config:
+      endpoint: http://schema-registry.internal:8081
+      compatibility: BACKWARD_TRANSITIVE
+      namespace: analytics
+      auth:
+        type: basic
+        username: schema-admin
+        password: "${SCHEMA_REGISTRY_PASSWORD}"
+      cacheEnabled: true
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "80-data-lakehouse-pipeline"
+
+  # Ingest pipeline — quality check → write → register schema
+  ingest_to_lakehouse:
+    trigger:
+      type: event
+      config:
+        source: cdc-events
+        eventType: cdc.row_change
+    steps:
+      - name: quality_check
+        type: step.quality_check
+        config:
+          engine: quality-engine
+          dataset: "${event.table}"
+          data: "${event.after}"
+          checks: [null_check, freshness_check, schema_drift_check]
+      - name: lakehouse_write
+        type: step.lakehouse_write
+        config:
+          module: lakehouse
+          table: "${event.table}"
+          records: "${event.after}"
+          writeMode: append
+          commitMessage: "cdc ingest ${event.lsn}"
+      - name: schema_register
+        type: step.schema_register
+        config:
+          registry: schema-registry
+          subject: "${event.table}-value"
+          schema: "${event.schema}"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            snapshotId: "${lakehouse_write.snapshotId}"
+            rowsWritten: "${lakehouse_write.rowsWritten}"
+            schemaId: "${schema_register.schemaId}"
+
+  # Maintenance pipeline — compact and expire on schedule
+  lakehouse_maintenance:
+    trigger:
+      type: scheduler
+      config:
+        cron: "0 2 * * *"
+        timezone: UTC
+    steps:
+      - name: lakehouse_compact
+        type: step.lakehouse_compact
+        config:
+          module: lakehouse
+          namespace: analytics
+          targetFileSizeBytes: 134217728
+          strategy: binpack
+      - name: lakehouse_expire_snapshots
+        type: step.lakehouse_expire_snapshots
+        config:
+          module: lakehouse
+          namespace: analytics
+          olderThanDays: 7
+          retainLast: 5
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            compacted: "${lakehouse_compact.tablesCompacted}"
+            snapshotsExpired: "${lakehouse_expire_snapshots.snapshotsExpired}"
+
+  # Schema evolution pipeline — evolve table then verify
+  schema_evolution:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/lakehouse/schema/evolve
+        method: POST
+    steps:
+      - name: schema_validate
+        type: step.schema_validate
+        config:
+          registry: schema-registry
+          subject: "${body.table}-value"
+          schema: "${body.newSchema}"
+          checkCompatibility: true
+      - name: lakehouse_evolve_schema
+        type: step.lakehouse_evolve_schema
+        config:
+          module: lakehouse
+          table: "${body.table}"
+          changes: "${body.schemaChanges}"
+          allowIncompatible: false
+      - name: lakehouse_query
+        type: step.lakehouse_query
+        config:
+          module: lakehouse
+          table: "${body.table}"
+          query: "SELECT * FROM ${body.table} LIMIT 1"
+          verifySchema: true
+      - name: create_table
+        type: step.lakehouse_create_table
+        config:
+          module: lakehouse
+          table: "${body.table}_archive"
+          schema: "${body.newSchema}"
+          partitionSpec:
+            - field: event_date
+              transform: day
+          properties:
+            write.format.default: parquet
+      - name: quality_profile
+        type: step.quality_profile
+        config:
+          engine: quality-engine
+          table: "${body.table}"
+          sampleFraction: 0.1
+          metrics: [null_rate, distinct_count, min_max, histogram]
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            table: "${body.table}"
+            evolved: "${lakehouse_evolve_schema.evolved}"
+            sampleRow: "${lakehouse_query.rows}"
+            qualityProfile: "${quality_profile.summary}"

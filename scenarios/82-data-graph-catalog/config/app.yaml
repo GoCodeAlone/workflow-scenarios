@@ -1,0 +1,276 @@
+# ============================================================
+# Scenario 82 — Data Graph and Catalog
+#
+# Tests a knowledge graph + data catalog pipeline that extracts
+# entities from text, builds a Neo4j knowledge graph, registers
+# datasets in DataHub/OpenMetadata, and manages schema migrations.
+#
+# Module chain:
+#   graph.neo4j (knowledge graph storage)
+#     → catalog.datahub (dataset lineage and registration)
+#       → catalog.openmetadata (metadata management)
+#         → migrate.schema (database schema migrations)
+#
+# Config-validation only — no live graph or catalog connections.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Neo4j — knowledge graph database
+  - name: neo4j
+    type: graph.neo4j
+    config:
+      uri: bolt://neo4j.internal:7687
+      auth:
+        type: basic
+        username: neo4j
+        password: "${NEO4J_PASSWORD}"
+      database: knowledge
+      maxConnectionPoolSize: 100
+      connectionTimeoutMs: 5000
+      maxTransactionRetryTime: 30s
+      encrypted: true
+
+  # DataHub — data catalog and lineage platform
+  - name: datahub
+    type: catalog.datahub
+    config:
+      endpoint: http://datahub-gms.internal:8080
+      token: "${DATAHUB_TOKEN}"
+      platform: custom
+      env: PROD
+      syncEnabled: true
+      lineageEnabled: true
+      batchSize: 100
+
+  # OpenMetadata — unified metadata management
+  - name: openmetadata
+    type: catalog.openmetadata
+    config:
+      endpoint: http://openmetadata.internal:8585/api
+      token: "${OPENMETADATA_TOKEN}"
+      serviceName: data-platform
+      databaseServiceType: CustomDatabase
+      pipelineServiceType: CustomPipeline
+      syncInterval: 300
+
+  # Schema migration manager
+  - name: schema-migrator
+    type: migrate.schema
+    config:
+      connection:
+        type: postgres
+        host: postgres.internal
+        port: 5432
+        database: appdb
+        user: migration_user
+        password: "${MIGRATION_PASSWORD}"
+      migrationsDir: migrations/sql
+      strategy: sequential
+      lockTimeoutSeconds: 60
+      validateChecksums: true
+      allowOutOfOrder: false
+      baselineVersion: "1"
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "82-data-graph-catalog"
+
+  # Build knowledge graph — extract entities → write nodes → link relationships
+  build_knowledge_graph:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/graph/build
+        method: POST
+    steps:
+      - name: graph_extract_entities
+        type: step.graph_extract_entities
+        config:
+          module: neo4j
+          text: "${body.text}"
+          types:
+            - Person
+            - Organization
+            - Location
+            - Product
+            - Concept
+          confidenceThreshold: 0.75
+          language: en
+      - name: graph_write
+        type: step.graph_write
+        config:
+          module: neo4j
+          nodes: "${graph_extract_entities.entities}"
+          mergeOn: [type, name]
+          labels: "${graph_extract_entities.labels}"
+      - name: graph_link
+        type: step.graph_link
+        config:
+          module: neo4j
+          relationships: "${graph_extract_entities.relationships}"
+          sourceNodeId: "${graph_write.nodeIds}"
+          mergeRelationships: true
+          relationshipTypes:
+            - MENTIONS
+            - WORKS_FOR
+            - LOCATED_IN
+            - PRODUCES
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body:
+            entitiesExtracted: "${graph_extract_entities.count}"
+            nodesWritten: "${graph_write.created}"
+            relationshipsLinked: "${graph_link.created}"
+
+  # Catalog registration — validate contract → register in DataHub → index in OpenMetadata
+  catalog_register_dataset:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/catalog/datasets
+        method: POST
+    steps:
+      - name: contract_validate
+        type: step.contract_validate
+        config:
+          contract:
+            name: "${body.datasetName}"
+            schema: "${body.schema}"
+            owner: "${body.owner}"
+            sla:
+              freshnessHours: 24
+              completenessPercent: 99.5
+            quality:
+              nullRateMax: 0.01
+              duplicateRateMax: 0.001
+          strict: true
+      - name: catalog_register
+        type: step.catalog_register
+        config:
+          module: datahub
+          dataset:
+            name: "${body.datasetName}"
+            platform: "${body.platform}"
+            description: "${body.description}"
+            schema: "${body.schema}"
+            owners: ["${body.owner}"]
+            tags: "${body.tags}"
+            lineage:
+              upstreams: "${body.upstreams}"
+          contract: "${contract_validate.contractId}"
+      - name: catalog_search
+        type: step.catalog_search
+        config:
+          module: openmetadata
+          query: "${body.datasetName}"
+          entityType: table
+          limit: 5
+          includeMetadata: true
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body:
+            datasetUrn: "${catalog_register.urn}"
+            contractId: "${contract_validate.contractId}"
+            existingDatasets: "${catalog_search.results}"
+
+  # Schema migration — plan → apply → verify status
+  schema_migration:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/schema/migrate
+        method: POST
+    steps:
+      - name: migrate_plan
+        type: step.migrate_plan
+        config:
+          module: schema-migrator
+          targetVersion: "${body.targetVersion}"
+          dryRun: true
+      - name: migrate_apply
+        type: step.migrate_apply
+        config:
+          module: schema-migrator
+          targetVersion: "${body.targetVersion}"
+          plan: "${migrate_plan.plan}"
+          backupBeforeMigrate: true
+          timeoutSeconds: 300
+      - name: migrate_status
+        type: step.migrate_status
+        config:
+          module: schema-migrator
+          includeHistory: true
+          limit: 20
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            appliedMigrations: "${migrate_apply.applied}"
+            currentVersion: "${migrate_status.currentVersion}"
+            history: "${migrate_status.history}"
+
+  # Graph query — Cypher query for knowledge graph exploration
+  graph_explore:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/graph/query
+        method: POST
+    steps:
+      - name: graph_query
+        type: step.graph_query
+        config:
+          module: neo4j
+          cypher: "${body.cypher}"
+          parameters: "${body.parameters}"
+          limit: 100
+          timeout: 30s
+      - name: graph_import
+        type: step.graph_import
+        config:
+          module: neo4j
+          format: "${body.importFormat}"
+          source: "${body.importSource}"
+          batchSize: 1000
+          createConstraints: true
+          relationshipTypes: "${body.relationshipTypes}"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            queryResults: "${graph_query.records}"
+            importedNodes: "${graph_import.nodesCreated}"
+            importedRelationships: "${graph_import.relationshipsCreated}"

@@ -1,0 +1,215 @@
+# ============================================================
+# Scenario 79 — Data CDC Pipeline
+#
+# Tests a Change Data Capture pipeline that captures PostgreSQL
+# changes via Bento, transforms them, and publishes to Kafka.
+#
+# Module chain:
+#   cdc.source (bento+postgres) → data.tenancy (schema_per_tenant)
+#     → messaging.kafka (output topic)
+#       → step.cdc_* / step.tenant_provision (pipeline steps)
+#
+# Config-validation only — no live database connections.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # CDC source — Bento processor reading from PostgreSQL WAL
+  - name: pg-cdc
+    type: cdc.source
+    config:
+      provider: bento
+      connection:
+        type: postgres
+        host: postgres.internal
+        port: 5432
+        database: appdb
+        user: cdc_user
+        password: "${CDC_PG_PASSWORD}"
+        sslMode: require
+      publication: app_publication
+      slotName: app_cdc_slot
+      tables:
+        - public.users
+        - public.orders
+        - public.products
+      outputFormat: json
+      batchSize: 100
+      flushIntervalMs: 500
+
+  # Multi-tenant isolation — one schema per tenant
+  - name: tenant-registry
+    type: data.tenancy
+    config:
+      strategy: schema_per_tenant
+      connection:
+        type: postgres
+        host: postgres.internal
+        port: 5432
+        database: appdb
+        user: tenant_admin
+        password: "${TENANT_ADMIN_PASSWORD}"
+      schemaPrefix: "tenant_"
+      defaultSchema: public
+      migrationDir: migrations/tenants
+
+  # Kafka output — CDC events published here
+  - name: kafka-output
+    type: messaging.kafka
+    config:
+      brokers:
+        - kafka-1.internal:9092
+        - kafka-2.internal:9092
+        - kafka-3.internal:9092
+      topic: cdc-events
+      clientId: cdc-pipeline
+      acks: all
+      compression: snappy
+      retries: 3
+      batchSize: 16384
+      lingerMs: 5
+      securityProtocol: SASL_SSL
+      saslMechanism: SCRAM-SHA-256
+      saslUsername: cdc-producer
+      saslPassword: "${KAFKA_SASL_PASSWORD}"
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "79-data-cdc-pipeline"
+
+  # Monitor pipeline — check CDC status and schema history
+  cdc_monitor:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/cdc/status
+        method: GET
+    steps:
+      - name: cdc_status
+        type: step.cdc_status
+        config:
+          source: pg-cdc
+      - name: cdc_schema_history
+        type: step.cdc_schema_history
+        config:
+          source: pg-cdc
+          limit: 50
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: "${cdc_status.state}"
+            lag: "${cdc_status.lag}"
+            schemaChanges: "${cdc_schema_history.count}"
+            lastSchemaChange: "${cdc_schema_history.latest}"
+
+  # Tenant onboarding — provision schema then start CDC replication
+  tenant_onboard:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/tenants
+        method: POST
+    steps:
+      - name: tenant_provision
+        type: step.tenant_provision
+        config:
+          registry: tenant-registry
+          tenantId: "${body.tenantId}"
+          displayName: "${body.displayName}"
+          plan: "${body.plan}"
+          tables:
+            - users
+            - orders
+            - products
+          seedData: true
+      - name: cdc_start
+        type: step.cdc_start
+        config:
+          source: pg-cdc
+          tables:
+            - "tenant_${body.tenantId}.users"
+            - "tenant_${body.tenantId}.orders"
+          startLsn: current
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body:
+            tenantId: "${body.tenantId}"
+            schema: "${tenant_provision.schema}"
+            cdcActive: "${cdc_start.active}"
+            slotName: "${cdc_start.slotName}"
+
+  # CDC snapshot — capture full table snapshot for specific tables
+  cdc_snapshot:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/cdc/snapshot
+        method: POST
+    steps:
+      - name: cdc_snapshot
+        type: step.cdc_snapshot
+        config:
+          source: pg-cdc
+          tables: "${body.tables}"
+          snapshotMode: initial
+          parallelThreads: 4
+      - name: respond
+        type: step.json_response
+        config:
+          status: 202
+          body:
+            snapshotId: "${cdc_snapshot.snapshotId}"
+            tables: "${body.tables}"
+            status: in_progress
+
+  # CDC control — stop capture for maintenance
+  cdc_control:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/cdc/stop
+        method: POST
+    steps:
+      - name: cdc_stop
+        type: step.cdc_stop
+        config:
+          source: pg-cdc
+          graceful: true
+          timeoutSeconds: 30
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            stopped: "${cdc_stop.stopped}"
+            finalLsn: "${cdc_stop.finalLsn}"

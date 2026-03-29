@@ -1,0 +1,45 @@
+name: Data Lakehouse Pipeline
+id: "80-data-lakehouse-pipeline"
+category: C
+description: |
+  Config-validation scenario testing a lakehouse ingestion pipeline where CDC
+  events land in Iceberg tables with data quality checks and schema registry
+  integration.
+
+  Covers:
+    - catalog.iceberg for table management and metadata
+    - lakehouse.table for read/write operations
+    - quality.checks for data validation
+    - catalog.schema_registry for schema compatibility enforcement
+    - step.lakehouse_create_table / lakehouse_evolve_schema / lakehouse_write
+    - step.lakehouse_compact / lakehouse_expire_snapshots / lakehouse_query
+    - step.quality_check / quality_profile for data quality
+    - step.schema_register / schema_validate for schema governance
+    - Multi-pipeline: ingest, maintenance (cron), schema evolution
+
+  No live catalog connections — config-validation only.
+components:
+  - wfctl (config validation)
+  - catalog.iceberg
+  - lakehouse.table
+  - quality.checks
+  - catalog.schema_registry
+  - step.lakehouse_create_table
+  - step.lakehouse_evolve_schema
+  - step.lakehouse_write
+  - step.lakehouse_compact
+  - step.lakehouse_expire_snapshots
+  - step.lakehouse_query
+  - step.quality_check
+  - step.quality_profile
+  - step.schema_register
+  - step.schema_validate
+status: testable
+tags:
+  - data-engineering
+  - lakehouse
+  - iceberg
+  - data-quality
+  - schema-registry
+  - config-validation
+  - local-only

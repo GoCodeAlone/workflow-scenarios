@@ -1,0 +1,39 @@
+name: Data CDC Pipeline
+id: "79-data-cdc-pipeline"
+category: C
+description: |
+  Config-validation scenario testing a CDC (Change Data Capture) pipeline that
+  captures changes from a PostgreSQL database, transforms via Bento processor,
+  and publishes to a Kafka topic.
+
+  Covers:
+    - cdc.source (provider: bento, postgres) for change capture
+    - data.tenancy (strategy: schema_per_tenant) for multi-tenant isolation
+    - messaging.kafka for output publishing
+    - step.cdc_start / step.cdc_stop / step.cdc_status / step.cdc_snapshot
+    - step.cdc_schema_history for tracking schema changes
+    - step.tenant_provision for onboarding new tenants
+    - Multi-pipeline: monitor, tenant onboard, snapshot
+
+  No live database connections — config-validation only.
+components:
+  - wfctl (config validation)
+  - cdc.source (provider: bento, postgres)
+  - data.tenancy (strategy: schema_per_tenant)
+  - messaging.kafka
+  - step.cdc_start
+  - step.cdc_stop
+  - step.cdc_status
+  - step.cdc_snapshot
+  - step.cdc_schema_history
+  - step.tenant_provision
+status: testable
+tags:
+  - data-engineering
+  - cdc
+  - kafka
+  - postgres
+  - bento
+  - multi-tenant
+  - config-validation
+  - local-only

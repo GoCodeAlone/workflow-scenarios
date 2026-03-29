@@ -1,0 +1,47 @@
+name: Data Graph and Catalog
+id: "82-data-graph-catalog"
+category: C
+description: |
+  Config-validation scenario testing a knowledge graph and data catalog pipeline
+  that extracts entities from text, builds a Neo4j knowledge graph, registers
+  datasets in DataHub and OpenMetadata, and manages schema migrations.
+
+  Covers:
+    - graph.neo4j for knowledge graph storage
+    - catalog.datahub for dataset registration and lineage
+    - catalog.openmetadata for metadata management
+    - migrate.schema for database schema migrations
+    - step.graph_query / graph_write / graph_import / graph_extract_entities / graph_link
+    - step.catalog_register / catalog_search for data discovery
+    - step.contract_validate for data contracts
+    - step.migrate_plan / migrate_apply / migrate_status for schema evolution
+    - Multi-pipeline: build knowledge graph, register dataset, schema migration
+
+  No live graph or catalog connections — config-validation only.
+components:
+  - wfctl (config validation)
+  - graph.neo4j
+  - catalog.datahub
+  - catalog.openmetadata
+  - migrate.schema
+  - step.graph_query
+  - step.graph_write
+  - step.graph_import
+  - step.graph_extract_entities
+  - step.graph_link
+  - step.catalog_register
+  - step.catalog_search
+  - step.contract_validate
+  - step.migrate_plan
+  - step.migrate_apply
+  - step.migrate_status
+status: testable
+tags:
+  - data-engineering
+  - knowledge-graph
+  - neo4j
+  - datahub
+  - openmetadata
+  - schema-migration
+  - config-validation
+  - local-only

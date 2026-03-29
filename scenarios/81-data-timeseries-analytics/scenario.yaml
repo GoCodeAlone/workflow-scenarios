@@ -1,0 +1,44 @@
+name: Data Time-Series Analytics
+id: "81-data-timeseries-analytics"
+category: C
+description: |
+  Config-validation scenario testing a time-series analytics pipeline where
+  metrics from multiple sources flow into InfluxDB and ClickHouse with
+  downsampling, retention, and anomaly detection.
+
+  Covers:
+    - timeseries.influxdb for real-time metrics storage
+    - timeseries.clickhouse for analytical queries
+    - timeseries.druid for real-time OLAP ingestion
+    - quality.checks for anomaly detection
+    - step.ts_write / ts_write_batch / ts_query for data access
+    - step.ts_downsample / ts_retention for lifecycle management
+    - step.ts_druid_ingest / ts_druid_query for OLAP
+    - step.quality_anomaly for statistical anomaly detection
+    - Multi-pipeline: ingest, downsample (cron), anomaly scan (cron), druid ingest
+
+  No live database connections — config-validation only.
+components:
+  - wfctl (config validation)
+  - timeseries.influxdb
+  - timeseries.clickhouse
+  - timeseries.druid
+  - quality.checks
+  - step.ts_write
+  - step.ts_write_batch
+  - step.ts_query
+  - step.ts_downsample
+  - step.ts_retention
+  - step.ts_druid_ingest
+  - step.ts_druid_query
+  - step.quality_anomaly
+status: testable
+tags:
+  - data-engineering
+  - time-series
+  - influxdb
+  - clickhouse
+  - druid
+  - anomaly-detection
+  - config-validation
+  - local-only
