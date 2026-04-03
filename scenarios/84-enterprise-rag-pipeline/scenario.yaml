@@ -1,0 +1,45 @@
+name: Enterprise RAG Pipeline
+id: "84-enterprise-rag-pipeline"
+category: enterprise
+description: |
+  Secure retrieval-augmented generation pipeline with SSO authentication,
+  vector search, and compliance audit logging.
+
+  Covers:
+    - sso.oidc for Microsoft Entra ID (Azure AD) OIDC token validation
+    - vectorstore.provider for Pinecone vector database queries
+    - audit.collector for EventBus-based audit event capture
+    - audit.sink.s3 for immutable compliance log storage in S3
+    - step.sso_validate_token / sso_userinfo for auth middleware
+    - step.ai_complete for embeddings and LLM chat completions
+    - step.vector_query for semantic similarity search
+    - step.conditional for RBAC group-based authorization
+    - Full RAG pipeline: authenticate → embed → search → generate → respond
+
+  Config-validation only — no live SSO, vector, or audit connections.
+components:
+  - workflow-plugin-sso
+  - workflow-plugin-vectorstore
+  - workflow-plugin-audit
+  - workflow-plugin-agent
+  - sso.oidc
+  - vectorstore.provider
+  - audit.collector
+  - audit.sink.s3
+  - step.sso_validate_token
+  - step.sso_userinfo
+  - step.ai_complete
+  - step.vector_query
+  - step.conditional
+  - step.set
+  - step.json_response
+status: draft
+tags:
+  - enterprise
+  - rag
+  - sso
+  - vector-search
+  - audit
+  - compliance
+  - ai
+  - config-validation

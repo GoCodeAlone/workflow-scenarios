@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow-server
+  namespace: wf-scenario-enterprise-rag-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: workflow-server
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: workflow-server
+    spec:
+      containers:
+        # Main workflow engine
+        - name: workflow-server
+          image: ghcr.io/gocodealone/workflow:latest
+          args: ["-config", "/config/app.yaml", "-data-dir", "/data"]
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 3
+            failureThreshold: 20
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: data
+              mountPath: /data
+          env:
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rag-pipeline-secrets
+                  key: openai-api-key
+
+        # SSO plugin sidecar — OIDC token validation
+        - name: plugin-sso
+          image: ghcr.io/gocodealone/workflow-plugin-sso:latest
+          ports:
+            - containerPort: 9001
+          resources:
+            limits:
+              cpu: 100m
+              memory: 64Mi
+            requests:
+              cpu: 25m
+              memory: 32Mi
+          env:
+            - name: AZURE_TENANT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: rag-pipeline-secrets
+                  key: azure-tenant-id
+            - name: AZURE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: rag-pipeline-secrets
+                  key: azure-client-id
+
+        # Vectorstore plugin sidecar — Pinecone SDK
+        - name: plugin-vectorstore
+          image: ghcr.io/gocodealone/workflow-plugin-vectorstore:latest
+          ports:
+            - containerPort: 9002
+          resources:
+            limits:
+              cpu: 200m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+          env:
+            - name: PINECONE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rag-pipeline-secrets
+                  key: pinecone-api-key
+            - name: PINECONE_ENVIRONMENT
+              valueFrom:
+                secretKeyRef:
+                  name: rag-pipeline-secrets
+                  key: pinecone-environment
+
+        # Audit plugin sidecar — EventBus collector + S3 sink
+        - name: plugin-audit
+          image: ghcr.io/gocodealone/workflow-plugin-audit:latest
+          ports:
+            - containerPort: 9003
+          resources:
+            limits:
+              cpu: 100m
+              memory: 64Mi
+            requests:
+              cpu: 25m
+              memory: 32Mi
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: rag-pipeline-secrets
+                  key: aws-access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rag-pipeline-secrets
+                  key: aws-secret-access-key
+
+      volumes:
+        - name: config
+          configMap:
+            name: app
+        - name: data
+          emptyDir: {}

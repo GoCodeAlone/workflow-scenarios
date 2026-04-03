@@ -1,0 +1,217 @@
+# ============================================================
+# Scenario 84 — Enterprise RAG Pipeline
+#
+# Secure retrieval-augmented generation with SSO authentication,
+# Pinecone vector search, and S3 compliance audit logging.
+#
+# Module chain:
+#   sso.oidc (Entra ID token validation)
+#     → vectorstore.provider (Pinecone similarity search)
+#       → audit.collector + audit.sink.s3 (compliance logging)
+#
+# Pipeline: POST /api/chat
+#   validate token → userinfo → authorize group → embed query
+#   → vector search → build context → LLM generate → respond
+#
+# Config-validation only — no live SSO, vector, or audit connections.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Microsoft Entra ID (Azure AD) OIDC provider
+  - name: sso
+    type: sso.oidc
+    config:
+      issuer: "https://login.microsoftonline.com/${AZURE_TENANT_ID}/v2.0"
+      clientId: "${AZURE_CLIENT_ID}"
+      audience: "${AZURE_CLIENT_ID}"
+      jwksUri: "https://login.microsoftonline.com/${AZURE_TENANT_ID}/discovery/v2.0/keys"
+      scopes:
+        - openid
+        - profile
+        - email
+      claimMapping:
+        subject: sub
+        email: email
+        groups: groups
+    dependsOn: [router]
+
+  # Pinecone vector database
+  - name: vectordb
+    type: vectorstore.provider
+    config:
+      provider: pinecone
+      apiKey: "${PINECONE_API_KEY}"
+      environment: "${PINECONE_ENVIRONMENT}"
+      index: knowledge-base
+      dimension: 1536
+      metric: cosine
+      namespace: support-docs
+    dependsOn: [router]
+
+  # EventBus audit event collector
+  - name: audit-collector
+    type: audit.collector
+    config:
+      source: eventbus
+      topics:
+        - workflow.started
+        - step.completed
+        - workflow.completed
+      includeMetadata: true
+      includeUserContext: true
+      batchSize: 100
+      flushIntervalSeconds: 30
+    dependsOn: [router]
+
+  # S3 immutable log storage for compliance
+  - name: audit-s3
+    type: audit.sink.s3
+    config:
+      bucket: compliance-audit-logs
+      prefix: "rag-pipeline/"
+      region: us-east-1
+      credentials:
+        accessKeyId: "${AWS_ACCESS_KEY_ID}"
+        secretAccessKey: "${AWS_SECRET_ACCESS_KEY}"
+      format: jsonl
+      compression: gzip
+      partitionBy: date
+      immutable: true
+      batchSize: 100
+      flushIntervalSeconds: 30
+    dependsOn: [audit-collector]
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            scenario: "84-enterprise-rag-pipeline"
+
+  # RAG chat pipeline — authenticate → embed → search → generate → respond
+  rag_chat:
+    trigger:
+      type: http
+      config:
+        path: /api/chat
+        method: POST
+    steps:
+      # Step 1: Validate Bearer token against Entra ID OIDC provider
+      - name: validate_token
+        type: step.sso_validate_token
+        config:
+          module: sso
+          token: "${headers.Authorization}"
+          stripBearer: true
+
+      # Step 2: Get user profile and group memberships
+      - name: userinfo
+        type: step.sso_userinfo
+        config:
+          module: sso
+          token: "${validate_token.accessToken}"
+          claims:
+            - email
+            - name
+            - groups
+
+      # Step 3: Check if user is in "support-agents" group
+      - name: authorize_group
+        type: step.conditional
+        config:
+          condition: "${userinfo.groups} contains 'support-agents'"
+          onFalse:
+            type: step.json_response
+            config:
+              status: 403
+              body:
+                error: forbidden
+                message: "User is not a member of the support-agents group"
+
+      # Step 4: Generate embedding for the user's query
+      - name: embed_query
+        type: step.ai_complete
+        config:
+          provider: openai
+          model: text-embedding-ada-002
+          apiKey: "${OPENAI_API_KEY}"
+          input: "${body.message}"
+          mode: embedding
+
+      # Step 5: Query Pinecone for similar documents
+      - name: vector_search
+        type: step.vector_query
+        config:
+          module: vectordb
+          vector: "${embed_query.embedding}"
+          topK: 5
+          namespace: support-docs
+          includeMetadata: true
+          filter:
+            status: published
+
+      # Step 6: Build RAG context from vector results
+      - name: build_context
+        type: step.set
+        config:
+          values:
+            context: "${vector_search.matches[*].metadata.text}"
+            sources: "${vector_search.matches[*].metadata.source}"
+
+      # Step 7: Generate answer using context + original query
+      - name: generate_answer
+        type: step.ai_complete
+        config:
+          provider: openai
+          model: gpt-4
+          apiKey: "${OPENAI_API_KEY}"
+          systemPrompt: "Answer using only the provided context. If the context does not contain enough information, say so."
+          messages:
+            - role: system
+              content: "Context:\n${build_context.context}"
+            - role: user
+              content: "${body.message}"
+          temperature: 0.3
+          maxTokens: 1024
+
+      # Step 8: Build final response with answer and sources
+      - name: build_response
+        type: step.set
+        config:
+          values:
+            answer: "${generate_answer.content}"
+            sources: "${build_context.sources}"
+            user: "${userinfo.email}"
+
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            answer: "${build_response.answer}"
+            sources: "${build_response.sources}"
+            user: "${build_response.user}"
