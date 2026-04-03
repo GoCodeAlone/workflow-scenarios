@@ -1005,6 +1005,17 @@
       "notes": "Config-validation scenario testing knowledge graph + data catalog: Neo4j entity extraction and graph building, DataHub lineage registration, OpenMetadata indexing, sequential schema migrations with backup. Validates 4 modules and 11 step types.",
       "lastTested": "2026-03-29T05:18:48.635Z",
       "lastResult": "pass"
+    },
+    "83-enterprise-lead-enrichment": {
+      "status": "draft",
+      "namespace": "wf-scenario-enterprise-lead-enrichment",
+      "deployed": true,
+      "testCount": 12,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "AI-powered lead scoring with CRM sync and human-in-the-loop approval. Validates CRM adapter, approval state machine, and cross-plugin composition with sidecar containers.",
+      "lastTested": null,
+      "lastResult": null
     }
   }
 }

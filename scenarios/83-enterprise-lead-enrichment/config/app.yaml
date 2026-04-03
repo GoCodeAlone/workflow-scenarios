@@ -1,0 +1,192 @@
+# Scenario 83: Enterprise Lead Enrichment
+#
+# AI-powered lead scoring with CRM sync and human-in-the-loop approval.
+# Pipeline flow:
+#   1. Extract lead data from POST body
+#   2. AI scores the lead 1-10
+#   3. High score (>= 7) → auto-create CRM record
+#   4. Medium score (< 7) → request human approval via Slack
+#   5. Approved → create CRM record; Rejected → notify
+#
+# Endpoints:
+#   GET  /healthz     — health check
+#   POST /api/leads   — submit a new lead for enrichment
+
+modules:
+    - name: server
+      type: http.server
+      config:
+        address: ":8080"
+    - name: router
+      type: http.router
+      dependsOn: [server]
+    - name: crm
+      type: crm.provider
+      config:
+        provider: salesforce
+        instanceUrl: "{{ env \"SALESFORCE_INSTANCE_URL\" }}"
+        accessToken: "{{ env \"SALESFORCE_ACCESS_TOKEN\" }}"
+        apiVersion: "v63.0"
+    - name: approval
+      type: approval.engine
+      config:
+        notificationChannel: slack
+        slackWebhookUrl: "{{ env \"SLACK_WEBHOOK_URL\" }}"
+        defaultTtl: 24h
+        escalationPolicy: manager
+
+workflows:
+    http:
+        router: router
+        server: server
+        routes: []
+
+pipelines:
+    health:
+        trigger:
+            type: http
+            config:
+                path: /healthz
+                method: GET
+        steps:
+            - name: respond
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: ok
+                    scenario: "83-enterprise-lead-enrichment"
+
+    submit-lead:
+        trigger:
+            type: http
+            config:
+                path: /api/leads
+                method: POST
+        steps:
+            - name: validate
+              type: step.conditional
+              config:
+                field: body.email
+                routes:
+                    "": missing_fields
+                default: extract
+
+            - name: missing_fields
+              type: step.json_response
+              config:
+                status: 400
+                body:
+                    error: "missing required fields: email, first_name, last_name, company are required"
+
+            - name: extract
+              type: step.set
+              config:
+                values:
+                    first_name: "{{ .body.first_name }}"
+                    last_name: "{{ .body.last_name }}"
+                    company: "{{ .body.company }}"
+                    email: "{{ .body.email }}"
+                    phone: "{{ .body.phone | default \"\" }}"
+                    source: "{{ .body.source | default \"web\" }}"
+                    lead_id: "lead-{{ uuidv4 }}"
+
+            - name: score
+              type: step.ai_complete
+              config:
+                model: gpt-4
+                prompt: "Score this lead 1-10 based on company data: {{ index .steps \"extract\" \"company\" }}. The lead is {{ index .steps \"extract\" \"first_name\" }} {{ index .steps \"extract\" \"last_name\" }} ({{ index .steps \"extract\" \"email\" }}). Return only a JSON object with keys: score (integer 1-10) and reason (string)."
+                responseFormat: json
+
+            - name: parse_score
+              type: step.set
+              config:
+                values:
+                    numeric_score: "{{ index .steps \"score\" \"content\" \"score\" }}"
+                    score_reason: "{{ index .steps \"score\" \"content\" \"reason\" }}"
+
+            - name: route_by_score
+              type: step.conditional
+              config:
+                field: steps.parse_score.numeric_score
+                routes:
+                    "10": create_crm_record
+                    "9": create_crm_record
+                    "8": create_crm_record
+                    "7": create_crm_record
+                default: request_approval
+
+            - name: request_approval
+              type: step.approval_request
+              config:
+                module: approval
+                title: "Lead Review: {{ index .steps \"extract\" \"first_name\" }} {{ index .steps \"extract\" \"last_name\" }}"
+                description: "Company: {{ index .steps \"extract\" \"company\" }}\nEmail: {{ index .steps \"extract\" \"email\" }}\nAI Score: {{ index .steps \"parse_score\" \"numeric_score\" }}/10\nReason: {{ index .steps \"parse_score\" \"score_reason\" }}"
+                requester: "lead-enrichment-pipeline"
+                ttl: 24h
+                escalateTo: manager
+                notifyChannel: slack
+                metadata:
+                    lead_id: "{{ index .steps \"extract\" \"lead_id\" }}"
+                    score: "{{ index .steps \"parse_score\" \"numeric_score\" }}"
+
+            - name: check_approval
+              type: step.conditional
+              config:
+                field: steps.request_approval.decision
+                routes:
+                    approved: create_crm_record
+                    rejected: notify_rejected
+                default: respond_pending
+
+            - name: notify_rejected
+              type: step.set
+              config:
+                values:
+                    status: rejected
+                    message: "Lead {{ index .steps \"extract\" \"lead_id\" }} was rejected by approver"
+
+            - name: respond_rejected
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: rejected
+                    lead_id: "{{ index .steps \"extract\" \"lead_id\" }}"
+                    message: "{{ index .steps \"notify_rejected\" \"message\" }}"
+
+            - name: respond_pending
+              type: step.json_response
+              config:
+                status: 202
+                body:
+                    status: pending_approval
+                    lead_id: "{{ index .steps \"extract\" \"lead_id\" }}"
+                    approval_id: "{{ index .steps \"request_approval\" \"approval_id\" }}"
+                    message: "Lead submitted for human review"
+
+            - name: create_crm_record
+              type: step.crm_create_record
+              config:
+                module: crm
+                object: Lead
+                fields:
+                    FirstName: "{{ index .steps \"extract\" \"first_name\" }}"
+                    LastName: "{{ index .steps \"extract\" \"last_name\" }}"
+                    Company: "{{ index .steps \"extract\" \"company\" }}"
+                    Email: "{{ index .steps \"extract\" \"email\" }}"
+                    Phone: "{{ index .steps \"extract\" \"phone\" }}"
+                    LeadSource: "{{ index .steps \"extract\" \"source\" }}"
+                    LeadScore__c: "{{ index .steps \"parse_score\" \"numeric_score\" }}"
+                    LeadScoreReason__c: "{{ index .steps \"parse_score\" \"score_reason\" }}"
+
+            - name: respond_success
+              type: step.json_response
+              config:
+                status: 200
+                body:
+                    status: created
+                    lead_id: "{{ index .steps \"extract\" \"lead_id\" }}"
+                    crm_record_id: "{{ index .steps \"create_crm_record\" \"record_id\" }}"
+                    score: "{{ index .steps \"parse_score\" \"numeric_score\" }}"
+                    message: "Lead created in Salesforce"

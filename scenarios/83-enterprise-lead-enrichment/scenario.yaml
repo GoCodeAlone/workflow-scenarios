@@ -1,0 +1,26 @@
+name: Enterprise Lead Enrichment
+id: "83-enterprise-lead-enrichment"
+category: enterprise
+description: |
+  AI-powered lead scoring with CRM sync and human-in-the-loop approval.
+  Covers:
+    - crm.provider for Salesforce adapter (workflow-plugin-crm)
+    - approval.engine for human approval state machine (workflow-plugin-approval)
+    - step.ai_complete for AI-driven lead scoring
+    - step.approval_request for human-in-the-loop with Slack notification
+    - step.crm_create_record for Salesforce Lead object creation
+    - step.conditional for routing high-score vs approval paths
+  Validates cross-plugin composition: CRM adapter, approval state machine,
+  AI agent, and Slack notification working together in a single pipeline.
+components:
+  - workflow-plugin-crm
+  - workflow-plugin-approval
+  - workflow-plugin-agent
+  - workflow-plugin-slack
+status: draft
+tags:
+  - enterprise
+  - crm
+  - approval
+  - ai-agent
+  - lead-enrichment

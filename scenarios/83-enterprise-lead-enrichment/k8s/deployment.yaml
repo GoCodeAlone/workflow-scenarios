@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow-server
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: workflow-server
+  template:
+    metadata:
+      labels:
+        app: workflow-server
+    spec:
+      containers:
+        - name: workflow-server
+          image: ghcr.io/gocodealone/workflow:latest
+          imagePullPolicy: Always
+          args: ["-config", "/config/app.yaml", "-data-dir", "/data", "-plugin-dir", "/plugins"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: AI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-credentials
+                  key: api-key
+            - name: SALESFORCE_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: salesforce-credentials
+                  key: access-token
+            - name: SALESFORCE_INSTANCE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: salesforce-credentials
+                  key: instance-url
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: slack-credentials
+                  key: webhook-url
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 3
+            failureThreshold: 20
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+        - name: crm-plugin
+          image: ghcr.io/gocodealone/workflow-plugin-crm:latest
+          imagePullPolicy: Always
+          env:
+            - name: SALESFORCE_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: salesforce-credentials
+                  key: access-token
+            - name: SALESFORCE_INSTANCE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: salesforce-credentials
+                  key: instance-url
+          ports:
+            - containerPort: 19083
+          resources:
+            limits:
+              cpu: 200m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+        - name: approval-plugin
+          image: ghcr.io/gocodealone/workflow-plugin-approval:latest
+          imagePullPolicy: Always
+          env:
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: slack-credentials
+                  key: webhook-url
+          ports:
+            - containerPort: 19084
+          resources:
+            limits:
+              cpu: 200m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+      volumes:
+        - name: config
+          configMap:
+            name: app
+        - name: data
+          emptyDir: {}
