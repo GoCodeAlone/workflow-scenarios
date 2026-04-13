@@ -42,7 +42,9 @@ modules:
         max_iterations_per_cycle: 5
         deploy_strategy: hot_reload
         allowed_tools:
-          - "mcp_wfctl_*"
+          - "mcp:wfctl:*"
+          - "mcp:wfctl:validate_config"
+          - "mcp:lsp:diagnose"
           - "file_read"
           - "file_write"
           - "file_list"
@@ -119,11 +121,12 @@ pipelines:
             AVAILABLE TOOLS:
             - file_read: Read a file. Args: {"path": "/path/to/file"}
             - file_write: Write a file. Args: {"path": "/path", "content": "..."}
-            - mcp_wfctl_validate_config: Validate workflow YAML. Args: {"yaml_content": "..."}
-            - mcp_wfctl_inspect_config: Inspect config structure. Args: {"yaml_content": "..."}
-            - mcp_wfctl_list_step_types: List available pipeline step types. Args: {}
-            - mcp_wfctl_get_step_schema: Get schema for a step. Args: {"type": "step.db_query"}
-            - mcp_wfctl_list_module_types: List available module types. Args: {}
+            - mcp:wfctl:validate_config: Validate workflow YAML. Args: {"yaml_content": "..."}
+            - mcp:wfctl:inspect_config: Inspect config structure. Args: {"yaml_content": "..."}
+            - mcp:wfctl:list_step_types: List available pipeline step types. Args: {}
+            - mcp:wfctl:get_step_schema: Get schema for a step. Args: {"type": "step.db_query"}
+            - mcp:wfctl:list_module_types: List available module types. Args: {}
+            - mcp:lsp:diagnose: Run LSP diagnostics. Args: {"path": "/path/to/file"}
             - git_status: Check git status. Args: {}
             - git_commit: Commit changes. Args: {"message": "...", "paths": ["file1"]}
             - web_fetch: Fetch a URL. Args: {"url": "http://..."}
@@ -141,11 +144,11 @@ pipelines:
 
             STEP-BY-STEP PROCESS:
             1. Read the current config using file_read
-            2. Inspect it with mcp_wfctl_inspect_config to understand the structure
-            3. Use mcp_wfctl_list_step_types to see what steps are available
+            2. Inspect it with mcp:wfctl:inspect_config to understand the structure
+            3. Use mcp:wfctl:list_step_types to see what steps are available
             4. Design 1-2 new pipelines (e.g., search endpoint, stats endpoint)
             5. Generate the complete improved config YAML
-            6. Validate it with mcp_wfctl_validate_config
+            6. Validate it with mcp:wfctl:validate_config
             7. If validation fails, read the errors and fix the YAML, then revalidate
             8. Once valid, write the config using file_write
             9. Commit with git_commit
@@ -159,7 +162,7 @@ pipelines:
         type: step.set
         config:
           values:
-            proposed_yaml: "{{ .steps.designer.result }}"
+            proposed_yaml: "${ steps.designer.result }"
 
       # Step 4: Post design artifact to blackboard for audit
       - name: post_design

@@ -22,7 +22,7 @@ modules:
     type: http.router
     dependsOn: [server]
 
-  - name: ratchet-ai
+  - name: ai
     type: agent.provider
     config:
       provider: ollama
@@ -38,10 +38,12 @@ modules:
         enable_iac_modification: false
         require_human_approval: false
         require_diff_review: true
-        max_iterations_per_cycle: 10
+        max_iterations_per_cycle: 5
         deploy_strategy: hot_reload
         allowed_tools:
-          - "mcp_wfctl_*"
+          - "mcp:wfctl:*"
+          - "mcp:wfctl:detect_project_features"
+          - "mcp:wfctl:api_extract"
           - "file_read"
           - "file_write"
           - "file_list"
@@ -73,7 +75,7 @@ workflows:
     routes: []
 
 pipelines:
-  autonomous_improve:
+  autonomous_improvement_loop:
     trigger:
       type: http
       config:
@@ -86,34 +88,29 @@ pipelines:
           values:
             config_path: "${CONFIG_PATH:-/data/config/app.yaml}"
             base_app_url: "${BASE_APP_URL:-http://localhost:8080}"
-            provider: ratchet-ai
+            provider: ai
             repo_path: "${REPO_PATH:-/data/repo}"
 
-      - name: autonomous_agent
+      - name: audit
         type: step.agent_execute
         config:
-          provider_service: ratchet-ai
-          max_iterations: 30
+          provider_service: ai
+          max_iterations: 10
           workspace: /data
           system_prompt: |
             You are an autonomous agile development agent with full control
-            over an application's design and evolution. You will perform
-            multiple improvement iterations, each producing a deployable
-            increment.
+            over an application's design and evolution. You work iteratively
+            and produce production-ready increments each cycle.
+
+            PHASE: AUDIT — Analyze the current application state.
 
             AVAILABLE TOOLS:
             - file_read: Read files. Args: {"path": "/path"}
-            - file_write: Write files. Args: {"path": "/path", "content": "..."}
             - file_list: List directory. Args: {"path": "/dir"}
-            - mcp_wfctl_validate_config: Validate YAML. Args: {"yaml_content": "..."}
-            - mcp_wfctl_inspect_config: Inspect structure. Args: {"yaml_content": "..."}
-            - mcp_wfctl_list_step_types: List step types. Args: {}
-            - mcp_wfctl_get_step_schema: Step schema. Args: {"type": "step.name"}
-            - mcp_wfctl_list_module_types: List module types. Args: {}
-            - git_status: Git status. Args: {}
-            - git_commit: Commit. Args: {"message": "...", "paths": ["file"]}
+            - mcp:wfctl:detect_project_features: Detect project features. Args: {"path": "/path"}
+            - mcp:wfctl:api_extract: Extract API surface. Args: {"yaml_content": "..."}
+            - mcp:wfctl:inspect_config: Inspect structure. Args: {"yaml_content": "..."}
             - web_fetch: HTTP fetch. Args: {"url": "http://..."}
-            - shell_exec: Run command. Args: {"command": "..."}
 
             WORKFLOW ENGINE YAML RULES:
             1. http.server uses 'address: ":8080"' NOT 'port: 8080'
@@ -124,54 +121,94 @@ pipelines:
             6. Request parse uses 'parse_body: true' NOT 'format: json'
             7. Pipelines have inline trigger blocks (type: http with path/method)
 
-            AGILE PROCESS — perform 3 iterations:
-
-            ITERATION 1:
+            TASK:
             1. Read current config via file_read
-            2. Inspect with mcp_wfctl_inspect_config
-            3. Audit: what endpoints exist? What's missing?
-            4. Add a search endpoint (GET /tasks/search with LIKE query)
-            5. Validate → Write → Commit as "feat(iter-1): add search endpoint"
+            2. Use mcp:wfctl:detect_project_features to identify capabilities
+            3. Use mcp:wfctl:api_extract to map existing API surface
+            4. Report: what endpoints exist, what's missing, what to add next
 
-            ITERATION 2:
-            1. Re-read config (includes iter-1 changes)
-            2. Add a stats/analytics endpoint (GET /tasks/stats)
-            3. Validate → Write → Commit as "feat(iter-2): add stats endpoint"
-
-            ITERATION 3:
-            1. Re-read config
-            2. Verify both new endpoints work via web_fetch
-            3. Add a batch update endpoint (PUT /tasks/batch with status update)
-            4. Validate → Write → Commit as "feat(iter-3): add batch update"
-
-            After each iteration, verify the previous endpoints still work
-            by calling them with web_fetch.
-
-            IMPORTANT: Always validate before writing. Always commit after
-            writing. Each commit message MUST start with "feat(iter-N):".
-
-      - name: map_output
-        type: step.set
-        config:
-          values:
-            proposed_yaml: "{{ .steps.autonomous_agent.result }}"
-
-      - name: post_result
+      - name: post_audit
         type: step.blackboard_post
         config:
-          phase: complete
-          artifact_type: autonomous_result
+          phase: audit
+          artifact_type: audit_report
 
-      - name: final_validate
+      - name: plan
+        type: step.agent_execute
+        config:
+          provider_service: ai
+          max_iterations: 10
+          workspace: /data
+          system_prompt: |
+            You are an autonomous agile development agent planning the next
+            iterative improvement. Based on the audit, design new endpoints.
+
+            AVAILABLE TOOLS:
+            - file_read: Read files. Args: {"path": "/path"}
+            - mcp:wfctl:validate_config: Validate YAML. Args: {"yaml_content": "..."}
+            - mcp:wfctl:list_step_types: List step types. Args: {}
+            - mcp:wfctl:get_step_schema: Step schema. Args: {"type": "step.name"}
+
+            TASK:
+            1. Read current config
+            2. Design a search endpoint (GET /tasks/search) and stats endpoint (GET /tasks/stats)
+            3. Generate complete improved config YAML
+            4. Validate with mcp:wfctl:validate_config
+
+      - name: post_plan
+        type: step.blackboard_post
+        config:
+          phase: plan
+          artifact_type: improvement_plan
+
+      - name: validate
         type: step.self_improve_validate
         config:
           validation_level: strict
 
-      - name: final_deploy
+      - name: deploy
         type: step.self_improve_deploy
         config:
           strategy: hot_reload
           config_path: "${CONFIG_PATH:-/data/config/app.yaml}"
+
+      - name: post_deploy
+        type: step.blackboard_post
+        config:
+          phase: deploy
+          artifact_type: deployment_result
+
+      - name: verify
+        type: step.agent_execute
+        config:
+          provider_service: ai
+          max_iterations: 10
+          workspace: /data
+          system_prompt: |
+            Verify the deployed endpoints work correctly. Test each new
+            endpoint and confirm production-ready responses.
+
+            AVAILABLE TOOLS:
+            - web_fetch: HTTP fetch. Args: {"url": "http://..."}
+            - file_read: Read files. Args: {"path": "/path"}
+
+            TASK:
+            1. Verify /tasks/search works via web_fetch
+            2. Verify /tasks/stats works via web_fetch
+            3. Confirm all existing endpoints still function
+
+      - name: post_verify
+        type: step.blackboard_post
+        config:
+          phase: verify
+          artifact_type: verification_result
+
+      - name: commit_iteration
+        type: step.git_commit
+        config:
+          message: "feat(autonomous): iterative improvement — search and stats endpoints"
+          paths:
+            - "${CONFIG_PATH:-/data/config/app.yaml}"
 
   health_check:
     trigger:
