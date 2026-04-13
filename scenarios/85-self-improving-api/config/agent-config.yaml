@@ -14,7 +14,7 @@ modules:
       dbPath: /data/agent.db
       walMode: true
 
-  - name: agent_db
+  - name: ratchet-db
     type: storage.sqlite
     config:
       dbPath: /data/agent-state.db
@@ -29,11 +29,11 @@ modules:
     type: http.router
     dependsOn: [server]
 
-  - name: ai
+  - name: ratchet-ai
     type: agent.provider
     config:
       provider: ollama
-      model: gemma4
+      model: gemma4:e2b
       base_url: http://ollama:11434
       max_tokens: 8192
 
@@ -81,15 +81,19 @@ pipelines:
         path: /improve
         method: POST
     steps:
-      - name: load_config
-        type: step.read_file
+      - name: set_context
+        type: step.set
         config:
-          path: /data/config/app.yaml
+          values:
+            config_path: /data/config/app.yaml
+            improvement_goal: "Add FTS5 search, cursor pagination, rate limiting, structured logging"
+            provider: ratchet-ai
 
       - name: designer
         type: step.agent_execute
         config:
-          provider: ai
+          provider: ratchet-ai
+          provider_service: ratchet-ai
           system_prompt: |
             You are a workflow config designer. You have been given a task
             to improve a workflow application. Analyze the current config
@@ -109,6 +113,12 @@ pipelines:
             - "mcp:wfctl:list_step_types"
             - "mcp:lsp:diagnose"
           max_iterations: 15
+
+      - name: map_output
+        type: step.set
+        config:
+          values:
+            proposed_yaml: "{{ .steps.designer.content }}"
 
       - name: post_design
         type: step.blackboard_post
