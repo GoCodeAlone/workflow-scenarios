@@ -1,0 +1,163 @@
+# Scenario 86: Self-Extending MCP Tooling — Base Task API
+#
+# A task management API with SQLite backend.
+# The agent will create new MCP tools (mcp_tool triggers) as workflow
+# pipelines, then use those tools to analyze task data and create
+# additional tools iteratively.
+#
+# Endpoints:
+#   GET  /healthz          — health check
+#   GET  /tasks            — list tasks
+#   POST /tasks            — create task
+#   GET  /tasks/{id}       — get task
+#   PUT  /tasks/{id}       — update task
+#   DELETE /tasks/{id}     — delete task
+
+modules:
+  db:
+    type: database.sqlite
+    config:
+      path: /data/tasks.db
+  server:
+    type: http.server
+    config:
+      port: 8080
+
+workflows:
+  api:
+    type: http
+    routes:
+      - path: /healthz
+        method: GET
+        pipeline: health_check
+      - path: /tasks
+        method: GET
+        pipeline: list_tasks
+      - path: /tasks
+        method: POST
+        pipeline: create_task
+      - path: /tasks/{id}
+        method: GET
+        pipeline: get_task
+      - path: /tasks/{id}
+        method: PUT
+        pipeline: update_task
+      - path: /tasks/{id}
+        method: DELETE
+        pipeline: delete_task
+
+pipelines:
+  health_check:
+    steps:
+      - name: respond
+        type: step.response
+        config:
+          status: 200
+          body: '{"status": "healthy", "scenario": "86-self-extending-mcp"}'
+
+  list_tasks:
+    steps:
+      - name: query
+        type: step.db_query
+        config:
+          module: db
+          mode: many
+          query: >
+            SELECT id, title, description, status, priority,
+                   created_at, updated_at, completed_at
+            FROM tasks
+            ORDER BY created_at DESC
+      - name: respond
+        type: step.response
+        config:
+          status: 200
+          body: '{{ .steps.query.rows | json }}'
+
+  create_task:
+    steps:
+      - name: parse_body
+        type: step.request_parse
+        config:
+          format: json
+      - name: insert
+        type: step.db_exec
+        config:
+          module: db
+          query: >
+            INSERT INTO tasks (title, description, status, priority, created_at, updated_at)
+            VALUES (?, ?, 'pending', ?, datetime('now'), datetime('now'))
+          args:
+            - "{{ .body.title }}"
+            - "{{ .body.description | default \"\" }}"
+            - "{{ .body.priority | default \"medium\" }}"
+      - name: respond
+        type: step.response
+        config:
+          status: 201
+          body: '{"status": "created", "id": {{ .steps.insert.last_insert_id }}}'
+
+  get_task:
+    steps:
+      - name: query
+        type: step.db_query
+        config:
+          module: db
+          mode: one
+          query: >
+            SELECT id, title, description, status, priority,
+                   created_at, updated_at, completed_at
+            FROM tasks WHERE id = ?
+          args:
+            - "{{ .id }}"
+      - name: respond
+        type: step.response
+        config:
+          status: 200
+          body: '{{ .steps.query.row | json }}'
+
+  update_task:
+    steps:
+      - name: parse_body
+        type: step.request_parse
+        config:
+          format: json
+      - name: update
+        type: step.db_exec
+        config:
+          module: db
+          query: >
+            UPDATE tasks
+            SET title = COALESCE(?, title),
+                description = COALESCE(?, description),
+                status = COALESCE(?, status),
+                priority = COALESCE(?, priority),
+                updated_at = datetime('now'),
+                completed_at = CASE WHEN ? = 'done' THEN datetime('now') ELSE completed_at END
+            WHERE id = ?
+          args:
+            - "{{ .body.title | default nil }}"
+            - "{{ .body.description | default nil }}"
+            - "{{ .body.status | default nil }}"
+            - "{{ .body.priority | default nil }}"
+            - "{{ .body.status | default \"\" }}"
+            - "{{ .id }}"
+      - name: respond
+        type: step.response
+        config:
+          status: 200
+          body: '{"status": "updated"}'
+
+  delete_task:
+    steps:
+      - name: delete
+        type: step.db_exec
+        config:
+          module: db
+          query: "DELETE FROM tasks WHERE id = ?"
+          args:
+            - "{{ .id }}"
+      - name: respond
+        type: step.response
+        config:
+          status: 200
+          body: '{"status": "deleted"}'

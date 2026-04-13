@@ -1,0 +1,58 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - app-data:/data
+      - ./config:/data/config
+    environment:
+      - WORKFLOW_ADMIN_SECRET=scenario-86-admin-secret
+      - SEED_SQL=/data/config/seed-data.sql
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    ports:
+      - "8081:8081"
+    volumes:
+      - app-data:/data
+      - ./config:/data/config
+      - agent-repo:/data/repo
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WORKFLOW_ADMIN_SECRET=scenario-86-admin-secret
+      - IMPROVEMENT_GOAL=Create the task_analytics MCP tool as a workflow pipeline with mcp_tool trigger. The tool should return completion_rate (percentage of done tasks), avg_time_to_completion (average hours from created_at to completed_at for done tasks), and bottleneck_status (the status with the most stuck tasks). After deploying and using task_analytics, create the task_forecast tool that queries daily task creation over the last 30 days and projects the next 7 days using a 7-day moving average.
+    depends_on:
+      ollama:
+        condition: service_healthy
+      app:
+        condition: service_started
+
+volumes:
+  ollama-data:
+  app-data:
+  agent-repo:
