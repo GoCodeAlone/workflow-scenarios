@@ -1,0 +1,190 @@
+# Scenario 87: Autonomous Agile Agent — Full Autonomy Config
+#
+# The agent has full control over the application's design and evolution.
+# It audits the current state, identifies improvements, and iterates
+# like an agile team: each iteration is a deployable, tested increment.
+#
+# Agent prompt goal:
+#   "You are in full control of this application's design and evolution.
+#   Audit the current state, identify missing features, gaps, and improvements.
+#   Plan and execute iterative improvements as an agile team would — each
+#   iteration should be a deployable increment. Interact with the running
+#   application to verify functionality. Continue improving until you believe
+#   the application is production-ready or you have completed 5 iterations."
+
+modules:
+  db:
+    type: database.sqlite
+    config:
+      path: /data/agent.db
+  server:
+    type: http.server
+    config:
+      port: 8081
+  ai:
+    type: agent.provider
+    config:
+      provider: ollama
+      model: gemma4
+      base_url: http://ollama:11434
+      max_tokens: 8192
+  guardrails:
+    type: agent.guardrails
+    config:
+      defaults:
+        enable_self_improvement: true
+        enable_iac_modification: false
+        require_human_approval: false
+        require_diff_review: true
+        max_iterations_per_cycle: 5
+        deploy_strategy: hot_reload
+        allowed_tools:
+          - "mcp:wfctl:*"
+          - "mcp:lsp:*"
+          - "mcp:self_improve:*"
+        command_policy:
+          mode: allowlist
+          allowed_commands:
+            - "wfctl"
+            - "curl"
+            - "go test"
+          enable_static_analysis: true
+          block_pipe_to_shell: true
+          block_script_execution: true
+      immutable_sections:
+        - path: "modules.guardrails"
+          override: challenge_token
+      override:
+        mechanism: challenge_token
+        admin_secret_env: "WORKFLOW_ADMIN_SECRET"
+
+pipelines:
+  autonomous_improvement_loop:
+    steps:
+      # --- Audit phase ---
+      - name: audit
+        type: step.agent_execute
+        config:
+          provider: ai
+          system_prompt: |
+            You are an autonomous agile agent with full control of this application.
+
+            You are in full control of this application's design and evolution.
+            Audit the current state, identify missing features, gaps, and improvements.
+            Plan and execute iterative improvements as an agile team would — each
+            iteration should be a deployable increment. Interact with the running
+            application to verify functionality. Continue improving until you believe
+            the application is production-ready or you have completed 5 iterations.
+
+            Audit tools:
+            - mcp:wfctl:inspect_config — understand current modules and pipelines
+            - mcp:wfctl:detect_project_features — identify what features exist
+            - mcp:wfctl:api_extract — generate/refresh OpenAPI spec
+
+            Output a structured audit report: current capabilities, gaps, and
+            a prioritized list of improvements for this iteration.
+          tools:
+            - "mcp:wfctl:inspect_config"
+            - "mcp:wfctl:detect_project_features"
+            - "mcp:wfctl:api_extract"
+            - "mcp:wfctl:list_module_types"
+            - "mcp:wfctl:list_step_types"
+          max_iterations: 10
+
+      - name: post_audit
+        type: step.blackboard_post
+        config:
+          phase: audit
+          artifact_type: audit_report
+
+      # --- Plan phase ---
+      - name: plan
+        type: step.agent_execute
+        config:
+          provider: ai
+          system_prompt: |
+            Based on the audit report, design the improvements for this iteration.
+            Focus on the highest-priority gap. Use:
+            - mcp:wfctl:get_module_schema — get schema for any new module types
+            - mcp:wfctl:get_step_schema — get schema for new step types
+            - mcp:wfctl:validate_config — validate your proposed config changes
+            - mcp:lsp:diagnose — check YAML syntax
+
+            The proposal must:
+            1. Be a complete, valid app.yaml with the improvement applied
+            2. Pass validate_config with zero errors
+            3. Include a brief description of what changed and why
+          tools:
+            - "mcp:wfctl:get_module_schema"
+            - "mcp:wfctl:get_step_schema"
+            - "mcp:wfctl:validate_config"
+            - "mcp:lsp:diagnose"
+            - "mcp:wfctl:diff_configs"
+          max_iterations: 15
+
+      - name: post_plan
+        type: step.blackboard_post
+        config:
+          phase: plan
+          artifact_type: config_proposal
+
+      # --- Validate & deploy ---
+      - name: validate
+        type: step.self_improve_validate
+        config:
+          validation_level: strict
+          require_zero_errors: true
+
+      - name: diff
+        type: step.self_improve_diff
+        config:
+          force: true
+
+      - name: deploy
+        type: step.self_improve_deploy
+        config:
+          strategy: hot_reload
+          config_path: /data/config/app.yaml
+
+      - name: post_deploy
+        type: step.blackboard_post
+        config:
+          phase: deploy
+          artifact_type: deployment_record
+
+      # --- Verify phase: agent tests its own API ---
+      - name: verify
+        type: step.agent_execute
+        config:
+          provider: ai
+          system_prompt: |
+            The new config has been deployed. Now verify it works correctly:
+            1. Send HTTP requests to the running application to test new endpoints
+            2. Verify the health check still responds
+            3. Test any new functionality you added in this iteration
+            4. Document what was verified and whether tests passed
+
+            Use step.http_request to hit the API at http://app:8080.
+            Log structured results: endpoint, method, status_code, passed.
+          tools:
+            - "mcp:wfctl:api_extract"
+          max_iterations: 10
+
+      - name: post_verify
+        type: step.blackboard_post
+        config:
+          phase: verify
+          artifact_type: verification_results
+
+      # --- Commit iteration ---
+      - name: commit_iteration
+        type: step.git_commit
+        config:
+          repo_path: /data/repo
+          message_template: |
+            feat(iter-{{ .iteration_number }}): {{ .iteration_summary }}
+
+            Changes:
+            {{ .changes_summary }}
+
+            Verified: {{ .verification_summary }}

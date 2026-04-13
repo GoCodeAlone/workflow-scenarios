@@ -1,0 +1,143 @@
+# Scenario 87: Autonomous Agile Agent — Base Task API
+#
+# Minimal starting point. The agent audits this application and iteratively
+# improves it over up to 5 agile-style iterations, committing each increment
+# and verifying with HTTP requests to the running app.
+#
+# Endpoints:
+#   GET  /healthz      — health check
+#   GET  /tasks        — list tasks
+#   POST /tasks        — create task
+#   GET  /tasks/{id}   — get task
+#   PUT  /tasks/{id}   — update task
+#   DELETE /tasks/{id} — delete task
+
+modules:
+  db:
+    type: database.sqlite
+    config:
+      path: /data/tasks.db
+  server:
+    type: http.server
+    config:
+      port: 8080
+
+workflows:
+  api:
+    type: http
+    routes:
+      - path: /healthz
+        method: GET
+        pipeline: health_check
+      - path: /tasks
+        method: GET
+        pipeline: list_tasks
+      - path: /tasks
+        method: POST
+        pipeline: create_task
+      - path: /tasks/{id}
+        method: GET
+        pipeline: get_task
+      - path: /tasks/{id}
+        method: PUT
+        pipeline: update_task
+      - path: /tasks/{id}
+        method: DELETE
+        pipeline: delete_task
+
+pipelines:
+  health_check:
+    steps:
+      - name: respond
+        type: step.response
+        config:
+          status: 200
+          body: '{"status": "healthy", "scenario": "87-autonomous-agile-agent", "version": "0.1.0"}'
+
+  list_tasks:
+    steps:
+      - name: query
+        type: step.db_query
+        config:
+          module: db
+          mode: many
+          query: "SELECT id, title, description, status, created_at FROM tasks ORDER BY created_at DESC"
+      - name: respond
+        type: step.response
+        config:
+          status: 200
+          body: '{{ .steps.query.rows | json }}'
+
+  create_task:
+    steps:
+      - name: parse_body
+        type: step.request_parse
+        config:
+          format: json
+      - name: insert
+        type: step.db_exec
+        config:
+          module: db
+          query: >
+            INSERT INTO tasks (title, description, status, created_at)
+            VALUES (?, ?, 'pending', datetime('now'))
+          args:
+            - "{{ .body.title }}"
+            - "{{ .body.description | default \"\" }}"
+      - name: respond
+        type: step.response
+        config:
+          status: 201
+          body: '{"status": "created"}'
+
+  get_task:
+    steps:
+      - name: query
+        type: step.db_query
+        config:
+          module: db
+          mode: one
+          query: "SELECT id, title, description, status, created_at FROM tasks WHERE id = ?"
+          args:
+            - "{{ .id }}"
+      - name: respond
+        type: step.response
+        config:
+          status: 200
+          body: '{{ .steps.query.row | json }}'
+
+  update_task:
+    steps:
+      - name: parse_body
+        type: step.request_parse
+        config:
+          format: json
+      - name: update
+        type: step.db_exec
+        config:
+          module: db
+          query: "UPDATE tasks SET title = ?, status = ? WHERE id = ?"
+          args:
+            - "{{ .body.title }}"
+            - "{{ .body.status }}"
+            - "{{ .id }}"
+      - name: respond
+        type: step.response
+        config:
+          status: 200
+          body: '{"status": "updated"}'
+
+  delete_task:
+    steps:
+      - name: delete
+        type: step.db_exec
+        config:
+          module: db
+          query: "DELETE FROM tasks WHERE id = ?"
+          args:
+            - "{{ .id }}"
+      - name: respond
+        type: step.response
+        config:
+          status: 200
+          body: '{"status": "deleted"}'
