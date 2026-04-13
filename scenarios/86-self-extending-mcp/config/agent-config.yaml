@@ -1,18 +1,18 @@
 # ============================================================
 # Scenario 86 — Self-Extending MCP Tooling: Agent Config
 #
-# Agent goal:
-#   1. Create task_analytics as a workflow pipeline with mcp_tool trigger
-#      (completion_rate, avg_time_to_completion, bottleneck_status)
-#   2. Use task_analytics to analyze the seeded task data
-#   3. Create task_forecast tool based on findings
-#      (7-day moving average projection from 30-day history)
-#
-# Key difference from scenario 85: mcp:self_improve:* permission
-# allows creating new mcp_tool triggers (new MCP-exposed pipelines).
+# Architecture: Two-phase agent loop.
+# Phase 1: Create task_analytics pipeline with mcp_tool trigger
+# Phase 2: Use the new tool, then create task_forecast tool
 # ============================================================
 
 modules:
+  - name: ratchet-db
+    type: storage.sqlite
+    config:
+      dbPath: /data/agent-state.db
+      walMode: true
+
   - name: server
     type: http.server
     config:
@@ -22,18 +22,12 @@ modules:
     type: http.router
     dependsOn: [server]
 
-  - name: db
-    type: storage.sqlite
-    config:
-      dbPath: /data/agent.db
-      walMode: true
-
-  - name: ai
+  - name: ratchet-ai
     type: agent.provider
     config:
       provider: ollama
-      model: gemma4
-      base_url: http://ollama:11434
+      model: gemma4:e2b
+      base_url: "${OLLAMA_BASE_URL:-http://ollama:11434}"
       max_tokens: 8192
 
   - name: guardrails
@@ -47,9 +41,14 @@ modules:
         max_iterations_per_cycle: 5
         deploy_strategy: hot_reload
         allowed_tools:
-          - "mcp:wfctl:*"
-          - "mcp:lsp:*"
-          - "mcp:self_improve:*"
+          - "mcp_wfctl_*"
+          - "file_read"
+          - "file_write"
+          - "file_list"
+          - "git_status"
+          - "git_commit"
+          - "web_fetch"
+          - "shell_exec"
         command_policy:
           mode: allowlist
           allowed_commands:
@@ -63,7 +62,7 @@ modules:
           override: challenge_token
       override:
         mechanism: challenge_token
-        admin_secret_env: "WORKFLOW_ADMIN_SECRET"
+        admin_secret_env: "${WFCTL_ADMIN_SECRET:-scenario-86-admin-secret}"
 
 workflows:
   http:
@@ -95,88 +94,110 @@ pipelines:
         path: /create-tools
         method: POST
     steps:
-      - name: load_config
-        type: step.read_file
+      - name: set_context
+        type: step.set
         config:
-          path: /data/config/app.yaml
+          values:
+            config_path: "${CONFIG_PATH:-/data/config/app.yaml}"
+            provider: ratchet-ai
 
-      - name: inspect
+      - name: create_analytics_tool
         type: step.agent_execute
         config:
-          provider: ai
+          provider_service: ratchet-ai
+          max_iterations: 20
           system_prompt: |
             You are a workflow MCP tool designer. Your goal is to extend the
-            running workflow application by creating new MCP-exposed tools.
+            running workflow application by creating new API endpoints.
 
-            Step 1: Use mcp:wfctl:inspect_config to understand the current app.
-            Step 2: Use mcp:wfctl:list_step_types to see available step types.
-            Step 3: Design a task_analytics pipeline with trigger type mcp_tool.
-                    The tool should query the database and return:
-                    - completion_rate: percentage of tasks with status='done'
-                    - avg_time_to_completion: average hours from created_at to completed_at
-                    - bottleneck_status: the status with the most tasks stuck in it
-            Step 4: Validate the pipeline using mcp:wfctl:validate_config.
-            Step 5: Propose the updated app.yaml with the new pipeline included.
-          tools:
-            - "mcp:wfctl:inspect_config"
-            - "mcp:wfctl:validate_config"
-            - "mcp:wfctl:list_step_types"
-            - "mcp:wfctl:list_trigger_types"
-            - "mcp:wfctl:get_step_schema"
-            - "mcp:lsp:diagnose"
-          max_iterations: 15
+            AVAILABLE TOOLS:
+            - file_read: Read a file. Args: {"path": "/path/to/file"}
+            - file_write: Write a file. Args: {"path": "/path", "content": "..."}
+            - mcp_wfctl_validate_config: Validate workflow YAML. Args: {"yaml_content": "..."}
+            - mcp_wfctl_inspect_config: Inspect config structure. Args: {"yaml_content": "..."}
+            - mcp_wfctl_list_step_types: List available pipeline step types. Args: {}
+            - mcp_wfctl_get_step_schema: Get schema for a step. Args: {"type": "step.db_query"}
+            - git_commit: Commit changes. Args: {"message": "...", "paths": ["file1"]}
 
-      - name: post_design
+            WORKFLOW ENGINE YAML RULES:
+            1. http.server uses 'address: ":8080"' NOT 'port: 8080'
+            2. Database steps use 'database: db' NOT 'module: db'
+            3. Query parameters use 'params:' NOT 'args:'
+            4. DB query mode is 'list' or 'single' NOT 'many' or 'one'
+            5. Response step type is 'step.json_response' NOT 'step.response'
+            6. Pipelines have inline trigger blocks (type: http with path/method)
+
+            TASK:
+            1. Read the current config using file_read
+            2. Create a task_analytics pipeline:
+               - Trigger: GET /tasks/analytics
+               - step.db_query: SELECT COUNT(*) as total,
+                   SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as completed,
+                   SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) as pending
+                   FROM tasks
+               - step.json_response with the query results
+            3. Validate with mcp_wfctl_validate_config
+            4. Write the updated config using file_write
+            5. Commit with git_commit
+
+      - name: map_phase1
+        type: step.set
+        config:
+          values:
+            proposed_yaml: "{{ .steps.create_analytics_tool.result }}"
+
+      - name: post_phase1
         type: step.blackboard_post
         config:
           phase: design
           artifact_type: mcp_tool_proposal
 
-      - name: validate
+      - name: validate_phase1
         type: step.self_improve_validate
         config:
           validation_level: strict
-          require_zero_errors: true
 
-      - name: deploy_tool
+      - name: deploy_phase1
         type: step.self_improve_deploy
         config:
           strategy: hot_reload
-          config_path: /data/config/app.yaml
+          config_path: "${CONFIG_PATH:-/data/config/app.yaml}"
 
-      - name: use_tool
+      - name: create_forecast_tool
         type: step.agent_execute
         config:
-          provider: ai
+          provider_service: ratchet-ai
+          max_iterations: 20
           system_prompt: |
-            The task_analytics MCP tool has been deployed. Now:
-            Step 1: Call the tool via mcp:app:task_analytics to get analytics.
-            Step 2: Analyze the results to understand task completion patterns.
-            Step 3: Design a task_forecast tool that uses a step.db_query to
-                    count tasks created per day over the last 30 days and
-                    projects the next 7 days based on the 7-day moving average.
-            Step 4: Validate and propose the updated config including task_forecast.
-          tools:
-            - "mcp:app:task_analytics"
-            - "mcp:wfctl:validate_config"
-            - "mcp:wfctl:get_step_schema"
-            - "mcp:lsp:diagnose"
-          max_iterations: 15
+            You are extending a workflow application. The task_analytics
+            endpoint was just deployed. Now create a task_forecast endpoint.
 
-      - name: post_iteration
+            Use the same tools and YAML rules as before.
+
+            TASK:
+            1. Read the current config using file_read
+            2. Verify /tasks/analytics exists using web_fetch
+            3. Create a task_forecast pipeline:
+               - Trigger: GET /tasks/forecast
+               - step.db_query: query that counts tasks per status
+                   and calculates trends
+               - step.json_response with forecast data
+            4. Validate, write, commit
+
+      - name: map_phase2
+        type: step.set
+        config:
+          values:
+            proposed_yaml: "{{ .steps.create_forecast_tool.result }}"
+
+      - name: post_phase2
         type: step.blackboard_post
         config:
           phase: iterate
           artifact_type: second_tool_proposal
 
-      - name: validate_forecast
-        type: step.self_improve_validate
-        config:
-          validation_level: strict
-          require_zero_errors: true
-
-      - name: deploy_forecast
+      - name: deploy_phase2
         type: step.self_improve_deploy
         config:
           strategy: hot_reload
-          config_path: /data/config/app.yaml
+          config_path: "${CONFIG_PATH:-/data/config/app.yaml}"

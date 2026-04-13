@@ -1,19 +1,13 @@
 # ============================================================
 # Scenario 85 — Self-Improving API: Agent + Guardrails Config
 #
-# The self-improvement agent uses Ollama + Gemma 4 to analyze
-# and propose improvements to base-app.yaml. Guardrails enforce
-# immutability of the guardrails section itself and block
-# dangerous shell commands.
+# Architecture: The agent step IS the iteration loop. It uses
+# MCP tools + file tools + git tools internally to inspect,
+# propose, validate, write, and commit changes. Pipeline steps
+# after the agent handle the deployment gate.
 # ============================================================
 
 modules:
-  - name: db
-    type: storage.sqlite
-    config:
-      dbPath: /data/agent.db
-      walMode: true
-
   - name: ratchet-db
     type: storage.sqlite
     config:
@@ -34,7 +28,7 @@ modules:
     config:
       provider: ollama
       model: gemma4:e2b
-      base_url: http://ollama:11434
+      base_url: "${OLLAMA_BASE_URL:-http://ollama:11434}"
       max_tokens: 8192
 
   - name: guardrails
@@ -48,8 +42,14 @@ modules:
         max_iterations_per_cycle: 5
         deploy_strategy: hot_reload
         allowed_tools:
-          - "mcp:wfctl:*"
-          - "mcp:lsp:*"
+          - "mcp_wfctl_*"
+          - "file_read"
+          - "file_write"
+          - "file_list"
+          - "git_status"
+          - "git_commit"
+          - "web_fetch"
+          - "shell_exec"
         command_policy:
           mode: allowlist
           allowed_commands:
@@ -81,67 +81,112 @@ pipelines:
         path: /improve
         method: POST
     steps:
+      # Step 1: Set context — inject config path and provider alias
+      # into pipeline data so the agent step resolves correctly.
       - name: set_context
         type: step.set
         config:
           values:
-            config_path: /data/config/app.yaml
-            improvement_goal: "Add FTS5 search, cursor pagination, rate limiting, structured logging"
+            config_path: "${CONFIG_PATH:-/data/config/app.yaml}"
+            base_app_url: "${BASE_APP_URL:-http://localhost:8080}"
             provider: ratchet-ai
 
+      # Step 2: The agent IS the loop. It uses tools to:
+      # - Read current config (file_read)
+      # - Inspect config structure (mcp_wfctl_inspect_config)
+      # - Propose improvements
+      # - Validate via MCP (mcp_wfctl_validate_config)
+      # - Iterate on validation failures
+      # - Write improved config (file_write)
+      # - Commit changes (git_commit)
+      # - Verify deployment (web_fetch)
       - name: designer
         type: step.agent_execute
         config:
-          provider: ratchet-ai
           provider_service: ratchet-ai
+          max_iterations: 20
           system_prompt: |
-            You are a workflow config designer. You have been given a task
-            to improve a workflow application. Analyze the current config
-            and propose improvements using the available MCP tools.
-            Always validate your proposals before submitting.
-            Target improvements:
-            - FTS5 full-text search with ranking (custom Yaegi module)
-            - Cursor-based pagination for list endpoints
-            - Rate limiting per IP
-            - Structured JSON logging with response times
-          tools:
-            - "mcp:wfctl:validate_config"
-            - "mcp:wfctl:inspect_config"
-            - "mcp:wfctl:get_module_schema"
-            - "mcp:wfctl:get_step_schema"
-            - "mcp:wfctl:list_module_types"
-            - "mcp:wfctl:list_step_types"
-            - "mcp:lsp:diagnose"
-          max_iterations: 15
+            You are an autonomous workflow configuration improvement agent.
+            You have tools to read files, write files, validate configs,
+            inspect config structure, and commit changes via git.
 
+            YOUR TASK:
+            Improve the workflow application config at the path provided
+            in your task description. Add new API endpoints that make the
+            application more useful.
+
+            AVAILABLE TOOLS:
+            - file_read: Read a file. Args: {"path": "/path/to/file"}
+            - file_write: Write a file. Args: {"path": "/path", "content": "..."}
+            - mcp_wfctl_validate_config: Validate workflow YAML. Args: {"yaml_content": "..."}
+            - mcp_wfctl_inspect_config: Inspect config structure. Args: {"yaml_content": "..."}
+            - mcp_wfctl_list_step_types: List available pipeline step types. Args: {}
+            - mcp_wfctl_get_step_schema: Get schema for a step. Args: {"type": "step.db_query"}
+            - mcp_wfctl_list_module_types: List available module types. Args: {}
+            - git_status: Check git status. Args: {}
+            - git_commit: Commit changes. Args: {"message": "...", "paths": ["file1"]}
+            - web_fetch: Fetch a URL. Args: {"url": "http://..."}
+
+            WORKFLOW ENGINE YAML RULES (critical — these cause failures if wrong):
+            1. http.server uses 'address: ":8080"' NOT 'port: 8080'
+            2. Database steps use 'database: db' NOT 'module: db'
+            3. Query parameters use 'params:' NOT 'args:'
+            4. DB query mode is 'list' or 'single' NOT 'many' or 'one'
+            5. Response step type is 'step.json_response' NOT 'step.response'
+            6. Request parse uses 'parse_body: true' NOT 'format: json'
+            7. Pipelines have inline trigger blocks (type: http with path/method)
+            8. step.json_response body can be object literal OR template string
+            9. Workflows section has 'routes: []' (empty — routes come from triggers)
+
+            STEP-BY-STEP PROCESS:
+            1. Read the current config using file_read
+            2. Inspect it with mcp_wfctl_inspect_config to understand the structure
+            3. Use mcp_wfctl_list_step_types to see what steps are available
+            4. Design 1-2 new pipelines (e.g., search endpoint, stats endpoint)
+            5. Generate the complete improved config YAML
+            6. Validate it with mcp_wfctl_validate_config
+            7. If validation fails, read the errors and fix the YAML, then revalidate
+            8. Once valid, write the config using file_write
+            9. Commit with git_commit
+            10. Report what you improved
+
+            IMPORTANT: Always validate before writing. If validation fails,
+            fix the YAML and try again. Do not write invalid configs.
+
+      # Step 3: Map agent output for downstream steps
       - name: map_output
         type: step.set
         config:
           values:
-            proposed_yaml: "{{ .steps.designer.content }}"
+            proposed_yaml: "{{ .steps.designer.result }}"
 
+      # Step 4: Post design artifact to blackboard for audit
       - name: post_design
         type: step.blackboard_post
         config:
           phase: design
           artifact_type: config_proposal
 
+      # Step 5: Validate the proposed config (deployment gate)
       - name: validate
         type: step.self_improve_validate
         config:
           validation_level: strict
           require_zero_errors: true
 
+      # Step 6: Generate diff for audit trail
       - name: diff
         type: step.self_improve_diff
         config:
           force: true
+          output_to_blackboard: true
 
+      # Step 7: Deploy (hot reload — write config, signal watcher)
       - name: deploy
         type: step.self_improve_deploy
         config:
           strategy: hot_reload
-          config_path: /data/config/app.yaml
+          config_path: "${CONFIG_PATH:-/data/config/app.yaml}"
 
   health_check:
     trigger:
