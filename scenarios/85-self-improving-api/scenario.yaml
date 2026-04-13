@@ -1,0 +1,43 @@
+name: Self-Improving API
+id: "85-self-improving-api"
+category: self-improvement
+description: |
+  An AI agent autonomously improves a task CRUD API using the workflow
+  self-improvement loop with Ollama + Gemma 4, guardrails, and MCP tools.
+
+  The agent starts with a basic SQLite-backed task API and adds:
+    - FTS5 full-text search with search ranking (custom Yaegi module)
+    - Cursor-based pagination for list endpoints
+    - Rate limiting per IP
+    - Structured JSON logging with response times
+
+  Validates:
+    - agent.provider (Ollama + gemma4 model)
+    - agent.guardrails with immutable_sections and command_policy
+    - step.agent_execute with MCP tool access (wfctl, lsp)
+    - step.blackboard_post for artifact tracking
+    - step.self_improve_validate, step.self_improve_diff, step.self_improve_deploy
+    - deploy strategy: hot_reload
+    - Guardrail enforcement: immutability, command safety, tool scope
+
+  Runs with real Ollama + Gemma 4 via Docker Compose.
+components:
+  - workflow-plugin-agent
+  - agent.provider
+  - agent.guardrails
+  - step.agent_execute
+  - step.blackboard_post
+  - step.self_improve_validate
+  - step.self_improve_diff
+  - step.self_improve_deploy
+  - database.sqlite
+  - http.server
+status: draft
+tags:
+  - self-improvement
+  - ai-agent
+  - guardrails
+  - mcp
+  - ollama
+  - gemma4
+  - docker-compose

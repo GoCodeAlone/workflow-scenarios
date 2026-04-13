@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow-app
+  namespace: wf-scenario-self-improving-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: workflow-app
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: workflow-app
+    spec:
+      containers:
+        - name: workflow-server
+          image: ghcr.io/gocodealone/workflow:latest
+          args: ["-config", "/config/base-app.yaml", "-data-dir", "/data"]
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 3
+            failureThreshold: 20
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: data
+              mountPath: /data
+          env:
+            - name: WFCTL_ADMIN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: self-improving-api-secrets
+                  key: admin-secret
+
+        - name: workflow-agent
+          image: ghcr.io/gocodealone/workflow:latest
+          args: ["-config", "/config/agent-config.yaml", "-data-dir", "/data/agent"]
+          ports:
+            - containerPort: 8081
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: data
+              mountPath: /data
+            - name: agent-repo
+              mountPath: /data/repo
+          env:
+            - name: OLLAMA_BASE_URL
+              value: "http://ollama:11434"
+            - name: WFCTL_ADMIN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: self-improving-api-secrets
+                  key: admin-secret
+            - name: IMPROVEMENT_GOAL
+              value: "Add full-text search with FTS5, cursor-based pagination, rate limiting per IP, and structured JSON logging with response times."
+
+      volumes:
+        - name: config
+          configMap:
+            name: app-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: app-data
+        - name: agent-repo
+          persistentVolumeClaim:
+            claimName: agent-repo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: workflow-server
+  namespace: wf-scenario-self-improving-api
+spec:
+  selector:
+    app: workflow-app
+  ports:
+    - name: app
+      port: 8080
+      targetPort: 8080
+    - name: agent
+      port: 8081
+      targetPort: 8081

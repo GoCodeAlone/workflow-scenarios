@@ -1016,6 +1016,39 @@
       "notes": "AI-powered lead scoring with CRM sync and human-in-the-loop approval. Validates CRM adapter, approval state machine, and cross-plugin composition with sidecar containers.",
       "lastTested": null,
       "lastResult": null
+    },
+    "85-self-improving-api": {
+      "status": "draft",
+      "namespace": "wf-scenario-self-improving-api",
+      "deployed": false,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Self-improving API scenario. AI agent (Ollama + Gemma 4) improves a SQLite task CRUD API by adding FTS5 search, cursor-based pagination, rate limiting, and structured logging. Validates agent.guardrails, step.agent_execute, step.blackboard_post, and hot_reload deploy strategy via Docker Compose.",
+      "lastTested": null,
+      "lastResult": null
+    },
+    "86-self-extending-mcp": {
+      "status": "draft",
+      "namespace": "wf-scenario-86",
+      "deployed": false,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Self-extending MCP tooling scenario. Agent creates task_analytics and task_forecast as mcp_tool trigger pipelines, uses them iteratively. Validates mcp:self_improve:* permission, guardrails, and two-iteration tool chain. Real Ollama + Gemma 4 via Docker Compose.",
+      "lastTested": null,
+      "lastResult": null
+    },
+    "87-autonomous-agile-agent": {
+      "status": "draft",
+      "namespace": "wf-scenario-87",
+      "deployed": false,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Autonomous agile agent scenario. Agent audits, plans, deploys, and verifies up to 5 iterations without human direction. Full loop: audit \u2192 plan \u2192 validate \u2192 deploy \u2192 verify \u2192 git_commit. Real Ollama + Gemma 4 via Docker Compose.",
+      "lastTested": null,
+      "lastResult": null
     }
   }
 }

@@ -1,0 +1,151 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: wf-scenario-self-improving-api
+data:
+  base-app.yaml: |
+    modules:
+      - name: server
+        type: http.server
+        config:
+          address: ":8080"
+
+      - name: router
+        type: http.router
+        dependsOn: [server]
+
+      - name: db
+        type: storage.sqlite
+        config:
+          dbPath: /data/tasks.db
+          walMode: true
+
+    workflows:
+      http:
+        router: router
+        server: server
+        routes: []
+
+    pipelines:
+      health_check:
+        trigger:
+          type: http
+          config:
+            path: /healthz
+            method: GET
+        steps:
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body:
+                status: healthy
+                scenario: "85-self-improving-api"
+
+      create_task:
+        trigger:
+          type: http
+          config:
+            path: /tasks
+            method: POST
+        steps:
+          - name: insert
+            type: step.db_exec
+            config:
+              database: db
+              query: "INSERT INTO tasks (title, description, status) VALUES (?, ?, 'pending')"
+              params:
+                - "{{ .body.title }}"
+                - "{{ .body.description | default \"\" }}"
+          - name: respond
+            type: step.json_response
+            config:
+              status: 201
+              body:
+                status: created
+
+      list_tasks:
+        trigger:
+          type: http
+          config:
+            path: /tasks
+            method: GET
+        steps:
+          - name: query
+            type: step.db_query
+            config:
+              database: db
+              mode: list
+              query: "SELECT id, title, description, status, created_at FROM tasks ORDER BY created_at DESC"
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body_from: "steps.query.rows"
+
+      get_task:
+        trigger:
+          type: http
+          config:
+            path: /tasks/{id}
+            method: GET
+        steps:
+          - name: query
+            type: step.db_query
+            config:
+              database: db
+              mode: single
+              query: "SELECT id, title, description, status, created_at FROM tasks WHERE id = ?"
+              params:
+                - "{{ .id }}"
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body_from: "steps.query.row"
+
+      update_task:
+        trigger:
+          type: http
+          config:
+            path: /tasks/{id}
+            method: PUT
+        steps:
+          - name: update
+            type: step.db_exec
+            config:
+              database: db
+              query: "UPDATE tasks SET title = ?, description = ?, status = ? WHERE id = ?"
+              params:
+                - "{{ .body.title }}"
+                - "{{ .body.description }}"
+                - "{{ .body.status }}"
+                - "{{ .id }}"
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body:
+                status: updated
+
+      delete_task:
+        trigger:
+          type: http
+          config:
+            path: /tasks/{id}
+            method: DELETE
+        steps:
+          - name: delete
+            type: step.db_exec
+            config:
+              database: db
+              query: "DELETE FROM tasks WHERE id = ?"
+              params:
+                - "{{ .id }}"
+          - name: respond
+            type: step.json_response
+            config:
+              status: 200
+              body:
+                status: deleted

@@ -1,0 +1,47 @@
+name: Autonomous Agile Agent
+id: "87-autonomous-agile-agent"
+category: self-improvement
+description: |
+  An AI agent acts as a fully autonomous agile team: auditing the application,
+  planning improvements, deploying them, and verifying with real HTTP requests —
+  up to 5 iterations without human direction.
+
+  The agent starts with a basic SQLite-backed task API and:
+    - Audits current capabilities via mcp:wfctl:detect_project_features and api_extract
+    - Plans improvements targeting the highest-priority gap
+    - Validates and hot-reloads the updated config
+    - Tests its own API via HTTP to verify each deployment
+    - Commits each iteration to a local git repo with meaningful messages
+
+  Validates:
+    - Full autonomous iteration loop: audit → plan → validate → deploy → verify → commit
+    - step.agent_execute with detect_project_features, api_extract, diff_configs
+    - step.blackboard_post for all four phases per iteration
+    - step.git_commit for iteration tracking
+    - agent.guardrails with immutable_sections and command_policy
+    - deploy_strategy: hot_reload with max 5 iterations
+    - Guardrail enforcement: immutability, command safety, tool scope
+
+  Runs with real Ollama + Gemma 4 via Docker Compose.
+components:
+  - workflow-plugin-agent
+  - agent.provider
+  - agent.guardrails
+  - step.agent_execute
+  - step.blackboard_post
+  - step.self_improve_validate
+  - step.self_improve_diff
+  - step.self_improve_deploy
+  - step.git_commit
+  - storage.sqlite
+  - http.server
+status: draft
+tags:
+  - self-improvement
+  - autonomous
+  - agile
+  - ai-agent
+  - guardrails
+  - ollama
+  - gemma4
+  - docker-compose

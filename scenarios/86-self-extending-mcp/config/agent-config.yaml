@@ -1,0 +1,182 @@
+# ============================================================
+# Scenario 86 — Self-Extending MCP Tooling: Agent Config
+#
+# Agent goal:
+#   1. Create task_analytics as a workflow pipeline with mcp_tool trigger
+#      (completion_rate, avg_time_to_completion, bottleneck_status)
+#   2. Use task_analytics to analyze the seeded task data
+#   3. Create task_forecast tool based on findings
+#      (7-day moving average projection from 30-day history)
+#
+# Key difference from scenario 85: mcp:self_improve:* permission
+# allows creating new mcp_tool triggers (new MCP-exposed pipelines).
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8081"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: db
+    type: storage.sqlite
+    config:
+      dbPath: /data/agent.db
+      walMode: true
+
+  - name: ai
+    type: agent.provider
+    config:
+      provider: ollama
+      model: gemma4
+      base_url: http://ollama:11434
+      max_tokens: 8192
+
+  - name: guardrails
+    type: agent.guardrails
+    config:
+      defaults:
+        enable_self_improvement: true
+        enable_iac_modification: false
+        require_human_approval: false
+        require_diff_review: true
+        max_iterations_per_cycle: 5
+        deploy_strategy: hot_reload
+        allowed_tools:
+          - "mcp:wfctl:*"
+          - "mcp:lsp:*"
+          - "mcp:self_improve:*"
+        command_policy:
+          mode: allowlist
+          allowed_commands:
+            - "wfctl"
+            - "curl"
+          enable_static_analysis: true
+          block_pipe_to_shell: true
+          block_script_execution: true
+      immutable_sections:
+        - path: "modules.guardrails"
+          override: challenge_token
+      override:
+        mechanism: challenge_token
+        admin_secret_env: "WORKFLOW_ADMIN_SECRET"
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  health_check:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: healthy
+            scenario: "86-self-extending-mcp"
+            component: agent
+
+  mcp_tool_creation_loop:
+    trigger:
+      type: http
+      config:
+        path: /create-tools
+        method: POST
+    steps:
+      - name: load_config
+        type: step.read_file
+        config:
+          path: /data/config/app.yaml
+
+      - name: inspect
+        type: step.agent_execute
+        config:
+          provider: ai
+          system_prompt: |
+            You are a workflow MCP tool designer. Your goal is to extend the
+            running workflow application by creating new MCP-exposed tools.
+
+            Step 1: Use mcp:wfctl:inspect_config to understand the current app.
+            Step 2: Use mcp:wfctl:list_step_types to see available step types.
+            Step 3: Design a task_analytics pipeline with trigger type mcp_tool.
+                    The tool should query the database and return:
+                    - completion_rate: percentage of tasks with status='done'
+                    - avg_time_to_completion: average hours from created_at to completed_at
+                    - bottleneck_status: the status with the most tasks stuck in it
+            Step 4: Validate the pipeline using mcp:wfctl:validate_config.
+            Step 5: Propose the updated app.yaml with the new pipeline included.
+          tools:
+            - "mcp:wfctl:inspect_config"
+            - "mcp:wfctl:validate_config"
+            - "mcp:wfctl:list_step_types"
+            - "mcp:wfctl:list_trigger_types"
+            - "mcp:wfctl:get_step_schema"
+            - "mcp:lsp:diagnose"
+          max_iterations: 15
+
+      - name: post_design
+        type: step.blackboard_post
+        config:
+          phase: design
+          artifact_type: mcp_tool_proposal
+
+      - name: validate
+        type: step.self_improve_validate
+        config:
+          validation_level: strict
+          require_zero_errors: true
+
+      - name: deploy_tool
+        type: step.self_improve_deploy
+        config:
+          strategy: hot_reload
+          config_path: /data/config/app.yaml
+
+      - name: use_tool
+        type: step.agent_execute
+        config:
+          provider: ai
+          system_prompt: |
+            The task_analytics MCP tool has been deployed. Now:
+            Step 1: Call the tool via mcp:app:task_analytics to get analytics.
+            Step 2: Analyze the results to understand task completion patterns.
+            Step 3: Design a task_forecast tool that uses a step.db_query to
+                    count tasks created per day over the last 30 days and
+                    projects the next 7 days based on the 7-day moving average.
+            Step 4: Validate and propose the updated config including task_forecast.
+          tools:
+            - "mcp:app:task_analytics"
+            - "mcp:wfctl:validate_config"
+            - "mcp:wfctl:get_step_schema"
+            - "mcp:lsp:diagnose"
+          max_iterations: 15
+
+      - name: post_iteration
+        type: step.blackboard_post
+        config:
+          phase: iterate
+          artifact_type: second_tool_proposal
+
+      - name: validate_forecast
+        type: step.self_improve_validate
+        config:
+          validation_level: strict
+          require_zero_errors: true
+
+      - name: deploy_forecast
+        type: step.self_improve_deploy
+        config:
+          strategy: hot_reload
+          config_path: /data/config/app.yaml
