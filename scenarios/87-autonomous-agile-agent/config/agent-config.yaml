@@ -34,6 +34,7 @@ modules:
       model: gemma4:e2b
       base_url: "${OLLAMA_BASE_URL:-http://ollama:11434}"
       max_tokens: 8192
+      context_window: 16384
 
   - name: guardrails
     type: agent.guardrails
@@ -112,6 +113,8 @@ pipelines:
         config:
           provider_service: ai
           max_iterations: 10
+          context:
+            compaction_threshold: 0.80
           # system_prompt and task come from set_context step.set above
             3. Use mcp:wfctl:api_extract to map existing API surface
             4. Report: what endpoints exist, what's missing, what to add next
@@ -143,6 +146,8 @@ pipelines:
         config:
           provider_service: ai
           max_iterations: 10
+          context:
+            compaction_threshold: 0.80
           # system_prompt and task come from set_plan_context above
 
       - name: post_plan
@@ -183,6 +188,8 @@ pipelines:
         config:
           provider_service: ai
           max_iterations: 10
+          context:
+            compaction_threshold: 0.80
           # system_prompt and task come from set_verify_context above
 
       - name: post_verify

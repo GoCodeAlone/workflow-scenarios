@@ -34,6 +34,7 @@ modules:
       model: gemma4:e2b
       base_url: "${OLLAMA_BASE_URL:-http://ollama:11434}"
       max_tokens: 8192
+      context_window: 16384
 
   - name: guardrails
     type: agent.guardrails
@@ -121,6 +122,8 @@ pipelines:
         config:
           provider_service: ai
           max_iterations: 5
+          context:
+            compaction_threshold: 0.80
           # NOTE: system_prompt and task come from load_config step.set above
             2. Inspect it with mcp:wfctl:inspect_config
             3. Report what analytics and forecast endpoints should be added
@@ -153,6 +156,8 @@ pipelines:
         config:
           provider_service: ai
           max_iterations: 20
+          context:
+            compaction_threshold: 0.80
 
       - name: validate
         type: step.self_improve_validate
@@ -170,6 +175,8 @@ pipelines:
         config:
           provider_service: ai
           max_iterations: 20
+          context:
+            compaction_threshold: 0.80
           # system_prompt and task come from set_analytics_context above
 
       - name: set_forecast_context
