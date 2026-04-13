@@ -13,6 +13,11 @@ modules:
       dbPath: /data/agent-state.db
       walMode: true
 
+  - name: ratchet-tool-policy-engine
+    type: ratchet.tool_policy_engine
+    config:
+      default_policy: allow
+
   - name: server
     type: http.server
     config:
@@ -82,48 +87,30 @@ pipelines:
         path: /improve
         method: POST
     steps:
+      # NOTE: system_prompt and task must be in step.set values, not in step.agent_execute config.
       - name: set_context
         type: step.set
         config:
           values:
-            config_path: "${CONFIG_PATH:-/data/config/app.yaml}"
-            base_app_url: "${BASE_APP_URL:-http://localhost:8080}"
+            config_path: "${CONFIG_PATH}"
+            base_app_url: "${BASE_APP_URL}"
             provider: ai
-            repo_path: "${REPO_PATH:-/data/repo}"
+            repo_path: "${REPO_PATH}"
+            system_prompt: >-
+              You are an autonomous agile development agent. AUDIT the app config.
+              Use file_read, mcp_wfctl__detect_project_features, mcp_wfctl__api_extract,
+              mcp_wfctl__inspect_config, web_fetch only.
+            task: >-
+              Read config at ${CONFIG_PATH} with file_read. Use mcp_wfctl__detect_project_features
+              to identify capabilities. Use mcp_wfctl__api_extract to map the API surface.
+              Report what endpoints exist and what to add next.
 
       - name: audit
         type: step.agent_execute
         config:
           provider_service: ai
           max_iterations: 10
-          workspace: /data
-          system_prompt: |
-            You are an autonomous agile development agent with full control
-            over an application's design and evolution. You work iteratively
-            and produce production-ready increments each cycle.
-
-            PHASE: AUDIT — Analyze the current application state.
-
-            AVAILABLE TOOLS:
-            - file_read: Read files. Args: {"path": "/path"}
-            - file_list: List directory. Args: {"path": "/dir"}
-            - mcp:wfctl:detect_project_features: Detect project features. Args: {"path": "/path"}
-            - mcp:wfctl:api_extract: Extract API surface. Args: {"yaml_content": "..."}
-            - mcp:wfctl:inspect_config: Inspect structure. Args: {"yaml_content": "..."}
-            - web_fetch: HTTP fetch. Args: {"url": "http://..."}
-
-            WORKFLOW ENGINE YAML RULES:
-            1. http.server uses 'address: ":8080"' NOT 'port: 8080'
-            2. Database steps use 'database: db' NOT 'module: db'
-            3. Query parameters use 'params:' NOT 'args:'
-            4. DB query mode is 'list' or 'single' NOT 'many' or 'one'
-            5. Response step type is 'step.json_response' NOT 'step.response'
-            6. Request parse uses 'parse_body: true' NOT 'format: json'
-            7. Pipelines have inline trigger blocks (type: http with path/method)
-
-            TASK:
-            1. Read current config via file_read
-            2. Use mcp:wfctl:detect_project_features to identify capabilities
+          # system_prompt and task come from set_context step.set above
             3. Use mcp:wfctl:api_extract to map existing API surface
             4. Report: what endpoints exist, what's missing, what to add next
 
@@ -133,27 +120,25 @@ pipelines:
           phase: audit
           artifact_type: audit_report
 
+      - name: set_plan_context
+        type: step.set
+        config:
+          values:
+            system_prompt: >-
+              You are an autonomous agile development agent. PLAN new endpoints.
+              Use file_read, file_write, mcp_wfctl__validate_config, mcp_wfctl__list_step_types,
+              mcp_wfctl__get_step_schema only.
+            task: >-
+              Read ${CONFIG_PATH} with file_read. Design search (GET /tasks/search) and stats
+              (GET /tasks/stats) pipelines. Generate complete improved config. Validate with
+              mcp_wfctl__validate_config. Write with file_write.
+
       - name: plan
         type: step.agent_execute
         config:
           provider_service: ai
           max_iterations: 10
-          workspace: /data
-          system_prompt: |
-            You are an autonomous agile development agent planning the next
-            iterative improvement. Based on the audit, design new endpoints.
-
-            AVAILABLE TOOLS:
-            - file_read: Read files. Args: {"path": "/path"}
-            - mcp:wfctl:validate_config: Validate YAML. Args: {"yaml_content": "..."}
-            - mcp:wfctl:list_step_types: List step types. Args: {}
-            - mcp:wfctl:get_step_schema: Step schema. Args: {"type": "step.name"}
-
-            TASK:
-            1. Read current config
-            2. Design a search endpoint (GET /tasks/search) and stats endpoint (GET /tasks/stats)
-            3. Generate complete improved config YAML
-            4. Validate with mcp:wfctl:validate_config
+          # system_prompt and task come from set_plan_context above
 
       - name: post_plan
         type: step.blackboard_post
@@ -170,7 +155,7 @@ pipelines:
         type: step.self_improve_deploy
         config:
           strategy: hot_reload
-          config_path: "${CONFIG_PATH:-/data/config/app.yaml}"
+          config_path: "${CONFIG_PATH}"
 
       - name: post_deploy
         type: step.blackboard_post
@@ -178,24 +163,22 @@ pipelines:
           phase: deploy
           artifact_type: deployment_result
 
+      - name: set_verify_context
+        type: step.set
+        config:
+          values:
+            system_prompt: >-
+              Verify deployed endpoints work. Use web_fetch and file_read only.
+            task: >-
+              Use web_fetch to verify ${BASE_APP_URL}/tasks/search and
+              ${BASE_APP_URL}/tasks/stats work. Confirm existing endpoints still function.
+
       - name: verify
         type: step.agent_execute
         config:
           provider_service: ai
           max_iterations: 10
-          workspace: /data
-          system_prompt: |
-            Verify the deployed endpoints work correctly. Test each new
-            endpoint and confirm production-ready responses.
-
-            AVAILABLE TOOLS:
-            - web_fetch: HTTP fetch. Args: {"url": "http://..."}
-            - file_read: Read files. Args: {"path": "/path"}
-
-            TASK:
-            1. Verify /tasks/search works via web_fetch
-            2. Verify /tasks/stats works via web_fetch
-            3. Confirm all existing endpoints still function
+          # system_prompt and task come from set_verify_context above
 
       - name: post_verify
         type: step.blackboard_post
@@ -208,7 +191,7 @@ pipelines:
         config:
           message: "feat(autonomous): iterative improvement — search and stats endpoints"
           paths:
-            - "${CONFIG_PATH:-/data/config/app.yaml}"
+            - "${CONFIG_PATH}"
 
   health_check:
     trigger:

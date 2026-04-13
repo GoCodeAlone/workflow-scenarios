@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/GoCodeAlone/workflow v0.10.2
-	github.com/GoCodeAlone/workflow-plugin-agent v0.8.5
+	github.com/GoCodeAlone/workflow-plugin-agent v0.8.6
 	modernc.org/sqlite v1.48.2
 )
 

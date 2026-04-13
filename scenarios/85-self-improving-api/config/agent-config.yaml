@@ -14,6 +14,11 @@ modules:
       dbPath: /data/agent-state.db
       walMode: true
 
+  - name: ratchet-tool-policy-engine
+    type: ratchet.tool_policy_engine
+    config:
+      default_policy: allow
+
   - name: server
     type: http.server
     config:
@@ -86,77 +91,37 @@ pipelines:
     steps:
       # Step 1: Set context — inject config path and provider alias
       # into pipeline data so the agent step resolves correctly.
+      # Step 1: Set context — inject config path, provider alias, system prompt,
+      # and task description into pipeline data so the agent step reads them.
+      # NOTE: step.agent_execute reads system_prompt and task from pipeline data
+      # (pc.Current), NOT from the step config block.
       - name: set_context
         type: step.set
         config:
           values:
-            config_path: "${CONFIG_PATH:-/data/config/app.yaml}"
-            base_app_url: "${BASE_APP_URL:-http://localhost:8080}"
+            config_path: "${CONFIG_PATH}"
+            base_app_url: "${BASE_APP_URL}"
             provider: ratchet-ai
+            system_prompt: >-
+              You are an autonomous workflow configuration improvement agent.
+              Use file_read to read the config, mcp_wfctl__validate_config to validate,
+              file_write to write improved config.
+              YAML rules: http.server uses address not port; db steps use database not module;
+              params not args; mode is list/single; response type is step.json_response;
+              inline pipeline triggers. Only use these tools: file_read, file_write,
+              mcp_wfctl__validate_config, mcp_wfctl__inspect_config, mcp_wfctl__list_step_types,
+              mcp_wfctl__get_step_schema, git_commit, web_fetch.
+            task: >-
+              Read the config at ${CONFIG_PATH} with file_read. Add a search_tasks pipeline
+              (GET /tasks/search, step.db_query database:db mode:list). Validate with
+              mcp_wfctl__validate_config. Write improved config with file_write. Commit with git_commit.
 
-      # Step 2: The agent IS the loop. It uses tools to:
-      # - Read current config (file_read)
-      # - Inspect config structure (mcp_wfctl_inspect_config)
-      # - Propose improvements
-      # - Validate via MCP (mcp_wfctl_validate_config)
-      # - Iterate on validation failures
-      # - Write improved config (file_write)
-      # - Commit changes (git_commit)
-      # - Verify deployment (web_fetch)
+      # Step 2: The agent IS the loop. system_prompt and task come from pipeline data above.
       - name: designer
         type: step.agent_execute
         config:
           provider_service: ratchet-ai
           max_iterations: 20
-          workspace: /data
-          system_prompt: |
-            You are an autonomous workflow configuration improvement agent.
-            You have tools to read files, write files, validate configs,
-            inspect config structure, and commit changes via git.
-
-            YOUR TASK:
-            Improve the workflow application config at the path provided
-            in your task description. Add new API endpoints that make the
-            application more useful.
-
-            AVAILABLE TOOLS:
-            - file_read: Read a file. Args: {"path": "/path/to/file"}
-            - file_write: Write a file. Args: {"path": "/path", "content": "..."}
-            - mcp:wfctl:validate_config: Validate workflow YAML. Args: {"yaml_content": "..."}
-            - mcp:wfctl:inspect_config: Inspect config structure. Args: {"yaml_content": "..."}
-            - mcp:wfctl:list_step_types: List available pipeline step types. Args: {}
-            - mcp:wfctl:get_step_schema: Get schema for a step. Args: {"type": "step.db_query"}
-            - mcp:wfctl:list_module_types: List available module types. Args: {}
-            - mcp:lsp:diagnose: Run LSP diagnostics. Args: {"path": "/path/to/file"}
-            - git_status: Check git status. Args: {}
-            - git_commit: Commit changes. Args: {"message": "...", "paths": ["file1"]}
-            - web_fetch: Fetch a URL. Args: {"url": "http://..."}
-
-            WORKFLOW ENGINE YAML RULES (critical — these cause failures if wrong):
-            1. http.server uses 'address: ":8080"' NOT 'port: 8080'
-            2. Database steps use 'database: db' NOT 'module: db'
-            3. Query parameters use 'params:' NOT 'args:'
-            4. DB query mode is 'list' or 'single' NOT 'many' or 'one'
-            5. Response step type is 'step.json_response' NOT 'step.response'
-            6. Request parse uses 'parse_body: true' NOT 'format: json'
-            7. Pipelines have inline trigger blocks (type: http with path/method)
-            8. step.json_response body can be object literal OR template string
-            9. Workflows section has 'routes: []' (empty — routes come from triggers)
-
-            STEP-BY-STEP PROCESS:
-            1. Read the current config using file_read
-            2. Inspect it with mcp:wfctl:inspect_config to understand the structure
-            3. Use mcp:wfctl:list_step_types to see what steps are available
-            4. Design 1-2 new pipelines (e.g., search endpoint, stats endpoint)
-            5. Generate the complete improved config YAML
-            6. Validate it with mcp:wfctl:validate_config
-            7. If validation fails, read the errors and fix the YAML, then revalidate
-            8. Once valid, write the config using file_write
-            9. Commit with git_commit
-            10. Report what you improved
-
-            IMPORTANT: Always validate before writing. If validation fails,
-            fix the YAML and try again. Do not write invalid configs.
 
       # Step 3: Map agent output for downstream steps
       - name: map_output

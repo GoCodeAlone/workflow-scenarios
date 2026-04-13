@@ -13,6 +13,11 @@ modules:
       dbPath: /data/agent-state.db
       walMode: true
 
+  - name: ratchet-tool-policy-engine
+    type: ratchet.tool_policy_engine
+    config:
+      default_policy: allow
+
   - name: server
     type: http.server
     config:
@@ -99,26 +104,22 @@ pipelines:
         type: step.set
         config:
           values:
-            config_path: "${CONFIG_PATH:-/data/config/app.yaml}"
+            config_path: "${CONFIG_PATH}"
             provider: ai
+            system_prompt: >-
+              You are a workflow MCP tool designer. Use file_read to read the config,
+              mcp_wfctl__inspect_config to inspect it, mcp_wfctl__list_step_types to list steps.
+              Only use these tools: file_read, mcp_wfctl__inspect_config, mcp_wfctl__list_step_types.
+            task: >-
+              Read the config at ${CONFIG_PATH} using file_read, inspect it with
+              mcp_wfctl__inspect_config, then report what analytics and forecast endpoints can be added.
 
       - name: inspect
         type: step.agent_execute
         config:
           provider_service: ai
           max_iterations: 5
-          workspace: /data
-          system_prompt: |
-            You are a workflow MCP tool designer. Inspect the running workflow
-            application config and identify what new endpoints can be added.
-
-            AVAILABLE TOOLS:
-            - file_read: Read a file. Args: {"path": "/path/to/file"}
-            - mcp:wfctl:inspect_config: Inspect config structure. Args: {"yaml_content": "..."}
-            - mcp:wfctl:list_step_types: List available pipeline step types. Args: {}
-
-            TASK:
-            1. Read the current config using file_read
+          # NOTE: system_prompt and task come from load_config step.set above
             2. Inspect it with mcp:wfctl:inspect_config
             3. Report what analytics and forecast endpoints should be added
 
@@ -128,44 +129,25 @@ pipelines:
           phase: design
           artifact_type: mcp_tool_proposal
 
+      - name: set_analytics_context
+        type: step.set
+        config:
+          values:
+            system_prompt: >-
+              You are a workflow MCP tool designer. Use file_read, file_write,
+              mcp_wfctl__validate_config, mcp_wfctl__list_step_types, git_commit only.
+              YAML rules: database not module; params not args; mode list/single; step.json_response.
+            task: >-
+              Read ${CONFIG_PATH} with file_read. Add task_analytics pipeline
+              (GET /tasks/analytics, step.db_query database:db mode:single
+              query: SELECT COUNT(*) total FROM tasks). Validate with mcp_wfctl__validate_config,
+              write with file_write, commit with git_commit.
+
       - name: create_analytics_tool
         type: step.agent_execute
         config:
           provider_service: ai
           max_iterations: 20
-          workspace: /data
-          system_prompt: |
-            You are a workflow MCP tool designer. Create a task_analytics endpoint.
-
-            AVAILABLE TOOLS:
-            - file_read: Read a file. Args: {"path": "/path/to/file"}
-            - file_write: Write a file. Args: {"path": "/path", "content": "..."}
-            - mcp:wfctl:validate_config: Validate workflow YAML. Args: {"yaml_content": "..."}
-            - mcp:wfctl:inspect_config: Inspect config structure. Args: {"yaml_content": "..."}
-            - mcp:wfctl:list_step_types: List available pipeline step types. Args: {}
-            - mcp:wfctl:get_step_schema: Get schema for a step. Args: {"type": "step.db_query"}
-            - git_commit: Commit changes. Args: {"message": "...", "paths": ["file1"]}
-
-            WORKFLOW ENGINE YAML RULES:
-            1. http.server uses 'address: ":8080"' NOT 'port: 8080'
-            2. Database steps use 'database: db' NOT 'module: db'
-            3. Query parameters use 'params:' NOT 'args:'
-            4. DB query mode is 'list' or 'single' NOT 'many' or 'one'
-            5. Response step type is 'step.json_response' NOT 'step.response'
-            6. Pipelines have inline trigger blocks (type: http with path/method)
-
-            TASK:
-            1. Read the current config using file_read
-            2. Add a task_analytics pipeline:
-               - Trigger: GET /tasks/analytics
-               - step.db_query: SELECT COUNT(*) as total,
-                   SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as completed,
-                   SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) as pending
-                   FROM tasks
-               - step.json_response with the query results
-            3. Validate with mcp:wfctl:validate_config
-            4. Write the updated config using file_write
-            5. Commit with git_commit
 
       - name: validate
         type: step.self_improve_validate
@@ -176,33 +158,26 @@ pipelines:
         type: step.self_improve_deploy
         config:
           strategy: hot_reload
-          config_path: "${CONFIG_PATH:-/data/config/app.yaml}"
+          config_path: "${CONFIG_PATH}"
 
       - name: use_tool
         type: step.agent_execute
         config:
           provider_service: ai
           max_iterations: 20
-          workspace: /data
-          system_prompt: |
-            The task_analytics endpoint was just deployed. Verify it works,
-            then create the task_forecast endpoint.
+          # system_prompt and task come from set_analytics_context above
 
-            AVAILABLE TOOLS:
-            - file_read: Read a file. Args: {"path": "/path/to/file"}
-            - file_write: Write a file. Args: {"path": "/path", "content": "..."}
-            - mcp:wfctl:validate_config: Validate workflow YAML. Args: {"yaml_content": "..."}
-            - web_fetch: Fetch a URL. Args: {"url": "http://..."}
-            - git_commit: Commit changes. Args: {"message": "...", "paths": ["file1"]}
-
-            TASK:
-            1. Verify /tasks/analytics works using web_fetch
-            2. Read the current config using file_read
-            3. Add a task_forecast pipeline:
-               - Trigger: GET /tasks/forecast
-               - step.db_query: query that counts tasks per status and calculates trends
-               - step.json_response with task_forecast data
-            4. Validate, write, commit
+      - name: set_forecast_context
+        type: step.set
+        config:
+          values:
+            system_prompt: >-
+              Verify the analytics endpoint works then add a forecast pipeline.
+              Use web_fetch, file_read, file_write, mcp_wfctl__validate_config, git_commit only.
+            task: >-
+              Use web_fetch to verify GET ${BASE_APP_URL}/tasks/analytics works. Then read
+              ${CONFIG_PATH} with file_read, add task_forecast pipeline (GET /tasks/forecast,
+              step.db_query database:db mode:list), validate, write, commit.
 
       - name: post_iteration
         type: step.blackboard_post
@@ -219,4 +194,4 @@ pipelines:
         type: step.self_improve_deploy
         config:
           strategy: hot_reload
-          config_path: "${CONFIG_PATH:-/data/config/app.yaml}"
+          config_path: "${CONFIG_PATH}"
