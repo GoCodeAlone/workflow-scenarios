@@ -48,6 +48,7 @@ modules:
         deploy_strategy: hot_reload
         allowed_tools:
           - "mcp:wfctl:*"
+          - "mcp_wfctl__*"
           - "mcp:wfctl:validate_config"
           - "mcp:lsp:*"
           - "mcp:lsp:diagnose"
@@ -112,9 +113,13 @@ pipelines:
               mcp_wfctl__validate_config, mcp_wfctl__inspect_config, mcp_wfctl__list_step_types,
               mcp_wfctl__get_step_schema, git_commit, web_fetch.
             task: >-
-              Read the config at ${CONFIG_PATH} with file_read. Add a search_tasks pipeline
-              (GET /tasks/search, step.db_query database:db mode:list). Validate with
-              mcp_wfctl__validate_config. Write improved config with file_write. Commit with git_commit.
+              Step 1: Call file_read with {"path": "${CONFIG_PATH}"} to read the current config.
+              Step 2: Add a search_tasks pipeline (GET /tasks/search, step.db_query database:db mode:list
+              query: SELECT id,title,status FROM tasks).
+              Step 3: Call mcp_wfctl__validate_config with {"yaml_content": "<full improved YAML string>"}.
+              Step 4: Call file_write with {"path": "${CONFIG_PATH}", "content": "<full improved YAML string>"}.
+              Step 5: Call git_commit with {"message": "feat: add search_tasks endpoint", "paths": ["${CONFIG_PATH}"]}.
+              Replace all placeholders with the actual YAML you generate.
 
       # Step 2: The agent IS the loop. system_prompt and task come from pipeline data above.
       - name: designer

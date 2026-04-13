@@ -47,6 +47,7 @@ modules:
         deploy_strategy: hot_reload
         allowed_tools:
           - "mcp:wfctl:*"
+          - "mcp_wfctl__*"
           - "mcp:wfctl:detect_project_features"
           - "mcp:wfctl:api_extract"
           - "file_read"
@@ -101,9 +102,10 @@ pipelines:
               Use file_read, mcp_wfctl__detect_project_features, mcp_wfctl__api_extract,
               mcp_wfctl__inspect_config, web_fetch only.
             task: >-
-              Read config at ${CONFIG_PATH} with file_read. Use mcp_wfctl__detect_project_features
-              to identify capabilities. Use mcp_wfctl__api_extract to map the API surface.
-              Report what endpoints exist and what to add next.
+              Step 1: Call file_read with {"path": "${CONFIG_PATH}"} to read the config.
+              Step 2: Call mcp_wfctl__detect_project_features with {"config_path": "${CONFIG_PATH}"}.
+              Step 3: Call mcp_wfctl__api_extract with {"config_path": "${CONFIG_PATH}"}.
+              Step 4: Report what endpoints exist and what to add next.
 
       - name: audit
         type: step.agent_execute
@@ -129,9 +131,12 @@ pipelines:
               Use file_read, file_write, mcp_wfctl__validate_config, mcp_wfctl__list_step_types,
               mcp_wfctl__get_step_schema only.
             task: >-
-              Read ${CONFIG_PATH} with file_read. Design search (GET /tasks/search) and stats
-              (GET /tasks/stats) pipelines. Generate complete improved config. Validate with
-              mcp_wfctl__validate_config. Write with file_write.
+              Step 1: Call file_read with {"path": "${CONFIG_PATH}"} to read the config.
+              Step 2: Design search (GET /tasks/search) and stats (GET /tasks/stats) pipelines
+              using step.db_query with database:db.
+              Step 3: Call mcp_wfctl__validate_config with {"yaml_content": "<full improved YAML>"}.
+              Step 4: Call file_write with {"path": "${CONFIG_PATH}", "content": "<full improved YAML>"}.
+              Replace placeholders with actual generated YAML.
 
       - name: plan
         type: step.agent_execute

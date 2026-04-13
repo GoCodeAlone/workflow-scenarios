@@ -47,6 +47,7 @@ modules:
         deploy_strategy: hot_reload
         allowed_tools:
           - "mcp:wfctl:*"
+          - "mcp_wfctl__*"
           - "mcp:self_improve:*"
           - "file_read"
           - "file_write"
@@ -111,8 +112,9 @@ pipelines:
               mcp_wfctl__inspect_config to inspect it, mcp_wfctl__list_step_types to list steps.
               Only use these tools: file_read, mcp_wfctl__inspect_config, mcp_wfctl__list_step_types.
             task: >-
-              Read the config at ${CONFIG_PATH} using file_read, inspect it with
-              mcp_wfctl__inspect_config, then report what analytics and forecast endpoints can be added.
+              Step 1: Call file_read with {"path": "${CONFIG_PATH}"} to read the config.
+              Step 2: Call mcp_wfctl__inspect_config with {"config_path": "${CONFIG_PATH}"}.
+              Step 3: Report what analytics and forecast endpoints can be added.
 
       - name: inspect
         type: step.agent_execute
@@ -138,10 +140,13 @@ pipelines:
               mcp_wfctl__validate_config, mcp_wfctl__list_step_types, git_commit only.
               YAML rules: database not module; params not args; mode list/single; step.json_response.
             task: >-
-              Read ${CONFIG_PATH} with file_read. Add task_analytics pipeline
-              (GET /tasks/analytics, step.db_query database:db mode:single
-              query: SELECT COUNT(*) total FROM tasks). Validate with mcp_wfctl__validate_config,
-              write with file_write, commit with git_commit.
+              Step 1: Call file_read with {"path": "${CONFIG_PATH}"} to read the config.
+              Step 2: Add task_analytics pipeline (GET /tasks/analytics, step.db_query database:db
+              mode:single query: SELECT COUNT(*) total FROM tasks).
+              Step 3: Call mcp_wfctl__validate_config with {"yaml_content": "<full improved YAML>"}.
+              Step 4: Call file_write with {"path": "${CONFIG_PATH}", "content": "<full improved YAML>"}.
+              Step 5: Call git_commit with {"message": "feat: add task_analytics endpoint"}.
+              Replace all placeholders with actual YAML content.
 
       - name: create_analytics_tool
         type: step.agent_execute
