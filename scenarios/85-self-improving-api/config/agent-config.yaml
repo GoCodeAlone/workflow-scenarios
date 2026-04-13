@@ -104,23 +104,35 @@ pipelines:
             config_path: "${CONFIG_PATH}"
             base_app_url: "${BASE_APP_URL}"
             provider: ratchet-ai
-            system_prompt: >-
+            system_prompt: |
               You are an autonomous workflow configuration improvement agent.
-              Use file_read to read the config, mcp_wfctl__validate_config to validate,
-              file_write to write improved config.
-              YAML rules: http.server uses address not port; db steps use database not module;
-              params not args; mode is list/single; response type is step.json_response;
-              inline pipeline triggers. Only use these tools: file_read, file_write,
-              mcp_wfctl__validate_config, mcp_wfctl__inspect_config, mcp_wfctl__list_step_types,
-              mcp_wfctl__get_step_schema, git_commit, web_fetch.
-            task: >-
+
+              TOOLS (call by EXACT name, one at a time):
+              | Tool | Description | Required Args |
+              |------|-------------|---------------|
+              | file_read | Read a file | {"path": "/data/config/app.yaml"} |
+              | file_write | Write a file | {"path": "/data/config/app.yaml", "content": "full yaml here"} |
+              | mcp_wfctl__validate_config | Validate YAML config | {"yaml_content": "full yaml here"} |
+              | mcp_wfctl__inspect_config | Inspect config structure | {"yaml_content": "full yaml here"} |
+              | mcp_wfctl__list_step_types | List available step types | {} |
+              | mcp_wfctl__get_step_schema | Get schema for a step type | {"step_type": "step.db_query"} |
+              | git_commit | Commit changes to git | {"message": "feat: ...", "paths": ["/data/config/app.yaml"]} |
+              | web_fetch | Fetch a URL | {"url": "http://..."} |
+
+              RULES:
+              1. Call ONE tool at a time. Wait for the result before calling the next tool.
+              2. Use EXACT tool names from the table above.
+              3. The config file is at: ${CONFIG_PATH}
+              4. After file_read returns content, use that actual content in all subsequent calls.
+              5. Never write placeholder text like <content> or <yaml> — always use real content.
+              6. YAML rules: http.server uses address not port; db steps use database not module; params not args; mode is list/single; response type is step.json_response.
+            task: |
               Step 1: Call file_read with {"path": "${CONFIG_PATH}"} to read the current config.
-              Step 2: Add a search_tasks pipeline (GET /tasks/search, step.db_query database:db mode:list
-              query: SELECT id,title,status FROM tasks).
-              Step 3: Call mcp_wfctl__validate_config with {"yaml_content": "<full improved YAML string>"}.
-              Step 4: Call file_write with {"path": "${CONFIG_PATH}", "content": "<full improved YAML string>"}.
+              Step 2: Add a search_tasks pipeline (GET /tasks/search, step.db_query, database:db, mode:list, query: SELECT id,title,status FROM tasks WHERE title LIKE :q).
+              Step 3: Call mcp_wfctl__validate_config with {"yaml_content": <the full modified YAML from step 2>}.
+              Step 4: If validation passes, call file_write with {"path": "${CONFIG_PATH}", "content": <the same full YAML from step 3>}.
               Step 5: Call git_commit with {"message": "feat: add search_tasks endpoint", "paths": ["${CONFIG_PATH}"]}.
-              Replace all placeholders with the actual YAML you generate.
+              Use the actual YAML content — never use placeholder text.
 
       # Step 2: The agent IS the loop. system_prompt and task come from pipeline data above.
       - name: designer
@@ -128,6 +140,7 @@ pipelines:
         config:
           provider_service: ratchet-ai
           max_iterations: 20
+          parallel_tool_calls: false
           context:
             compaction_threshold: 0.80
 

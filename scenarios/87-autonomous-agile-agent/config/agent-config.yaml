@@ -98,14 +98,28 @@ pipelines:
             base_app_url: "${BASE_APP_URL}"
             provider: ai
             repo_path: "${REPO_PATH}"
-            system_prompt: >-
-              You are an autonomous agile development agent. AUDIT the app config.
-              Use file_read, mcp_wfctl__detect_project_features, mcp_wfctl__api_extract,
-              mcp_wfctl__inspect_config, web_fetch only.
-            task: >-
+            system_prompt: |
+              You are an autonomous agile development agent.
+
+              TOOLS (call by EXACT name, one at a time):
+              | Tool | Description | Required Args |
+              |------|-------------|---------------|
+              | file_read | Read a file | {"path": "/data/config/app.yaml"} |
+              | mcp_wfctl__detect_project_features | Detect project features | {"yaml_content": "full yaml here"} |
+              | mcp_wfctl__api_extract | Extract API surface | {"yaml_content": "full yaml here"} |
+              | mcp_wfctl__inspect_config | Inspect config structure | {"yaml_content": "full yaml here"} |
+              | web_fetch | Fetch a URL | {"url": "http://..."} |
+
+              RULES:
+              1. Call ONE tool at a time. Wait for the result before calling the next tool.
+              2. Use EXACT tool names from the table above.
+              3. The config file is at: ${CONFIG_PATH}
+              4. After file_read returns content, use that actual content in all subsequent calls.
+              5. Never write placeholder text — always use real content.
+            task: |
               Step 1: Call file_read with {"path": "${CONFIG_PATH}"} to read the config.
-              Step 2: Call mcp_wfctl__detect_project_features with {"config_path": "${CONFIG_PATH}"}.
-              Step 3: Call mcp_wfctl__api_extract with {"config_path": "${CONFIG_PATH}"}.
+              Step 2: Call mcp_wfctl__detect_project_features with {"yaml_content": <full YAML from step 1>}.
+              Step 3: Call mcp_wfctl__api_extract with {"yaml_content": <same full YAML from step 1>}.
               Step 4: Report what endpoints exist and what to add next.
 
       - name: audit
@@ -113,11 +127,10 @@ pipelines:
         config:
           provider_service: ai
           max_iterations: 10
+          parallel_tool_calls: false
           context:
             compaction_threshold: 0.80
           # system_prompt and task come from set_context step.set above
-            3. Use mcp:wfctl:api_extract to map existing API surface
-            4. Report: what endpoints exist, what's missing, what to add next
 
       - name: post_audit
         type: step.blackboard_post
@@ -129,23 +142,38 @@ pipelines:
         type: step.set
         config:
           values:
-            system_prompt: >-
-              You are an autonomous agile development agent. PLAN new endpoints.
-              Use file_read, file_write, mcp_wfctl__validate_config, mcp_wfctl__list_step_types,
-              mcp_wfctl__get_step_schema only.
-            task: >-
+            system_prompt: |
+              You are an autonomous agile development agent.
+
+              TOOLS (call by EXACT name, one at a time):
+              | Tool | Description | Required Args |
+              |------|-------------|---------------|
+              | file_read | Read a file | {"path": "/data/config/app.yaml"} |
+              | file_write | Write a file | {"path": "/data/config/app.yaml", "content": "full yaml here"} |
+              | mcp_wfctl__validate_config | Validate YAML config | {"yaml_content": "full yaml here"} |
+              | mcp_wfctl__list_step_types | List available step types | {} |
+              | mcp_wfctl__get_step_schema | Get schema for a step type | {"step_type": "step.db_query"} |
+
+              RULES:
+              1. Call ONE tool at a time. Wait for the result before calling the next tool.
+              2. Use EXACT tool names from the table above.
+              3. The config file is at: ${CONFIG_PATH}
+              4. After file_read returns content, use that actual content in all subsequent calls.
+              5. Never write placeholder text — always use real YAML content.
+              6. YAML rules: database not module; params not args; mode list/single; step.json_response.
+            task: |
               Step 1: Call file_read with {"path": "${CONFIG_PATH}"} to read the config.
-              Step 2: Design search (GET /tasks/search) and stats (GET /tasks/stats) pipelines
-              using step.db_query with database:db.
-              Step 3: Call mcp_wfctl__validate_config with {"yaml_content": "<full improved YAML>"}.
-              Step 4: Call file_write with {"path": "${CONFIG_PATH}", "content": "<full improved YAML>"}.
-              Replace placeholders with actual generated YAML.
+              Step 2: Add search (GET /tasks/search, step.db_query, database:db, mode:list, query: SELECT id,title,status FROM tasks WHERE title LIKE :q) and stats (GET /tasks/stats, step.db_query, database:db, mode:single, query: SELECT COUNT(*) as total FROM tasks) pipelines.
+              Step 3: Call mcp_wfctl__validate_config with {"yaml_content": <full modified YAML from step 2>}.
+              Step 4: Call file_write with {"path": "${CONFIG_PATH}", "content": <same full YAML from step 3>}.
+              Use the actual YAML content — never use placeholder text.
 
       - name: plan
         type: step.agent_execute
         config:
           provider_service: ai
           max_iterations: 10
+          parallel_tool_calls: false
           context:
             compaction_threshold: 0.80
           # system_prompt and task come from set_plan_context above
@@ -177,17 +205,29 @@ pipelines:
         type: step.set
         config:
           values:
-            system_prompt: >-
-              Verify deployed endpoints work. Use web_fetch and file_read only.
-            task: >-
-              Use web_fetch to verify ${BASE_APP_URL}/tasks/search and
-              ${BASE_APP_URL}/tasks/stats work. Confirm existing endpoints still function.
+            system_prompt: |
+              You are an autonomous agile development agent.
+
+              TOOLS (call by EXACT name, one at a time):
+              | Tool | Description | Required Args |
+              |------|-------------|---------------|
+              | web_fetch | Fetch a URL | {"url": "http://..."} |
+              | file_read | Read a file | {"path": "/data/config/app.yaml"} |
+
+              RULES:
+              1. Call ONE tool at a time. Wait for the result before calling the next tool.
+              2. Use EXACT tool names from the table above.
+            task: |
+              Step 1: Call web_fetch with {"url": "${BASE_APP_URL}/tasks/search?q=test"} to verify the search endpoint works.
+              Step 2: Call web_fetch with {"url": "${BASE_APP_URL}/tasks/stats"} to verify the stats endpoint works.
+              Step 3: Report what each endpoint returned and whether they are working correctly.
 
       - name: verify
         type: step.agent_execute
         config:
           provider_service: ai
           max_iterations: 10
+          parallel_tool_calls: false
           context:
             compaction_threshold: 0.80
           # system_prompt and task come from set_verify_context above

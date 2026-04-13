@@ -108,25 +108,36 @@ pipelines:
           values:
             config_path: "${CONFIG_PATH}"
             provider: ai
-            system_prompt: >-
-              You are a workflow MCP tool designer. Use file_read to read the config,
-              mcp_wfctl__inspect_config to inspect it, mcp_wfctl__list_step_types to list steps.
-              Only use these tools: file_read, mcp_wfctl__inspect_config, mcp_wfctl__list_step_types.
-            task: >-
+            system_prompt: |
+              You are a workflow MCP tool designer.
+
+              TOOLS (call by EXACT name, one at a time):
+              | Tool | Description | Required Args |
+              |------|-------------|---------------|
+              | file_read | Read a file | {"path": "/data/config/app.yaml"} |
+              | mcp_wfctl__inspect_config | Inspect config structure | {"yaml_content": "full yaml here"} |
+              | mcp_wfctl__list_step_types | List available step types | {} |
+
+              RULES:
+              1. Call ONE tool at a time. Wait for the result before calling the next tool.
+              2. Use EXACT tool names from the table above.
+              3. The config file is at: ${CONFIG_PATH}
+              4. After file_read returns content, pass that actual content to mcp_wfctl__inspect_config.
+              5. Never use placeholder text.
+            task: |
               Step 1: Call file_read with {"path": "${CONFIG_PATH}"} to read the config.
-              Step 2: Call mcp_wfctl__inspect_config with {"config_path": "${CONFIG_PATH}"}.
-              Step 3: Report what analytics and forecast endpoints can be added.
+              Step 2: Call mcp_wfctl__inspect_config with {"yaml_content": <the full YAML from step 1>}.
+              Step 3: Report what analytics and forecast endpoints can be added based on the inspection.
 
       - name: inspect
         type: step.agent_execute
         config:
           provider_service: ai
           max_iterations: 5
+          parallel_tool_calls: false
           context:
             compaction_threshold: 0.80
           # NOTE: system_prompt and task come from load_config step.set above
-            2. Inspect it with mcp:wfctl:inspect_config
-            3. Report what analytics and forecast endpoints should be added
 
       - name: post_design
         type: step.blackboard_post
@@ -138,24 +149,39 @@ pipelines:
         type: step.set
         config:
           values:
-            system_prompt: >-
-              You are a workflow MCP tool designer. Use file_read, file_write,
-              mcp_wfctl__validate_config, mcp_wfctl__list_step_types, git_commit only.
-              YAML rules: database not module; params not args; mode list/single; step.json_response.
-            task: >-
+            system_prompt: |
+              You are a workflow MCP tool designer.
+
+              TOOLS (call by EXACT name, one at a time):
+              | Tool | Description | Required Args |
+              |------|-------------|---------------|
+              | file_read | Read a file | {"path": "/data/config/app.yaml"} |
+              | file_write | Write a file | {"path": "/data/config/app.yaml", "content": "full yaml here"} |
+              | mcp_wfctl__validate_config | Validate YAML config | {"yaml_content": "full yaml here"} |
+              | mcp_wfctl__list_step_types | List available step types | {} |
+              | git_commit | Commit changes to git | {"message": "feat: ...", "paths": ["/data/config/app.yaml"]} |
+
+              RULES:
+              1. Call ONE tool at a time. Wait for the result before calling the next tool.
+              2. Use EXACT tool names from the table above.
+              3. The config file is at: ${CONFIG_PATH}
+              4. After file_read returns content, use that actual content in all subsequent calls.
+              5. Never write placeholder text — always use real YAML content.
+              6. YAML rules: database not module; params not args; mode list/single; step.json_response.
+            task: |
               Step 1: Call file_read with {"path": "${CONFIG_PATH}"} to read the config.
-              Step 2: Add task_analytics pipeline (GET /tasks/analytics, step.db_query database:db
-              mode:single query: SELECT COUNT(*) total FROM tasks).
-              Step 3: Call mcp_wfctl__validate_config with {"yaml_content": "<full improved YAML>"}.
-              Step 4: Call file_write with {"path": "${CONFIG_PATH}", "content": "<full improved YAML>"}.
-              Step 5: Call git_commit with {"message": "feat: add task_analytics endpoint"}.
-              Replace all placeholders with actual YAML content.
+              Step 2: Add task_analytics pipeline (GET /tasks/analytics, step.db_query, database:db, mode:single, query: SELECT COUNT(*) as total FROM tasks).
+              Step 3: Call mcp_wfctl__validate_config with {"yaml_content": <full modified YAML from step 2>}.
+              Step 4: Call file_write with {"path": "${CONFIG_PATH}", "content": <same full YAML from step 3>}.
+              Step 5: Call git_commit with {"message": "feat: add task_analytics endpoint", "paths": ["${CONFIG_PATH}"]}.
+              Use the actual YAML content — never use placeholder text.
 
       - name: create_analytics_tool
         type: step.agent_execute
         config:
           provider_service: ai
           max_iterations: 20
+          parallel_tool_calls: false
           context:
             compaction_threshold: 0.80
 
@@ -175,6 +201,7 @@ pipelines:
         config:
           provider_service: ai
           max_iterations: 20
+          parallel_tool_calls: false
           context:
             compaction_threshold: 0.80
           # system_prompt and task come from set_analytics_context above
@@ -183,13 +210,31 @@ pipelines:
         type: step.set
         config:
           values:
-            system_prompt: >-
-              Verify the analytics endpoint works then add a forecast pipeline.
-              Use web_fetch, file_read, file_write, mcp_wfctl__validate_config, git_commit only.
-            task: >-
-              Use web_fetch to verify GET ${BASE_APP_URL}/tasks/analytics works. Then read
-              ${CONFIG_PATH} with file_read, add task_forecast pipeline (GET /tasks/forecast,
-              step.db_query database:db mode:list), validate, write, commit.
+            system_prompt: |
+              You are a workflow MCP tool designer.
+
+              TOOLS (call by EXACT name, one at a time):
+              | Tool | Description | Required Args |
+              |------|-------------|---------------|
+              | web_fetch | Fetch a URL | {"url": "http://..."} |
+              | file_read | Read a file | {"path": "/data/config/app.yaml"} |
+              | file_write | Write a file | {"path": "/data/config/app.yaml", "content": "full yaml here"} |
+              | mcp_wfctl__validate_config | Validate YAML config | {"yaml_content": "full yaml here"} |
+              | git_commit | Commit changes to git | {"message": "feat: ...", "paths": ["/data/config/app.yaml"]} |
+
+              RULES:
+              1. Call ONE tool at a time. Wait for the result before calling the next tool.
+              2. Use EXACT tool names from the table above.
+              3. After file_read returns content, use that actual content in all subsequent calls.
+              4. Never write placeholder text — always use real YAML content.
+            task: |
+              Step 1: Call web_fetch with {"url": "${BASE_APP_URL}/tasks/analytics"} to verify it works.
+              Step 2: Call file_read with {"path": "${CONFIG_PATH}"} to read the current config.
+              Step 3: Add task_forecast pipeline (GET /tasks/forecast, step.db_query, database:db, mode:list, query: SELECT id,title,status,created_at FROM tasks ORDER BY created_at DESC LIMIT 10).
+              Step 4: Call mcp_wfctl__validate_config with {"yaml_content": <full modified YAML from step 3>}.
+              Step 5: Call file_write with {"path": "${CONFIG_PATH}", "content": <same full YAML from step 4>}.
+              Step 6: Call git_commit with {"message": "feat: add task_forecast endpoint", "paths": ["${CONFIG_PATH}"]}.
+              Use the actual YAML content — never use placeholder text.
 
       - name: post_iteration
         type: step.blackboard_post
