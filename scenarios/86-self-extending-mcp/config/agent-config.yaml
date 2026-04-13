@@ -106,6 +106,7 @@ pipelines:
         config:
           provider_service: ratchet-ai
           max_iterations: 20
+          workspace: /data
           system_prompt: |
             You are a workflow MCP tool designer. Your goal is to extend the
             running workflow application by creating new API endpoints.
@@ -168,6 +169,7 @@ pipelines:
         config:
           provider_service: ratchet-ai
           max_iterations: 20
+          workspace: /data
           system_prompt: |
             You are extending a workflow application. The task_analytics
             endpoint was just deployed. Now create a task_forecast endpoint.

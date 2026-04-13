@@ -105,6 +105,7 @@ pipelines:
         config:
           provider_service: ratchet-ai
           max_iterations: 20
+          workspace: /data
           system_prompt: |
             You are an autonomous workflow configuration improvement agent.
             You have tools to read files, write files, validate configs,

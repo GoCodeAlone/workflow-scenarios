@@ -94,6 +94,7 @@ pipelines:
         config:
           provider_service: ratchet-ai
           max_iterations: 30
+          workspace: /data
           system_prompt: |
             You are an autonomous agile development agent with full control
             over an application's design and evolution. You will perform
