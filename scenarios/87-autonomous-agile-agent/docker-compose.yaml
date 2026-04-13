@@ -43,6 +43,7 @@ services:
       - agent-repo:/data/repo
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=gemma4
       - WORKFLOW_ADMIN_SECRET=scenario-87-admin-secret
       - IMPROVEMENT_GOAL=You are in full control of this application's design and evolution. Audit the current state, identify missing features, gaps, and improvements. Plan and execute iterative improvements as an agile team would — each iteration should be a deployable increment. Interact with the running application to verify functionality. Continue improving until you believe the application is production-ready or you have completed 5 iterations.
     depends_on:
