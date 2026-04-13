@@ -119,13 +119,13 @@ pipelines:
         type: step.db_exec
         config:
           database: db
-          query: "UPDATE tasks SET title = COALESCE(?, title), description = COALESCE(?, description), status = COALESCE(?, status), priority = COALESCE(?, priority), updated_at = datetime('now'), completed_at = CASE WHEN ? = 'done' THEN datetime('now') ELSE completed_at END WHERE id = ?"
+          query: "UPDATE tasks SET title = COALESCE(NULLIF(?, ''), title), description = COALESCE(NULLIF(?, ''), description), status = COALESCE(NULLIF(?, ''), status), priority = COALESCE(NULLIF(?, ''), priority), updated_at = datetime('now'), completed_at = CASE WHEN ? = 'done' THEN datetime('now') ELSE completed_at END WHERE id = ?"
           params:
-            - "{{ .body.title | default nil }}"
-            - "{{ .body.description | default nil }}"
-            - "{{ .body.status | default nil }}"
-            - "{{ .body.priority | default nil }}"
-            - "{{ .body.status | default \"\" }}"
+            - "{{ .body.title }}"
+            - "{{ .body.description }}"
+            - "{{ .body.status }}"
+            - "{{ .body.priority }}"
+            - "{{ .body.status }}"
             - "{{ .id }}"
       - name: respond
         type: step.json_response
