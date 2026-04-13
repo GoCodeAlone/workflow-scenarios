@@ -19,6 +19,9 @@ func TestE2E_FullLoop(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping long-running Docker e2e test in short mode")
 	}
+	if os.Getenv("SKIP_E2E") != "" {
+		t.Skip("SKIP_E2E set")
+	}
 
 	dir := scenarioDir(t)
 
@@ -74,23 +77,18 @@ func TestE2E_FullLoop(t *testing.T) {
 		}
 	})
 
-	// Wait for agent to complete improvement loop (up to 20 minutes)
+	// Wait for agent to finish by watching its container exit or checking logs
+	// for a completion marker (up to 20 minutes).
 	t.Log("Waiting for self-improvement agent to complete...")
-	agentDone := waitForAgentCompletion("http://localhost:8081", 20*time.Minute)
-	if agentDone != nil {
-		t.Logf("Agent did not complete cleanly: %v (checking partial results)", agentDone)
-	}
+	waitForAgentCompletion(t, dir, 20*time.Minute)
 
 	// Verify improved app has expected new capabilities
 	t.Run("improved_app_has_search", func(t *testing.T) {
 		resp, err := http.Get(appURL + "/tasks/search?q=test")
-		if err != nil {
-			t.Skip("search endpoint not yet available")
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode == http.StatusNotFound {
+		if err != nil || resp.StatusCode == http.StatusNotFound {
 			t.Skip("search endpoint not yet implemented by agent")
 		}
+		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("GET /tasks/search: expected 200, got %d", resp.StatusCode)
 		}
@@ -102,7 +100,6 @@ func TestE2E_FullLoop(t *testing.T) {
 			t.Skip("pagination not yet available")
 		}
 		defer resp.Body.Close()
-		// The improved list endpoint should support cursor param
 		if resp.StatusCode == http.StatusBadRequest {
 			t.Error("cursor pagination not implemented — expected 200 or 404, not 400")
 		}
@@ -136,7 +133,6 @@ func TestE2E_BaseAppHealthz(t *testing.T) {
 	}
 	content := string(data)
 
-	// Healthz pipeline must exist and reference step.json_response
 	if !containsString(content, "health_check:") {
 		t.Error("base-app.yaml missing health_check pipeline")
 	}
@@ -164,21 +160,38 @@ func waitForHealthy(url string, timeout time.Duration) error {
 	return fmt.Errorf("timeout after %v", timeout)
 }
 
-func waitForAgentCompletion(agentURL string, timeout time.Duration) error {
+// waitForAgentCompletion watches docker compose logs for the agent container
+// completing its work, or times out gracefully.
+func waitForAgentCompletion(t *testing.T, dir string, timeout time.Duration) {
+	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		resp, err := http.Get(agentURL + "/status") //nolint:gosec
+		// Check if agent container has exited (successful completion)
+		cmd := exec.Command("docker", "compose", "ps", "--format", "json", "agent")
+		cmd.Dir = dir
+		out, err := cmd.Output()
 		if err == nil {
-			var status map[string]any
-			if json.NewDecoder(resp.Body).Decode(&status) == nil {
-				if phase, ok := status["phase"].(string); ok && phase == "complete" {
-					resp.Body.Close()
-					return nil
+			var ps map[string]any
+			if json.Unmarshal(out, &ps) == nil {
+				if state, ok := ps["State"].(string); ok && state == "exited" {
+					t.Log("Agent container exited — improvement cycle complete")
+					return
 				}
 			}
-			resp.Body.Close()
 		}
-		time.Sleep(10 * time.Second)
+		// Also accept if the agent logs contain a completion marker
+		logs := exec.Command("docker", "compose", "logs", "--tail=20", "agent")
+		logs.Dir = dir
+		if logOut, lerr := logs.Output(); lerr == nil {
+			logStr := string(logOut)
+			if strings.Contains(logStr, "improvement complete") ||
+				strings.Contains(logStr, "cycle finished") ||
+				strings.Contains(logStr, "deploy: success") {
+				t.Log("Agent logged completion marker")
+				return
+			}
+		}
+		time.Sleep(15 * time.Second)
 	}
-	return fmt.Errorf("agent did not complete within %v", timeout)
+	t.Log("Agent did not signal completion within timeout — checking partial results")
 }

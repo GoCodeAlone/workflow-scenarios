@@ -24,7 +24,7 @@ services:
       - app-data:/data
       - ./config:/data/config
     environment:
-      - WORKFLOW_ADMIN_SECRET=scenario-85-admin-secret
+      - WORKFLOW_ADMIN_SECRET=${WORKFLOW_ADMIN_SECRET:-change-me-in-production}
     command: ["-config", "/data/config/base-app.yaml", "-data-dir", "/data"]
     depends_on:
       ollama:
@@ -37,13 +37,15 @@ services:
 
   agent:
     image: ghcr.io/gocodealone/workflow:latest
+    ports:
+      - "8081:8081"
     volumes:
       - app-data:/data
       - ./config:/data/config
       - agent-repo:/data/repo
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
-      - WORKFLOW_ADMIN_SECRET=scenario-85-admin-secret
+      - WORKFLOW_ADMIN_SECRET=${WORKFLOW_ADMIN_SECRET:-change-me-in-production}
       - IMPROVEMENT_GOAL=Add full-text search with FTS5, cursor-based pagination, rate limiting per IP, and structured JSON logging with response times. Implement search ranking as a custom Yaegi module.
     command: ["-config", "/data/config/agent-config.yaml", "-data-dir", "/data/agent"]
     depends_on:
@@ -51,6 +53,11 @@ services:
         condition: service_healthy
       app:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
 
 volumes:
   ollama-data:

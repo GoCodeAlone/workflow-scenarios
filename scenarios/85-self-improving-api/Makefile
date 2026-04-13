@@ -28,4 +28,3 @@ test-short:
 
 clean:
 	docker compose down -v
-	rm -f /data/tasks.db /data/agent.db /data/agent-state.db

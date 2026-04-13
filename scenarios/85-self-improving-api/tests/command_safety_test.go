@@ -159,7 +159,7 @@ func TestCommandSafety_BypassPatterns(t *testing.T) {
 	for _, bp := range bypassPatterns {
 		t.Run(bp.name, func(t *testing.T) {
 			cmd := bp.command
-		if len(cmd) > 40 {
+			if len(cmd) > 40 {
 				cmd = cmd[:40]
 			}
 			t.Logf("bypass pattern %q (risk: %s) is documented and covered by static analysis",

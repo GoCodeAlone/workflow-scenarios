@@ -52,6 +52,13 @@ spec:
           args: ["-config", "/config/agent-config.yaml", "-data-dir", "/data/agent"]
           ports:
             - containerPort: 8081
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
           resources:
             limits:
               cpu: 500m
@@ -64,6 +71,8 @@ spec:
               mountPath: /config
             - name: data
               mountPath: /data
+            - name: agent-repo
+              mountPath: /data/repo
           env:
             - name: OLLAMA_BASE_URL
               value: "http://ollama:11434"
@@ -82,3 +91,22 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: app-data
+        - name: agent-repo
+          persistentVolumeClaim:
+            claimName: agent-repo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: workflow-server
+  namespace: wf-scenario-self-improving-api
+spec:
+  selector:
+    app: workflow-app
+  ports:
+    - name: app
+      port: 8080
+      targetPort: 8080
+    - name: agent
+      port: 8081
+      targetPort: 8081

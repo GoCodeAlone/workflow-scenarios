@@ -3,6 +3,7 @@ package tests
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -133,10 +134,5 @@ func TestDeployStrategy_DockerComposeDefinesAgent(t *testing.T) {
 // indexOfString returns the byte offset of the first occurrence of sub in s,
 // or -1 if not found.
 func indexOfString(s, sub string) int {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-	return -1
+	return strings.Index(s, sub)
 }

@@ -24,7 +24,6 @@ modules:
     config:
       dbPath: /data/tasks.db
       walMode: true
-    dependsOn: [router]
 
 workflows:
   http:
