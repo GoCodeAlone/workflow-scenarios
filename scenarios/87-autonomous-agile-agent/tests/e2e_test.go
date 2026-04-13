@@ -174,12 +174,7 @@ func verifyBlackboard(t *testing.T) {
 	}
 	t.Logf("agent blackboard DB has %d tables", tableCount)
 
-	// Count total rows across all tables to confirm data was written.
-	cmd = exec.Command("docker", "compose", "exec", "-T", "agent",
-		"sqlite3", "/data/agent.db",
-		"SELECT SUM(cnt) FROM (SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type='table')")
-	cmd.Dir = scenarioDir(t)
-	// A simpler row-existence check: verify the DB file is non-trivially sized.
+	// Check user-defined tables to confirm blackboard_post steps ran.
 	cmd2 := exec.Command("docker", "compose", "exec", "-T", "agent",
 		"sqlite3", "/data/agent.db",
 		"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
