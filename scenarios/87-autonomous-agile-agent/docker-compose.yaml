@@ -19,7 +19,7 @@ services:
       - app-data:/data
       - ./config:/data/config
     environment:
-      - WORKFLOW_ADMIN_SECRET=scenario-87-admin-secret
+      - WORKFLOW_ADMIN_SECRET=${WORKFLOW_ADMIN_SECRET:-scenario-87-admin-secret}
     command: ["-config", "/data/config/base-app.yaml", "-data-dir", "/data"]
     depends_on:
       ollama:
@@ -41,7 +41,7 @@ services:
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_MODEL=gemma4
-      - WORKFLOW_ADMIN_SECRET=scenario-87-admin-secret
+      - WORKFLOW_ADMIN_SECRET=${WORKFLOW_ADMIN_SECRET:-scenario-87-admin-secret}
       - IMPROVEMENT_GOAL=You are in full control of this application's design and evolution. Audit the current state, identify missing features, gaps, and improvements. Plan and execute iterative improvements as an agile team would — each iteration should be a deployable increment. Interact with the running application to verify functionality. Continue improving until you believe the application is production-ready or you have completed 5 iterations.
     command: ["-config", "/data/config/agent-config.yaml", "-data-dir", "/data/agent"]
     depends_on:

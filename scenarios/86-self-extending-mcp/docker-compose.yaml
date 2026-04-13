@@ -24,7 +24,7 @@ services:
       - app-data:/data
       - ./config:/data/config
     environment:
-      - WORKFLOW_ADMIN_SECRET=scenario-86-admin-secret
+      - WORKFLOW_ADMIN_SECRET=${WORKFLOW_ADMIN_SECRET:-scenario-86-admin-secret}
       - SEED_SQL=/data/config/seed-data.sql
     command: ["-config", "/data/config/base-app.yaml", "-data-dir", "/data"]
     depends_on:
@@ -47,7 +47,7 @@ services:
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_MODEL=gemma4
-      - WORKFLOW_ADMIN_SECRET=scenario-86-admin-secret
+      - WORKFLOW_ADMIN_SECRET=${WORKFLOW_ADMIN_SECRET:-scenario-86-admin-secret}
     command: ["-config", "/data/config/agent-config.yaml", "-data-dir", "/data/agent"]
     depends_on:
       ollama:

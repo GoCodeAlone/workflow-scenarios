@@ -35,22 +35,25 @@ func TestE2EMCPToolCreation(t *testing.T) {
 	t.Log("Step 2: verifying base app CRUD responds")
 	verifyBaseCRUD(t)
 
-	t.Log("Step 3: waiting for agent to create MCP tools")
+	t.Log("Step 3: triggering MCP tool creation pipeline")
+	triggerToolCreation(t)
+
+	t.Log("Step 4: waiting for agent to create MCP tools")
 	waitForMCPTool(t, "task_analytics", e2eTimeout)
 	waitForMCPTool(t, "task_forecast", e2eTimeout)
 
-	t.Log("Step 4: calling task_analytics via MCP")
+	t.Log("Step 5: calling task_analytics via MCP")
 	analytics := callMCPTool(t, "task_analytics", nil)
 	verifyAnalyticsResponse(t, analytics)
 
-	t.Log("Step 5: calling task_forecast via MCP")
+	t.Log("Step 6: calling task_forecast via MCP")
 	forecast := callMCPTool(t, "task_forecast", nil)
 	verifyForecastResponse(t, forecast)
 
-	t.Log("Step 6: verifying blackboard artifacts")
+	t.Log("Step 7: verifying blackboard artifacts")
 	verifyBlackboardArtifacts(t)
 
-	t.Log("Step 7: verifying git history")
+	t.Log("Step 8: verifying git history")
 	verifyGitHistory(t)
 }
 
@@ -96,6 +99,19 @@ func verifyBaseCRUD(t *testing.T) {
 	}
 	if len(tasks) == 0 {
 		t.Fatal("expected at least one task from seed data")
+	}
+}
+
+// triggerToolCreation fires the agent's MCP tool creation pipeline via its HTTP trigger.
+func triggerToolCreation(t *testing.T) {
+	t.Helper()
+	resp, err := http.Post(agentBaseURL+"/create-tools", "application/json", strings.NewReader("{}")) //nolint:noctx
+	if err != nil {
+		t.Fatalf("POST /create-tools: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 500 {
+		t.Fatalf("POST /create-tools: unexpected server error %d", resp.StatusCode)
 	}
 }
 

@@ -63,9 +63,11 @@ func waitForHealth(t *testing.T, url string, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(url) //nolint:noctx
-		if err == nil && resp.StatusCode == http.StatusOK {
+		if err == nil {
 			resp.Body.Close()
-			return
+			if resp.StatusCode == http.StatusOK {
+				return
+			}
 		}
 		time.Sleep(pollInterval)
 	}
@@ -129,7 +131,7 @@ func waitForIterations(t *testing.T, minCommits int, timeout time.Duration) {
 func countIterCommits(gitLog string) int {
 	n := 0
 	for _, line := range strings.Split(strings.TrimSpace(gitLog), "\n") {
-		if line != "" && !strings.Contains(line, "initial") {
+		if strings.Contains(line, "feat(iter-") {
 			n++
 		}
 	}

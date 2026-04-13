@@ -77,6 +77,21 @@ func TestE2E_FullLoop(t *testing.T) {
 		}
 	})
 
+	// Trigger the self-improvement pipeline explicitly before waiting for it to complete.
+	t.Log("Triggering self-improvement pipeline...")
+	agentURL := "http://localhost:8081"
+	if err := waitForHealthy(agentURL+"/healthz", 2*time.Minute); err != nil {
+		t.Fatalf("agent never became healthy: %v", err)
+	}
+	resp, err := http.Post(agentURL+"/improve", "application/json", strings.NewReader("{}")) //nolint:noctx
+	if err != nil {
+		t.Fatalf("POST /improve: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode >= 500 {
+		t.Fatalf("POST /improve: server error %d", resp.StatusCode)
+	}
+
 	// Wait for agent to finish by watching its container exit or checking logs
 	// for a completion marker (up to 20 minutes).
 	t.Log("Waiting for self-improvement agent to complete...")
