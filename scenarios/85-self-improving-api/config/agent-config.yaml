@@ -65,7 +65,7 @@ modules:
           override: challenge_token
       override:
         mechanism: challenge_token
-        admin_secret_env: "WORKFLOW_ADMIN_SECRET"
+        admin_secret_env: "WFCTL_ADMIN_SECRET"
 
 workflows:
   http:

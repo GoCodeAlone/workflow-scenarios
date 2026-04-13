@@ -24,7 +24,7 @@ func TestGuardrails_ImmutableSectionsConfigured(t *testing.T) {
 		{"modules.guardrails is immutable", `path: "modules.guardrails"`},
 		{"challenge_token override mechanism", "override: challenge_token"},
 		{"admin secret env var", "admin_secret_env:"},
-		{"WORKFLOW_ADMIN_SECRET", `"WORKFLOW_ADMIN_SECRET"`},
+		{"WFCTL_ADMIN_SECRET", `"WFCTL_ADMIN_SECRET"`},
 	}
 
 	for _, c := range checks {

@@ -24,7 +24,7 @@ services:
       - app-data:/data
       - ./config:/data/config
     environment:
-      - WORKFLOW_ADMIN_SECRET=${WORKFLOW_ADMIN_SECRET:-change-me-in-production}
+      - WFCTL_ADMIN_SECRET=${WFCTL_ADMIN_SECRET:-change-me-in-production}
     command: ["-config", "/data/config/base-app.yaml", "-data-dir", "/data"]
     depends_on:
       ollama:
@@ -45,7 +45,7 @@ services:
       - agent-repo:/data/repo
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
-      - WORKFLOW_ADMIN_SECRET=${WORKFLOW_ADMIN_SECRET:-change-me-in-production}
+      - WFCTL_ADMIN_SECRET=${WFCTL_ADMIN_SECRET:-change-me-in-production}
       - IMPROVEMENT_GOAL=Add full-text search with FTS5, cursor-based pagination, rate limiting per IP, and structured JSON logging with response times. Implement search ranking as a custom Yaegi module.
     command: ["-config", "/data/config/agent-config.yaml", "-data-dir", "/data/agent"]
     depends_on:

@@ -41,7 +41,7 @@ spec:
             - name: data
               mountPath: /data
           env:
-            - name: WORKFLOW_ADMIN_SECRET
+            - name: WFCTL_ADMIN_SECRET
               valueFrom:
                 secretKeyRef:
                   name: self-improving-api-secrets
@@ -76,7 +76,7 @@ spec:
           env:
             - name: OLLAMA_BASE_URL
               value: "http://ollama:11434"
-            - name: WORKFLOW_ADMIN_SECRET
+            - name: WFCTL_ADMIN_SECRET
               valueFrom:
                 secretKeyRef:
                   name: self-improving-api-secrets
