@@ -70,3 +70,20 @@ make test-guardrails  # Guardrails config checks
 make test-short       # All tests with -short (skip Docker)
 make test             # Full e2e (requires running Docker stack)
 ```
+
+## Model Compatibility Notes
+
+**Tested with real Ollama (local e2e):**
+
+| Model | Tool calling | Stability | Notes |
+|-------|-------------|-----------|-------|
+| `qwen2.5:7b` | ✓ Works | Stable | Recommended for local testing |
+| `gemma4:e2b` | ✓ Works (iteration 1) | OOM on iteration 2+ | Crashes with "model runner stopped" on multi-iteration runs |
+
+**Prompt format matters:** Models reliably use the correct tool name when the task uses explicit JSON argument format, e.g.:
+```
+Call file_read with {"path": "/data/config/app.yaml"}
+```
+Loose prose like "use file_read to read the config" causes some models to hallucinate tool names (`file_manager:read`).
+
+**Guardrails pattern:** MCP tools are registered as `mcp_wfctl__<name>` (underscore-double-underscore). The `allowed_tools` list must include `"mcp_wfctl__*"` in addition to `"mcp:wfctl:*"`.

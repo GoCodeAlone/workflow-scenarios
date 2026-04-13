@@ -44,3 +44,10 @@ make test-e2e     # full end-to-end test
 | 85 | Self-improves in response to a specific goal |
 | 86 | Extends interface by creating new MCP tools |
 | 87 | Fully autonomous — audits, decides, iterates, verifies without a human-defined goal beyond "production-ready" |
+
+## Model Compatibility Notes
+
+- `qwen2.5:7b` — stable, recommended for local testing
+- `gemma4:e2b` — OOM crashes on iteration 2+; use qwen2.5:7b as fallback
+- Task prompts must use explicit JSON format (`{"path": "..."}`) to prevent tool name hallucination
+- `allowed_tools` must include `"mcp_wfctl__*"` — MCP tools register as `mcp_wfctl__<name>` at runtime

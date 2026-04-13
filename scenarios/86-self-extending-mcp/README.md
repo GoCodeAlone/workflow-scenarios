@@ -54,3 +54,10 @@ The agent discovers this via `task_analytics` and uses the insight to design `ta
 
 Scenario 85 modifies an existing application's config (self-improvement).
 Scenario 86 extends the application's *interface* by adding new MCP-exposed tools (self-extension).
+
+## Model Compatibility Notes
+
+- `qwen2.5:7b` — stable, recommended for local testing
+- `gemma4:e2b` — OOM crashes on iteration 2+; use qwen2.5:7b as fallback
+- Task prompts must use explicit JSON format (`{"path": "..."}`) to prevent tool name hallucination
+- `allowed_tools` must include `"mcp_wfctl__*"` — MCP tools register as `mcp_wfctl__<name>` at runtime
