@@ -1,8 +1,12 @@
-.PHONY: up down pull-model test test-e2e logs clean
+.PHONY: up down pull-model test test-e2e logs git-log clean
 
 # Start all services (Ollama + app + agent)
 up:
 	docker compose up -d
+
+# Stop all services
+down:
+	docker compose down
 
 # Pull the Gemma 4 model into the running Ollama service
 pull-model:

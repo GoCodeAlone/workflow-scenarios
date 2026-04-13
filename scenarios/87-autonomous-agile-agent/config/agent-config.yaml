@@ -1,8 +1,5 @@
-# Scenario 87: Autonomous Agile Agent — Full Autonomy Config
-#
-# The agent has full control over the application's design and evolution.
-# It audits the current state, identifies improvements, and iterates
-# like an agile team: each iteration is a deployable, tested increment.
+# ============================================================
+# Scenario 87 — Autonomous Agile Agent: Full Autonomy Config
 #
 # Agent prompt goal:
 #   "You are in full control of this application's design and evolution.
@@ -11,24 +8,33 @@
 #   iteration should be a deployable increment. Interact with the running
 #   application to verify functionality. Continue improving until you believe
 #   the application is production-ready or you have completed 5 iterations."
+# ============================================================
 
 modules:
-  db:
-    type: database.sqlite
-    config:
-      path: /data/agent.db
-  server:
+  - name: server
     type: http.server
     config:
-      port: 8081
-  ai:
+      address: ":8081"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: db
+    type: storage.sqlite
+    config:
+      dbPath: /data/agent.db
+      walMode: true
+
+  - name: ai
     type: agent.provider
     config:
       provider: ollama
       model: gemma4
       base_url: http://ollama:11434
       max_tokens: 8192
-  guardrails:
+
+  - name: guardrails
     type: agent.guardrails
     config:
       defaults:
@@ -58,8 +64,35 @@ modules:
         mechanism: challenge_token
         admin_secret_env: "WORKFLOW_ADMIN_SECRET"
 
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
 pipelines:
+  health_check:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: healthy
+            scenario: "87-autonomous-agile-agent"
+            component: agent
+
   autonomous_improvement_loop:
+    trigger:
+      type: http
+      config:
+        path: /improve
+        method: POST
     steps:
       # --- Audit phase ---
       - name: audit
@@ -109,6 +142,7 @@ pipelines:
             - mcp:wfctl:get_step_schema — get schema for new step types
             - mcp:wfctl:validate_config — validate your proposed config changes
             - mcp:lsp:diagnose — check YAML syntax
+            - mcp:wfctl:diff_configs — review what changed
 
             The proposal must:
             1. Be a complete, valid app.yaml with the improvement applied
@@ -159,13 +193,11 @@ pipelines:
           provider: ai
           system_prompt: |
             The new config has been deployed. Now verify it works correctly:
-            1. Send HTTP requests to the running application to test new endpoints
-            2. Verify the health check still responds
-            3. Test any new functionality you added in this iteration
-            4. Document what was verified and whether tests passed
+            1. The health check at http://app:8080/healthz must return 200
+            2. Test any new functionality you added in this iteration
+            3. Document what was verified and whether tests passed
 
-            Use step.http_request to hit the API at http://app:8080.
-            Log structured results: endpoint, method, status_code, passed.
+            Log structured results for each endpoint tested.
           tools:
             - "mcp:wfctl:api_extract"
           max_iterations: 10
@@ -184,7 +216,5 @@ pipelines:
           message_template: |
             feat(iter-{{ .iteration_number }}): {{ .iteration_summary }}
 
-            Changes:
-            {{ .changes_summary }}
-
+            Changes: {{ .changes_summary }}
             Verified: {{ .verification_summary }}

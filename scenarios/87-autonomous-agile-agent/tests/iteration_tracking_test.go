@@ -82,7 +82,15 @@ func TestIterationPipeline_Exists(t *testing.T) {
 	}
 }
 
-// TestIterationPipeline_HasAllPhases verifies all four iteration phases are present.
+// TestIterationPipeline_HasTrigger verifies the pipeline has an HTTP trigger.
+func TestIterationPipeline_HasTrigger(t *testing.T) {
+	content := readFile(t, filepath.Join(scenarioDir(t), "config", "agent-config.yaml"))
+	if !strings.Contains(content, "path: /improve") {
+		t.Error("autonomous_improvement_loop must have an HTTP trigger at /improve")
+	}
+}
+
+// TestIterationPipeline_HasAllPhases verifies all iteration phase steps are present.
 func TestIterationPipeline_HasAllPhases(t *testing.T) {
 	content := readFile(t, filepath.Join(scenarioDir(t), "config", "agent-config.yaml"))
 	phases := []struct {
@@ -105,11 +113,10 @@ func TestIterationPipeline_HasAllPhases(t *testing.T) {
 	}
 }
 
-// TestIterationPipeline_BlackboardPostsPerPhase verifies blackboard posts for audit/plan/deploy/verify.
+// TestIterationPipeline_BlackboardPostsPerPhase verifies blackboard posts for all phases.
 func TestIterationPipeline_BlackboardPostsPerPhase(t *testing.T) {
 	content := readFile(t, filepath.Join(scenarioDir(t), "config", "agent-config.yaml"))
-	requiredPhases := []string{"phase: audit", "phase: plan", "phase: deploy", "phase: verify"}
-	for _, phase := range requiredPhases {
+	for _, phase := range []string{"phase: audit", "phase: plan", "phase: deploy", "phase: verify"} {
 		if !strings.Contains(content, phase) {
 			t.Errorf("agent-config.yaml missing blackboard_post with %q", phase)
 		}
@@ -156,6 +163,17 @@ func TestAgentModel_IsGemma4(t *testing.T) {
 	}
 }
 
+// TestAgentConfig_ModuleListFormat verifies agent-config.yaml uses list format for modules.
+func TestAgentConfig_ModuleListFormat(t *testing.T) {
+	content := readFile(t, filepath.Join(scenarioDir(t), "config", "agent-config.yaml"))
+	if !strings.Contains(content, "- name: ai") {
+		t.Error("agent-config.yaml modules must use list format (- name: ai)")
+	}
+	if !strings.Contains(content, "- name: guardrails") {
+		t.Error("agent-config.yaml modules must use list format (- name: guardrails)")
+	}
+}
+
 // TestAgentGuardrails_ImmutableSection verifies modules.guardrails is immutable.
 func TestAgentGuardrails_ImmutableSection(t *testing.T) {
 	content := readFile(t, filepath.Join(scenarioDir(t), "config", "agent-config.yaml"))
@@ -181,16 +199,18 @@ func TestAgentGuardrails_CommandPolicy(t *testing.T) {
 // TestAgentPrompt_ContainsGoal verifies the autonomous agent prompt contains the goal text.
 func TestAgentPrompt_ContainsGoal(t *testing.T) {
 	content := readFile(t, filepath.Join(scenarioDir(t), "config", "agent-config.yaml"))
-	keywords := []string{
-		"full control",
-		"agile",
-		"iterative",
-		"production-ready",
-	}
-	for _, kw := range keywords {
+	for _, kw := range []string{"full control", "agile", "iterative", "production-ready"} {
 		if !strings.Contains(content, kw) {
 			t.Errorf("audit step system_prompt missing keyword %q", kw)
 		}
+	}
+}
+
+// TestDockerCompose_NoDockerfileRefs verifies no Dockerfile build references.
+func TestDockerCompose_NoDockerfileRefs(t *testing.T) {
+	content := readFile(t, filepath.Join(scenarioDir(t), "docker-compose.yaml"))
+	if strings.Contains(content, "dockerfile: Dockerfile") {
+		t.Error("docker-compose.yaml must use pre-built image, not build from Dockerfile")
 	}
 }
 
@@ -198,16 +218,41 @@ func TestAgentPrompt_ContainsGoal(t *testing.T) {
 func TestDockerCompose_HasGemma4(t *testing.T) {
 	content := readFile(t, filepath.Join(scenarioDir(t), "docker-compose.yaml"))
 	if !strings.Contains(content, "gemma4") {
-		t.Error("docker-compose.yaml must reference gemma4")
+		t.Error("docker-compose.yaml must reference gemma4 (e.g. OLLAMA_MODEL=gemma4)")
 	}
 }
 
-// TestDockerCompose_HasRequiredServices verifies all services are defined.
-func TestDockerCompose_HasRequiredServices(t *testing.T) {
+// TestDockerCompose_HasHealthcheck verifies app service has a healthcheck.
+func TestDockerCompose_HasHealthcheck(t *testing.T) {
 	content := readFile(t, filepath.Join(scenarioDir(t), "docker-compose.yaml"))
-	for _, svc := range []string{"ollama:", "app:", "agent:"} {
-		if !strings.Contains(content, svc) {
-			t.Errorf("docker-compose.yaml missing service %q", svc)
-		}
+	if !strings.Contains(content, "/healthz") {
+		t.Error("docker-compose.yaml app service must have a healthcheck pointing to /healthz")
+	}
+}
+
+// TestDockerCompose_UsesPrebuiltImage verifies pre-built workflow image is used.
+func TestDockerCompose_UsesPrebuiltImage(t *testing.T) {
+	content := readFile(t, filepath.Join(scenarioDir(t), "docker-compose.yaml"))
+	if !strings.Contains(content, "ghcr.io/gocodealone/workflow:latest") {
+		t.Error("docker-compose.yaml must use ghcr.io/gocodealone/workflow:latest image")
+	}
+}
+
+// TestScenarioYAML_Exists verifies scenario.yaml is present with correct id.
+func TestScenarioYAML_Exists(t *testing.T) {
+	content := readFile(t, filepath.Join(scenarioDir(t), "scenario.yaml"))
+	if !strings.Contains(content, `id: "87-autonomous-agile-agent"`) {
+		t.Error(`scenario.yaml must contain id: "87-autonomous-agile-agent"`)
+	}
+}
+
+// TestBaseApp_ModuleListFormat verifies base-app.yaml uses list format for modules.
+func TestBaseApp_ModuleListFormat(t *testing.T) {
+	content := readFile(t, filepath.Join(scenarioDir(t), "config", "base-app.yaml"))
+	if !strings.Contains(content, "- name: db") {
+		t.Error("base-app.yaml modules must use list format (- name: db)")
+	}
+	if !strings.Contains(content, "type: storage.sqlite") {
+		t.Error("base-app.yaml must use type: storage.sqlite")
 	}
 }
