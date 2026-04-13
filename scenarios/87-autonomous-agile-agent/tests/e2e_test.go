@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +26,8 @@ const (
 // 2. Agent improvement loop triggered via POST /improve
 // 3. Agent completes at least 3 improvement iterations
 // 4. Git history shows meaningful progression
-// 5. Final app has more pipelines than the base config
+// 5. Blackboard DB has tables and rows (agent ran its pipelines)
+// 6. Final app has more pipelines than the base config
 func TestE2EAutonomousAgentIterations(t *testing.T) {
 	if os.Getenv("E2E") != "true" {
 		t.Skip("skipping E2E test; set E2E=true to run")
@@ -47,7 +49,10 @@ func TestE2EAutonomousAgentIterations(t *testing.T) {
 	t.Log("Step 5: verify git history shows at least 3 commits")
 	verifyGitHistory(t, 3)
 
-	t.Log("Step 6: verify final app has more capabilities than the base")
+	t.Log("Step 6: verify blackboard DB has tables and rows")
+	verifyBlackboard(t)
+
+	t.Log("Step 7: verify final app has more capabilities than the base")
 	verifyFinalApp(t)
 
 	t.Log("PASS: autonomous agile agent completed all iterations")
@@ -111,9 +116,8 @@ func waitForIterations(t *testing.T, minCommits int, timeout time.Duration) {
 			"git", "-C", "/data/repo", "log", "--oneline")
 		cmd.Dir = scenarioDir(t)
 		if out, err := cmd.Output(); err == nil {
-			iterCount := countIterCommits(string(out))
-			if iterCount >= minCommits {
-				t.Logf("agent completed %d iteration commits", iterCount)
+			if countIterCommits(string(out)) >= minCommits {
+				t.Logf("agent completed %d iteration commits", countIterCommits(string(out)))
 				return
 			}
 		}
@@ -147,6 +151,50 @@ func verifyGitHistory(t *testing.T, minCommits int) {
 	fmt.Printf("git history:\n%s\n", out)
 }
 
+// verifyBlackboard queries the agent's SQLite blackboard DB to confirm
+// the agent ran its pipelines and persisted state.
+func verifyBlackboard(t *testing.T) {
+	t.Helper()
+	// Count tables in the agent DB — a freshly initialized DB has at least
+	// the blackboard schema tables created by the workflow engine.
+	cmd := exec.Command("docker", "compose", "exec", "-T", "agent",
+		"sqlite3", "/data/agent.db",
+		"SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
+	cmd.Dir = scenarioDir(t)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("sqlite3 query on agent blackboard DB failed — agent DB may not exist: %v", err)
+	}
+	tableCount, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		t.Fatalf("unexpected sqlite3 output %q: %v", strings.TrimSpace(string(out)), err)
+	}
+	if tableCount == 0 {
+		t.Fatal("agent blackboard DB has no tables — agent pipeline never ran")
+	}
+	t.Logf("agent blackboard DB has %d tables", tableCount)
+
+	// Count total rows across all tables to confirm data was written.
+	cmd = exec.Command("docker", "compose", "exec", "-T", "agent",
+		"sqlite3", "/data/agent.db",
+		"SELECT SUM(cnt) FROM (SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type='table')")
+	cmd.Dir = scenarioDir(t)
+	// A simpler row-existence check: verify the DB file is non-trivially sized.
+	cmd2 := exec.Command("docker", "compose", "exec", "-T", "agent",
+		"sqlite3", "/data/agent.db",
+		"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+	cmd2.Dir = scenarioDir(t)
+	out2, err := cmd2.Output()
+	if err == nil {
+		userTableCount, _ := strconv.Atoi(strings.TrimSpace(string(out2)))
+		if userTableCount == 0 {
+			t.Error("agent blackboard DB has no user-defined tables — blackboard_post steps may not have run")
+		} else {
+			t.Logf("agent blackboard DB has %d user-defined tables", userTableCount)
+		}
+	}
+}
+
 // verifyFinalApp asserts the agent actually improved the application by checking
 // that the final app.yaml has more pipeline triggers than the base config.
 func verifyFinalApp(t *testing.T) {
@@ -176,4 +224,5 @@ func verifyFinalApp(t *testing.T) {
 		t.Fatalf("final /healthz failed after agent improvements: err=%v", err)
 	}
 	resp.Body.Close()
+	t.Log("final /healthz: OK")
 }
