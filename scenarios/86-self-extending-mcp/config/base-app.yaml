@@ -85,8 +85,7 @@ pipelines:
         type: step.json_response
         config:
           status: 201
-          body:
-            status: created
+          body_from: "steps.insert"
 
   get_task:
     trigger:
@@ -120,9 +119,13 @@ pipelines:
         type: step.db_exec
         config:
           database: db
-          query: "UPDATE tasks SET status = ?, updated_at = datetime('now') WHERE id = ?"
+          query: "UPDATE tasks SET title = COALESCE(?, title), description = COALESCE(?, description), status = COALESCE(?, status), priority = COALESCE(?, priority), updated_at = datetime('now'), completed_at = CASE WHEN ? = 'done' THEN datetime('now') ELSE completed_at END WHERE id = ?"
           params:
-            - "{{ .body.status }}"
+            - "{{ .body.title | default nil }}"
+            - "{{ .body.description | default nil }}"
+            - "{{ .body.status | default nil }}"
+            - "{{ .body.priority | default nil }}"
+            - "{{ .body.status | default \"\" }}"
             - "{{ .id }}"
       - name: respond
         type: step.json_response

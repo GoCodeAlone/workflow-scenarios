@@ -228,8 +228,10 @@ func verifyBlackboardArtifacts(t *testing.T) {
 
 func verifyGitHistory(t *testing.T) {
 	t.Helper()
-	out, err := exec.Command("docker", "compose", "exec", "-T", "agent",
-		"git", "-C", "/data/repo", "log", "--oneline").Output()
+	cmd := exec.Command("docker", "compose", "exec", "-T", "agent",
+		"git", "-C", "/data/repo", "log", "--oneline")
+	cmd.Dir = scenarioDir(t)
+	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("git log failed: %v", err)
 	}
