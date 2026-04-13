@@ -44,6 +44,7 @@ modules:
         allowed_tools:
           - "mcp:wfctl:*"
           - "mcp:wfctl:validate_config"
+          - "mcp:lsp:*"
           - "mcp:lsp:diagnose"
           - "file_read"
           - "file_write"
@@ -190,7 +191,7 @@ pipelines:
         type: step.self_improve_deploy
         config:
           strategy: hot_reload
-          config_path: "${CONFIG_PATH:-/data/config/app.yaml}"
+          config_path: /data/config/app.yaml
 
   health_check:
     trigger:
