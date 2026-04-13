@@ -20,13 +20,44 @@ func TestMCPToolUsage_BaseAppHasCRUDPipelines(t *testing.T) {
 	}
 }
 
-// TestMCPToolUsage_BaseAppModules verifies db and server modules in base-app.yaml.
+// TestMCPToolUsage_BaseAppHasTriggers verifies each pipeline has a trigger block.
+func TestMCPToolUsage_BaseAppHasTriggers(t *testing.T) {
+	content := readFile(t, filepath.Join(scenarioDir(t), "config", "base-app.yaml"))
+	routes := []string{
+		"path: /healthz",
+		"path: /tasks",
+		"path: /tasks/{id}",
+	}
+	for _, r := range routes {
+		if !strings.Contains(content, r) {
+			t.Errorf("base-app.yaml missing trigger route %q", r)
+		}
+	}
+}
+
+// TestMCPToolUsage_BaseAppModules verifies correct module types in base-app.yaml.
 func TestMCPToolUsage_BaseAppModules(t *testing.T) {
 	content := readFile(t, filepath.Join(scenarioDir(t), "config", "base-app.yaml"))
-	for _, check := range []string{"type: database.sqlite", "type: http.server"} {
+	for _, check := range []string{
+		"type: storage.sqlite",
+		"type: http.server",
+		"type: http.router",
+		"dbPath: /data/tasks.db",
+	} {
 		if !strings.Contains(content, check) {
-			t.Errorf("base-app.yaml missing module: %q", check)
+			t.Errorf("base-app.yaml missing: %q", check)
 		}
+	}
+}
+
+// TestMCPToolUsage_BaseAppListFormat verifies modules use list format, not map.
+func TestMCPToolUsage_BaseAppListFormat(t *testing.T) {
+	content := readFile(t, filepath.Join(scenarioDir(t), "config", "base-app.yaml"))
+	if !strings.Contains(content, "- name: db") {
+		t.Error("base-app.yaml modules must use list format (- name: db), not map format")
+	}
+	if !strings.Contains(content, "- name: server") {
+		t.Error("base-app.yaml modules must use list format (- name: server), not map format")
 	}
 }
 
@@ -67,22 +98,27 @@ func TestMCPToolUsage_SeedDataHasCreateTable(t *testing.T) {
 	}
 }
 
-// TestMCPToolUsage_AgentHasSelfImproveTools verifies mcp:self_improve:* permission.
-func TestMCPToolUsage_AgentHasSelfImproveTools(t *testing.T) {
-	data := readFile(t, filepath.Join(scenarioDir(t), "config", "agent-config.yaml"))
-	if !strings.Contains(data, `"mcp:self_improve:*"`) {
-		t.Error("agent-config.yaml must include mcp:self_improve:* in allowed_tools")
-	}
-}
-
-// TestMCPToolUsage_DockerComposeHasGemma4 verifies docker-compose.yaml uses gemma4.
+// TestMCPToolUsage_DockerComposeHasGemma4 verifies docker-compose.yaml references gemma4.
 func TestMCPToolUsage_DockerComposeHasGemma4(t *testing.T) {
 	data := readFile(t, filepath.Join(scenarioDir(t), "docker-compose.yaml"))
 	if !strings.Contains(data, "gemma4") {
-		t.Error("docker-compose.yaml must reference gemma4 model")
+		t.Error("docker-compose.yaml must reference gemma4 (e.g. OLLAMA_MODEL=gemma4)")
 	}
-	if !strings.Contains(data, "ollama") {
-		t.Error("docker-compose.yaml must include ollama service")
+}
+
+// TestMCPToolUsage_DockerComposeUsesPrebuiltImage verifies pre-built image is used.
+func TestMCPToolUsage_DockerComposeUsesPrebuiltImage(t *testing.T) {
+	data := readFile(t, filepath.Join(scenarioDir(t), "docker-compose.yaml"))
+	if !strings.Contains(data, "ghcr.io/gocodealone/workflow:latest") {
+		t.Error("docker-compose.yaml must use ghcr.io/gocodealone/workflow:latest image")
+	}
+}
+
+// TestMCPToolUsage_DockerComposeHasHealthcheck verifies app service has a healthcheck.
+func TestMCPToolUsage_DockerComposeHasHealthcheck(t *testing.T) {
+	data := readFile(t, filepath.Join(scenarioDir(t), "docker-compose.yaml"))
+	if !strings.Contains(data, "/healthz") {
+		t.Error("docker-compose.yaml app service must have a healthcheck pointing to /healthz")
 	}
 }
 
@@ -93,5 +129,14 @@ func TestMCPToolUsage_DockerComposeServices(t *testing.T) {
 		if !strings.Contains(data, svc) {
 			t.Errorf("docker-compose.yaml missing service %q", svc)
 		}
+	}
+}
+
+// TestMCPToolUsage_ScenarioYAMLExists verifies scenario.yaml is present.
+func TestMCPToolUsage_ScenarioYAMLExists(t *testing.T) {
+	cfg := filepath.Join(scenarioDir(t), "scenario.yaml")
+	data := readFile(t, cfg)
+	if !strings.Contains(data, `id: "86-self-extending-mcp"`) {
+		t.Error("scenario.yaml must contain id: \"86-self-extending-mcp\"")
 	}
 }

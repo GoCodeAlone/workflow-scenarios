@@ -17,9 +17,7 @@ services:
       retries: 30
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/gocodealone/workflow:latest
     ports:
       - "8080:8080"
     volumes:
@@ -28,14 +26,18 @@ services:
     environment:
       - WORKFLOW_ADMIN_SECRET=scenario-86-admin-secret
       - SEED_SQL=/data/config/seed-data.sql
+    command: ["-config", "/data/config/base-app.yaml", "-data-dir", "/data"]
     depends_on:
       ollama:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   agent:
-    build:
-      context: .
-      dockerfile: Dockerfile.agent
+    image: ghcr.io/gocodealone/workflow:latest
     ports:
       - "8081:8081"
     volumes:
@@ -44,13 +46,14 @@ services:
       - agent-repo:/data/repo
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=gemma4
       - WORKFLOW_ADMIN_SECRET=scenario-86-admin-secret
-      - IMPROVEMENT_GOAL=Create the task_analytics MCP tool as a workflow pipeline with mcp_tool trigger. The tool should return completion_rate (percentage of done tasks), avg_time_to_completion (average hours from created_at to completed_at for done tasks), and bottleneck_status (the status with the most stuck tasks). After deploying and using task_analytics, create the task_forecast tool that queries daily task creation over the last 30 days and projects the next 7 days using a 7-day moving average.
+    command: ["-config", "/data/config/agent-config.yaml", "-data-dir", "/data/agent"]
     depends_on:
       ollama:
         condition: service_healthy
       app:
-        condition: service_started
+        condition: service_healthy
 
 volumes:
   ollama-data:

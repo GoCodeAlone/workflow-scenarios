@@ -22,6 +22,14 @@ func TestMCPToolCreation_PipelineExists(t *testing.T) {
 	}
 }
 
+// TestMCPToolCreation_PipelineHasTrigger verifies the pipeline has an HTTP trigger.
+func TestMCPToolCreation_PipelineHasTrigger(t *testing.T) {
+	content := readFile(t, filepath.Join(scenarioDir(t), "config", "agent-config.yaml"))
+	if !strings.Contains(content, "path: /create-tools") {
+		t.Error("mcp_tool_creation_loop pipeline must have an HTTP trigger at /create-tools")
+	}
+}
+
 // TestMCPToolCreation_PipelineSteps verifies required steps exist in the pipeline.
 func TestMCPToolCreation_PipelineSteps(t *testing.T) {
 	content := readFile(t, filepath.Join(scenarioDir(t), "config", "agent-config.yaml"))

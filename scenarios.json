@@ -1016,6 +1016,17 @@
       "notes": "AI-powered lead scoring with CRM sync and human-in-the-loop approval. Validates CRM adapter, approval state machine, and cross-plugin composition with sidecar containers.",
       "lastTested": null,
       "lastResult": null
+    },
+    "86-self-extending-mcp": {
+      "status": "draft",
+      "namespace": "wf-scenario-86",
+      "deployed": false,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "notes": "Self-extending MCP tooling scenario. Agent creates task_analytics and task_forecast as mcp_tool trigger pipelines, uses them iteratively. Validates mcp:self_improve:* permission, guardrails, and two-iteration tool chain. Real Ollama + Gemma 4 via Docker Compose.",
+      "lastTested": null,
+      "lastResult": null
     }
   }
 }

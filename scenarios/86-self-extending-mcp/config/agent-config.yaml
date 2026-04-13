@@ -1,32 +1,42 @@
-# Scenario 86: Self-Extending MCP Tooling — Agent Config
+# ============================================================
+# Scenario 86 — Self-Extending MCP Tooling: Agent Config
 #
 # Agent goal:
-#   1. Create `task_analytics` as a workflow pipeline with mcp_tool trigger
-#      (fields: completion_rate, avg_time_to_completion, bottleneck_status)
+#   1. Create task_analytics as a workflow pipeline with mcp_tool trigger
+#      (completion_rate, avg_time_to_completion, bottleneck_status)
 #   2. Use task_analytics to analyze the seeded task data
-#   3. Based on findings, create `task_forecast` tool
-#      (forecasts completion trends using simple linear regression on task data)
+#   3. Create task_forecast tool based on findings
+#      (7-day moving average projection from 30-day history)
 #
-# Key difference from scenario 85: agent has mcp:self_improve:* permission
-# which allows creating new mcp_tool triggers (new MCP-exposed pipelines).
+# Key difference from scenario 85: mcp:self_improve:* permission
+# allows creating new mcp_tool triggers (new MCP-exposed pipelines).
+# ============================================================
 
 modules:
-  db:
-    type: database.sqlite
-    config:
-      path: /data/agent.db
-  server:
+  - name: server
     type: http.server
     config:
-      port: 8081
-  ai:
+      address: ":8081"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: db
+    type: storage.sqlite
+    config:
+      dbPath: /data/agent.db
+      walMode: true
+
+  - name: ai
     type: agent.provider
     config:
       provider: ollama
       model: gemma4
       base_url: http://ollama:11434
       max_tokens: 8192
-  guardrails:
+
+  - name: guardrails
     type: agent.guardrails
     config:
       defaults:
@@ -39,7 +49,7 @@ modules:
         allowed_tools:
           - "mcp:wfctl:*"
           - "mcp:lsp:*"
-          - "mcp:self_improve:*"   # Permits creating new mcp_tool triggers
+          - "mcp:self_improve:*"
         command_policy:
           mode: allowlist
           allowed_commands:
@@ -55,8 +65,35 @@ modules:
         mechanism: challenge_token
         admin_secret_env: "WORKFLOW_ADMIN_SECRET"
 
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
 pipelines:
+  health_check:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: healthy
+            scenario: "86-self-extending-mcp"
+            component: agent
+
   mcp_tool_creation_loop:
+    trigger:
+      type: http
+      config:
+        path: /create-tools
+        method: POST
     steps:
       - name: load_config
         type: step.read_file
@@ -68,12 +105,12 @@ pipelines:
         config:
           provider: ai
           system_prompt: |
-            You are a workflow MCP tool designer. Your goal is to extend
-            the running workflow application by creating new MCP-exposed tools.
+            You are a workflow MCP tool designer. Your goal is to extend the
+            running workflow application by creating new MCP-exposed tools.
 
-            Step 1: Use mcp:wfctl:inspect_config to understand the current application.
+            Step 1: Use mcp:wfctl:inspect_config to understand the current app.
             Step 2: Use mcp:wfctl:list_step_types to see available step types.
-            Step 3: Design a `task_analytics` pipeline with trigger type `mcp_tool`.
+            Step 3: Design a task_analytics pipeline with trigger type mcp_tool.
                     The tool should query the database and return:
                     - completion_rate: percentage of tasks with status='done'
                     - avg_time_to_completion: average hours from created_at to completed_at
@@ -112,10 +149,10 @@ pipelines:
         config:
           provider: ai
           system_prompt: |
-            The `task_analytics` MCP tool has been deployed. Now:
+            The task_analytics MCP tool has been deployed. Now:
             Step 1: Call the tool via mcp:app:task_analytics to get analytics.
             Step 2: Analyze the results to understand task completion patterns.
-            Step 3: Design a `task_forecast` tool that uses a step.db_query to
+            Step 3: Design a task_forecast tool that uses a step.db_query to
                     count tasks created per day over the last 30 days and
                     projects the next 7 days based on the 7-day moving average.
             Step 4: Validate and propose the updated config including task_forecast.

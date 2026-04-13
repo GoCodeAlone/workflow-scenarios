@@ -1,0 +1,44 @@
+name: Self-Extending MCP Tooling
+id: "86-self-extending-mcp"
+category: self-improvement
+description: |
+  An AI agent creates new MCP-exposed tools as workflow pipelines, then uses
+  those tools to analyze data and create further tools iteratively.
+
+  The agent starts with a basic SQLite-backed task API and:
+    - Creates task_analytics as a workflow pipeline with mcp_tool trigger
+      (completion_rate, avg_time_to_completion, bottleneck_status)
+    - Calls task_analytics to analyze 52 seeded task records
+    - Creates task_forecast tool based on findings (7-day moving average)
+
+  Validates:
+    - mcp_tool trigger type — pipeline exposed as an MCP tool
+    - mcp:self_improve:* permission scope for tool creation
+    - agent.guardrails with immutable_sections and command_policy
+    - step.agent_execute with MCP tool access (wfctl, lsp, self_improve)
+    - step.blackboard_post for artifact tracking per iteration
+    - step.self_improve_validate and step.self_improve_deploy
+    - Guardrail enforcement: immutability, command safety, tool scope
+
+  Runs with real Ollama + Gemma 4 via Docker Compose.
+components:
+  - workflow-plugin-agent
+  - agent.provider
+  - agent.guardrails
+  - mcp_tool trigger
+  - step.agent_execute
+  - step.blackboard_post
+  - step.self_improve_validate
+  - step.self_improve_deploy
+  - storage.sqlite
+  - http.server
+status: draft
+tags:
+  - self-improvement
+  - self-extending
+  - mcp
+  - ai-agent
+  - guardrails
+  - ollama
+  - gemma4
+  - docker-compose
