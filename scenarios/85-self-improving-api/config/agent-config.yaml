@@ -1,0 +1,150 @@
+# ============================================================
+# Scenario 85 — Self-Improving API: Agent + Guardrails Config
+#
+# The self-improvement agent uses Ollama + Gemma 4 to analyze
+# and propose improvements to base-app.yaml. Guardrails enforce
+# immutability of the guardrails section itself and block
+# dangerous shell commands.
+# ============================================================
+
+modules:
+  - name: db
+    type: storage.sqlite
+    config:
+      dbPath: /data/agent.db
+      walMode: true
+
+  - name: agent_db
+    type: storage.sqlite
+    config:
+      dbPath: /data/agent-state.db
+      walMode: true
+
+  - name: server
+    type: http.server
+    config:
+      address: ":8081"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: ai
+    type: agent.provider
+    config:
+      provider: ollama
+      model: gemma4
+      base_url: http://ollama:11434
+      max_tokens: 8192
+
+  - name: guardrails
+    type: agent.guardrails
+    config:
+      defaults:
+        enable_self_improvement: true
+        enable_iac_modification: false
+        require_human_approval: false
+        require_diff_review: true
+        max_iterations_per_cycle: 5
+        deploy_strategy: hot_reload
+        allowed_tools:
+          - "mcp:wfctl:*"
+          - "mcp:lsp:*"
+        command_policy:
+          mode: allowlist
+          allowed_commands:
+            - "go build"
+            - "go test"
+            - "wfctl"
+            - "curl"
+          enable_static_analysis: true
+          block_pipe_to_shell: true
+          block_script_execution: true
+      immutable_sections:
+        - path: "modules.guardrails"
+          override: challenge_token
+      override:
+        mechanism: challenge_token
+        admin_secret_env: "WORKFLOW_ADMIN_SECRET"
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
+
+pipelines:
+  self_improvement_loop:
+    trigger:
+      type: http
+      config:
+        path: /improve
+        method: POST
+    steps:
+      - name: load_config
+        type: step.read_file
+        config:
+          path: /data/config/app.yaml
+
+      - name: designer
+        type: step.agent_execute
+        config:
+          provider: ai
+          system_prompt: |
+            You are a workflow config designer. You have been given a task
+            to improve a workflow application. Analyze the current config
+            and propose improvements using the available MCP tools.
+            Always validate your proposals before submitting.
+            Target improvements:
+            - FTS5 full-text search with ranking (custom Yaegi module)
+            - Cursor-based pagination for list endpoints
+            - Rate limiting per IP
+            - Structured JSON logging with response times
+          tools:
+            - "mcp:wfctl:validate_config"
+            - "mcp:wfctl:inspect_config"
+            - "mcp:wfctl:get_module_schema"
+            - "mcp:wfctl:get_step_schema"
+            - "mcp:wfctl:list_module_types"
+            - "mcp:wfctl:list_step_types"
+            - "mcp:lsp:diagnose"
+          max_iterations: 15
+
+      - name: post_design
+        type: step.blackboard_post
+        config:
+          phase: design
+          artifact_type: config_proposal
+
+      - name: validate
+        type: step.self_improve_validate
+        config:
+          validation_level: strict
+          require_zero_errors: true
+
+      - name: diff
+        type: step.self_improve_diff
+        config:
+          force: true
+
+      - name: deploy
+        type: step.self_improve_deploy
+        config:
+          strategy: hot_reload
+          config_path: /data/config/app.yaml
+
+  health_check:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: healthy
+            scenario: "85-self-improving-api"
+            component: agent
