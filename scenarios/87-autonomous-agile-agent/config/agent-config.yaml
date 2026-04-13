@@ -68,6 +68,9 @@ workflows:
   http:
     router: router
     server: server
+    # routes: [] — HTTP bindings come from pipeline-level trigger definitions,
+    # not from this list. The workflow engine registers each pipeline's HTTP
+    # trigger path automatically. This is the standard pattern for trigger-based routing.
     routes: []
 
 pipelines:
