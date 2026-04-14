@@ -13,3 +13,4 @@ scenarios/*/plugins/
 scenarios/*/mock/mock-*
 scenarios/*/*.db
 sample-orders
+data/
