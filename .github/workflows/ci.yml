@@ -43,7 +43,7 @@ jobs:
       packages: read
     env:
       GOPRIVATE: github.com/GoCodeAlone/*
-      GONOSUMCHECK: github.com/GoCodeAlone/*
+      GONOSUMDB: github.com/GoCodeAlone/*
 
     steps:
     - name: Check out scenarios
