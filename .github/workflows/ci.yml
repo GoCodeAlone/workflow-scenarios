@@ -113,6 +113,123 @@ jobs:
         echo "Type validation: $passed passed, $warned warnings"
         # Warnings only — don't fail on unknown types
 
+  strict-validate-configs:
+    name: Strict wfctl Validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      GOPRIVATE: github.com/GoCodeAlone/*
+      GONOSUMCHECK: github.com/GoCodeAlone/*
+
+    steps:
+    - name: Check out scenarios
+      uses: actions/checkout@v4
+
+    - name: Check out workflow engine
+      uses: actions/checkout@v4
+      with:
+        repository: GoCodeAlone/workflow
+        path: workflow
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.26'
+        cache: true
+        cache-dependency-path: workflow/go.sum
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        registry-url: 'https://npm.pkg.github.com'
+        cache: 'npm'
+        cache-dependency-path: workflow/ui/package-lock.json
+
+    - name: Build UI assets
+      run: cd workflow/ui && npm ci && npm run build
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build wfctl
+      run: cd workflow && go build -o bin/wfctl ./cmd/wfctl
+
+    - name: Strict validation — all scenario configs
+      run: |
+        passed=0
+        failed=0
+        for config in scenarios/*/config/app.yaml; do
+          scenario=$(echo "$config" | cut -d/ -f2)
+          if workflow/bin/wfctl validate --strict --skip-unknown-types "$config" 2>/dev/null; then
+            passed=$((passed + 1))
+          else
+            echo "  FAIL: $scenario"
+            failed=$((failed + 1))
+          fi
+        done
+        echo ""
+        echo "Strict validation: $passed passed, $failed failed"
+        [ "$failed" -eq 0 ]
+
+  go-modules:
+    name: Go Module Validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      GOPRIVATE: github.com/GoCodeAlone/*
+      GONOSUMDB: github.com/GoCodeAlone/*
+
+    steps:
+    - name: Check out scenarios
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.26'
+        cache: true
+
+    - name: Vet root module
+      run: go vet ./...
+
+    - name: Test root module
+      run: go test ./...
+
+    - name: Vet scenario modules
+      run: |
+        for mod_dir in scenarios/85-self-improving-api scenarios/86-self-extending-mcp scenarios/87-autonomous-agile-agent; do
+          echo "=== go vet $mod_dir ==="
+          (cd "$mod_dir" && go vet ./...)
+        done
+
+    - name: Check go mod tidy — root
+      run: |
+        cp go.mod go.mod.bak
+        cp go.sum go.sum.bak
+        go mod tidy
+        if ! diff -q go.mod go.mod.bak >/dev/null || ! diff -q go.sum go.sum.bak >/dev/null; then
+          echo "ERROR: go mod tidy changed go.mod or go.sum for root module"
+          diff go.mod.bak go.mod || true
+          exit 1
+        fi
+        rm go.mod.bak go.sum.bak
+
+    - name: Check go mod tidy — scenario modules
+      run: |
+        for mod_dir in scenarios/85-self-improving-api scenarios/86-self-extending-mcp scenarios/87-autonomous-agile-agent; do
+          echo "=== go mod tidy $mod_dir ==="
+          (cd "$mod_dir" && cp go.mod go.mod.bak && cp go.sum go.sum.bak && \
+            go mod tidy && \
+            if ! diff -q go.mod go.mod.bak >/dev/null || ! diff -q go.sum go.sum.bak >/dev/null; then \
+              echo "ERROR: go mod tidy changed files in $mod_dir"; diff go.mod.bak go.mod || true; exit 1; \
+            fi && rm go.mod.bak go.sum.bak)
+        done
+
   scenario-structure:
     name: Validate Scenario Structure
     runs-on: ubuntu-latest
