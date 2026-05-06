@@ -121,7 +121,7 @@ jobs:
       packages: read
     env:
       GOPRIVATE: github.com/GoCodeAlone/*
-      GONOSUMCHECK: github.com/GoCodeAlone/*
+      GONOSUMDB: github.com/GoCodeAlone/*
 
     steps:
     - name: Check out scenarios
@@ -161,17 +161,28 @@ jobs:
       run: |
         passed=0
         failed=0
+        skipped=0
         for config in scenarios/*/config/app.yaml; do
           scenario=$(echo "$config" | cut -d/ -f2)
-          if workflow/bin/wfctl validate --strict --skip-unknown-types "$config" 2>/dev/null; then
+          # Skip configs that have no modules: key — these are non-module configs
+          # (e.g. ratchet service configs, pipeline-only configs) that are already
+          # covered by the non-strict validate-configs job.
+          if ! grep -q "^modules:" "$config"; then
+            echo "  SKIP: $scenario (no modules: key)"
+            skipped=$((skipped + 1))
+            continue
+          fi
+          err=$(workflow/bin/wfctl validate --strict --skip-unknown-types "$config" 2>&1)
+          if [ $? -eq 0 ]; then
             passed=$((passed + 1))
           else
             echo "  FAIL: $scenario"
+            echo "$err" | sed 's/^/    /'
             failed=$((failed + 1))
           fi
         done
         echo ""
-        echo "Strict validation: $passed passed, $failed failed"
+        echo "Strict validation: $passed passed, $failed failed, $skipped skipped"
         [ "$failed" -eq 0 ]
 
   go-modules:
@@ -200,11 +211,13 @@ jobs:
     - name: Test root module
       run: go test ./...
 
-    - name: Vet scenario modules
+    - name: Vet and test scenario modules
       run: |
         for mod_dir in scenarios/85-self-improving-api scenarios/86-self-extending-mcp scenarios/87-autonomous-agile-agent; do
           echo "=== go vet $mod_dir ==="
           (cd "$mod_dir" && go vet ./...)
+          echo "=== go test $mod_dir ==="
+          (cd "$mod_dir" && go test ./...)
         done
 
     - name: Check go mod tidy — root
