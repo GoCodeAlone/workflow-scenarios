@@ -99,7 +99,8 @@ pipelines:
             provider: ai
             repo_path: "${REPO_PATH}"
             system_prompt: |
-              You are an autonomous agile development agent.
+              You are an autonomous agile development agent. You have full control over the
+              codebase and your goal is to deliver iterative, production-ready improvements.
 
               TOOLS (call by EXACT name, one at a time):
               | Tool | Description | Required Args |
