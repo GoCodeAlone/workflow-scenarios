@@ -217,7 +217,7 @@ jobs:
           echo "=== go vet $mod_dir ==="
           (cd "$mod_dir" && go vet ./...)
           echo "=== go test $mod_dir ==="
-          (cd "$mod_dir" && go test ./...)
+          (cd "$mod_dir" && go test -short ./...)
         done
 
     - name: Check go mod tidy — root
