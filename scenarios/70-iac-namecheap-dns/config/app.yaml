@@ -1,0 +1,55 @@
+# ============================================================
+# Scenario 70 — IaC Namecheap DNS
+#
+# Declares a Namecheap-managed DNS zone with three records via
+# workflow IaC. The workflow-plugin-namecheap plugin provides
+# iac.provider.namecheap + infra.dns Driver.
+#
+# Config-validation only — no live Namecheap API calls.
+# ============================================================
+
+modules:
+  - name: namecheap
+    type: iac.provider.namecheap
+    config:
+      api_user: ${NAMECHEAP_API_USER}
+      api_key:  ${NAMECHEAP_API_KEY}
+      client_ip: ${NAMECHEAP_CLIENT_IP}
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  - name: gocodealone-tech
+    type: infra.dns
+    config:
+      provider: namecheap
+      domain: gocodealone.tech
+      records:
+        - type: A
+          name: "@"
+          data: 203.0.113.10
+          ttl: 1800
+        - type: CNAME
+          name: www
+          data: gocodealone.tech.
+          ttl: 1800
+        - type: TXT
+          name: "@"
+          data: "v=spf1 -all"
+          ttl: 3600
+
+workflows:
+  pipeline:
+    pipelines:
+      - name: dns-apply
+        steps:
+          - name: plan
+            type: step.iac_plan
+            config:
+              resources: [gocodealone-tech]
+          - name: apply
+            type: step.iac_apply
+            config:
+              resources: [gocodealone-tech]

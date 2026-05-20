@@ -1,0 +1,55 @@
+# ============================================================
+# Scenario 71 — IaC Hover DNS
+#
+# Declares a Hover-managed DNS zone via workflow IaC. The
+# workflow-plugin-hover plugin handles user+password+TOTP login.
+#
+# Config-validation only — no live Hover API calls.
+# ============================================================
+
+modules:
+  - name: hover
+    type: iac.provider.hover
+    config:
+      username: ${HOVER_USERNAME}
+      password: ${HOVER_PASSWORD}
+      totp_secret: ${HOVER_TOTP_SECRET}
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  - name: example-com
+    type: infra.dns
+    config:
+      provider: hover
+      domain: example.com
+      records:
+        - type: A
+          name: "@"
+          data: 198.51.100.42
+          ttl: 900
+        - type: AAAA
+          name: "@"
+          data: 2001:db8::1
+          ttl: 900
+        - type: MX
+          name: "@"
+          data: mail.example.com.
+          mx: 10
+          ttl: 3600
+
+workflows:
+  pipeline:
+    pipelines:
+      - name: dns-apply
+        steps:
+          - name: plan
+            type: step.iac_plan
+            config:
+              resources: [example-com]
+          - name: apply
+            type: step.iac_apply
+            config:
+              resources: [example-com]

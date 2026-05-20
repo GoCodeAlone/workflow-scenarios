@@ -1,0 +1,22 @@
+name: IaC Dynamic DNS Multi-Provider
+id: "72-iac-dyndns-multiprovider"
+category: C
+description: |
+  Config-validation scenario for the infra.dyndns module backed by
+  multiple DNS providers in a single config (DigitalOcean + Namecheap
+  + Hover). Demonstrates the provider-agnostic dyndns shape.
+
+  No live cloud or DNS API calls.
+components:
+  - wfctl (config validation)
+  - infra.dyndns
+  - iac.provider.* (digitalocean, namecheap, hover)
+  - infra.dns
+status: testable
+tags:
+  - iac
+  - dns
+  - dyndns
+  - multi-provider
+  - config-validation
+  - local-only
