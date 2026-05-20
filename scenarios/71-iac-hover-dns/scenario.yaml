@@ -1,0 +1,22 @@
+name: IaC Hover DNS
+id: "71-iac-hover-dns"
+category: C
+description: |
+  Config-validation scenario for a Hover-managed DNS zone via
+  workflow IaC. Hover has no official API; the plugin mimics the
+  browser-side username+password+TOTP login flow.
+
+  No live Hover API calls — validates YAML config + module wiring.
+components:
+  - wfctl (config validation)
+  - iac.provider.hover (from workflow-plugin-hover)
+  - iac.state (backend: memory)
+  - infra.dns
+status: testable
+tags:
+  - iac
+  - dns
+  - hover
+  - totp
+  - config-validation
+  - local-only

@@ -1,0 +1,69 @@
+# ============================================================
+# Scenario 72 — IaC Dynamic DNS Multi-Provider
+#
+# Wires the infra.dyndns module against three different DNS
+# providers in a single config. Each daemon polls its own IP
+# (defaults to multi-source quorum via icanhazip + ifconfig.me
+# + ipify) and updates a single A record on change.
+#
+# Config-validation only — no live API calls.
+# ============================================================
+
+modules:
+  - name: do-provider
+    type: iac.provider
+    config:
+      provider: digitalocean
+      credentials: env
+
+  - name: namecheap
+    type: iac.provider.namecheap
+    config:
+      api_user: ${NAMECHEAP_API_USER}
+      api_key:  ${NAMECHEAP_API_KEY}
+      client_ip: ${NAMECHEAP_CLIENT_IP}
+
+  - name: hover
+    type: iac.provider.hover
+    config:
+      username: ${HOVER_USERNAME}
+      password: ${HOVER_PASSWORD}
+      totp_secret: ${HOVER_TOTP_SECRET}
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  # DigitalOcean home record — 5-minute poll.
+  - name: dyndns-home-do
+    type: infra.dyndns
+    config:
+      provider: do-provider
+      domain: example.com
+      record_name: home
+      poll_interval: 5m
+      detect_via: [icanhazip, ifconfig.me, ipify]
+      quorum: 2
+
+  # Namecheap office record — 10-minute poll.
+  - name: dyndns-office-namecheap
+    type: infra.dyndns
+    config:
+      provider: namecheap
+      domain: gocodealone.tech
+      record_name: office
+      poll_interval: 10m
+      detect_via: [icanhazip, ipify]
+      quorum: 2
+
+  # Hover lab record — 30-minute poll (login is heavier).
+  - name: dyndns-lab-hover
+    type: infra.dyndns
+    config:
+      provider: hover
+      domain: example.com
+      record_name: lab
+      poll_interval: 30m
+      detect_via: [ipify]
+      quorum: 1

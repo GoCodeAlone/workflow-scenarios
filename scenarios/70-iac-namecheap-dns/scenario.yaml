@@ -1,0 +1,22 @@
+name: IaC Namecheap DNS
+id: "70-iac-namecheap-dns"
+category: C
+description: |
+  Config-validation scenario for a Namecheap-managed DNS zone via
+  workflow IaC. Exercises iac.provider.namecheap + infra.dns
+  resource type with the new DNS provider plugin.
+
+  No live cloud API calls — validates YAML config syntax and module
+  wiring only.
+components:
+  - wfctl (config validation)
+  - iac.provider.namecheap (from workflow-plugin-namecheap)
+  - iac.state (backend: memory)
+  - infra.dns
+status: testable
+tags:
+  - iac
+  - dns
+  - namecheap
+  - config-validation
+  - local-only
