@@ -114,14 +114,14 @@
       ],
       "dns_required_outputs": [
         "domain",
+        "records",
         "record_count",
         "name_servers",
         "authority",
         "authority.name_servers"
       ],
       "delete_unlisted_flag": "unsupported",
-      "apply_semantics": "zone_create_update_delete",
-      "coverage": "zone_authority_only"
+      "apply_semantics": "record_upsert_preserve_unlisted"
     },
     "gcp": {
       "resource_types": [
@@ -129,13 +129,14 @@
       ],
       "dns_required_outputs": [
         "domain",
+        "records",
+        "record_count",
         "name_servers",
         "authority",
         "authority.name_servers"
       ],
       "delete_unlisted_flag": "unsupported",
-      "apply_semantics": "zone_create_update_delete",
-      "coverage": "zone_authority_only"
+      "apply_semantics": "record_upsert_preserve_unlisted"
     }
   },
   "snapshots": [

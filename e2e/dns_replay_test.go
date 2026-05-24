@@ -32,11 +32,11 @@ func TestDNSReplayMigrationScenario(t *testing.T) {
 		"PASS: cloudflare output contract requires authority.name_servers",
 		"PASS: namecheap output contract requires authority.is_using_our_dns",
 		"PASS: aws output contract requires records",
-		"PASS: Azure DNS contract is marked zone-authority-only",
-		"PASS: GCP Cloud DNS contract is marked zone-authority-only",
+		"PASS: Azure DNS contract declares record upsert semantics",
+		"PASS: GCP Cloud DNS contract declares record upsert semantics",
 		"PASS: MX records are preserved in target",
 		"PASS: destructive deletes require explicit opt-in",
-		"Results: 228 passed, 0 failed",
+		"Results: 231 passed, 0 failed",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("DNS replay output missing %q\n%s", want, output)
