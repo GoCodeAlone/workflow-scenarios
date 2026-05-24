@@ -2,10 +2,10 @@ name: IaC DNS Replay Migration
 id: "88-iac-dns-replay-migration"
 category: C
 description: |
-  Offline replay scenario for DNS/IaC import and migration safety.
-  Uses sanitized provider snapshots for Hover, DigitalOcean, Namecheap,
-  and Cloudflare to validate record preservation and destructive-change
-  guardrails without real provider accounts.
+  Offline replay scenario for DNS/IaC import and migration safety. Uses
+  sanitized workflow.dns-portfolio.export.v1 provider snapshots for Hover,
+  DigitalOcean, Namecheap, and Cloudflare to validate record preservation,
+  redaction, and destructive-change guardrails without real provider accounts.
 components:
   - workflow-scenarios replay fixture
   - iac.provider.cloudflare (target shape)
@@ -19,5 +19,6 @@ tags:
   - dns
   - import
   - migration
+  - sanitized-export
   - replay
   - local-only

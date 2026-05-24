@@ -4,17 +4,17 @@ This backlog preserves open work from the DNS/IaC and workflow-compute threads s
 
 ## DNS/IaC Scenarios
 
-- Add public hermetic replay coverage for DNS import and migration invariants.
+- Public hermetic replay coverage for DNS import and migration invariants shipped in scenario 88.
 - Add private live scenarios for Cloudflare, DigitalOcean, Namecheap, and Hover where credentials and disposable resources are available.
-- Define a sanitized export format for real DNS portfolios before committing replay fixtures.
-- Add regression coverage for NS delegation, MX records, SPF/DMARC TXT records, CNAMEs, and provider-specific TTL/priority normalization.
+- Sanitized `workflow.dns-portfolio.export.v1` fixture envelope shipped in scenario 88; future live exporters should emit this shape before fixtures are committed.
+- Scenario 88 covers NS delegation, MX records, SPF/DMARC TXT records, CNAMEs, documentation/example IP enforcement, and provider-specific TTL/priority normalization.
 
 ## Provider Plugins
 
-- Extend Cloudflare plugin beyond DNS zones if the Cloudflare Registrar API exposes safe domain transfer/list/status/name-server operations.
+- Cloudflare plugin now supports import-first `infra.domain` for registrar metadata and explicit auto-renew updates; transfer/purchase flows remain out of public replay scope.
 - Keep DigitalOcean DNS import outputs aligned with Cloudflare/Namecheap canonical DNS replay shape.
 - Add or document a Hover importer path. Hover has no official API, so live automation may remain private or best-effort.
-- Revisit Namecheap registrar-transfer support separately from DNS management.
+- Namecheap plugin now supports explicit `infra.domain_transfer` creation/status using the provider API; destructive or cancellation-style operations remain separate work.
 
 ## DNS Management UI
 
