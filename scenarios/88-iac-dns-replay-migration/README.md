@@ -26,6 +26,8 @@ Replay fixtures use `workflow.dns-portfolio.export.v1`:
 - `sanitization.rules` records the transformations applied before commit.
 - `sanitization.forbidden_patterns` lists source-only strings that must not appear in the sanitized snapshots or migration plan.
 - `snapshots[]` contains provider, domain, authority metadata, and normalized DNS records.
+- `import_state_contracts.applied_config_source` must be `adoption` so replayed imports are not mistaken for user-authored apply state.
+- Imported DNS applied config must keep user-facing `provider`, `domain`, and `records` fields while omitting provider-only IDs and transfer-only secrets or charge-confirmation fields.
 - `migration.apply_mode` must start as `plan_only`, with `delete_unlisted: false`.
 
 Live/private exporters should preserve provider record semantics while replacing domains with `.example` aliases, public and private addresses with documentation ranges, email addresses with `example.invalid`, and TXT verification or DKIM material with explicit redaction markers.

@@ -8,13 +8,16 @@ This backlog preserves open work from the DNS/IaC and workflow-compute threads s
 - Add private live scenarios for Cloudflare, DigitalOcean, Namecheap, and Hover where credentials and disposable resources are available.
 - Sanitized `workflow.dns-portfolio.export.v1` fixture envelope shipped in scenario 88; future live exporters should emit this shape before fixtures are committed.
 - Scenario 88 covers NS delegation, MX records, SPF/DMARC TXT records, CNAMEs, documentation/example IP enforcement, and provider-specific TTL/priority normalization.
+- Scenario 88 now declares the common import-state contract: imported DNS state uses `AppliedConfigSource=adoption`, maps provider outputs back to user-facing record config, and omits provider-only IDs and transfer secrets from applied config.
 
 ## Provider Plugins
 
 - Cloudflare plugin now supports import-first `infra.domain` for registrar metadata and explicit auto-renew updates; transfer/purchase flows remain out of public replay scope.
+- Cloudflare import now emits adoption-shaped applied config for DNS and registrar imports while preserving non-destructive DNS behavior unless `manage_unlisted` is explicit.
 - DigitalOcean DNS import outputs now include nested authoritative DNS metadata aligned with the canonical DNS replay shape.
 - Hover now supports and documents read-only `infra.dns` and `infra.dns_delegation` import. Hover has no official API, so live automation remains best-effort and should stay private-gated.
 - Namecheap plugin now supports explicit `infra.domain_transfer` creation/status using the provider API; destructive or cancellation-style operations remain separate work.
+- Namecheap import now emits adoption-shaped applied config for DNS and transfer status imports, translating `address`/`mx_pref` outputs back to `data`/`mx` config without importing EPP code or transfer confirmation.
 
 ## DNS Management UI
 

@@ -139,6 +139,35 @@
       "apply_semantics": "record_upsert_preserve_unlisted"
     }
   },
+  "import_state_contracts": {
+    "applied_config_source": "adoption",
+    "dns_required_applied_config": [
+      "provider",
+      "domain",
+      "records"
+    ],
+    "forbidden_applied_config_fields": [
+      "id",
+      "provider_id",
+      "record_id",
+      "epp_code",
+      "confirm_transfer"
+    ],
+    "provider_record_mappings": {
+      "namecheap": {
+        "value_output": "address",
+        "value_applied": "data",
+        "mx_output": "mx_pref",
+        "mx_applied": "mx"
+      },
+      "cloudflare": {
+        "value_output": "data",
+        "value_applied": "data",
+        "provider_record_id_output": "id",
+        "provider_record_id_applied": "forbidden"
+      }
+    }
+  },
   "snapshots": [
     {
       "id": "hover-source",
