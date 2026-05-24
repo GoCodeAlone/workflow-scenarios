@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Scenario 30: ECS Fargate
-# Tests the platform.ecs module and ECS pipeline steps (plan/apply/status/destroy)
-# using the in-memory mock backend.
+# Tests the generic IaC ECS/Fargate-style container service scenario.
 # Runs go unit tests from the workflow repo.
 set -euo pipefail
 

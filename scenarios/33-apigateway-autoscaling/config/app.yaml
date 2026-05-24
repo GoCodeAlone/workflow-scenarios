@@ -8,18 +8,23 @@ modules:
     type: http.router
     dependsOn: [server]
 
-  - name: aws-mock
-    type: cloud.account
+  - name: aws-provider
+    type: iac.provider
     config:
-      provider: mock
+      provider: aws
+      credentials: env
       region: us-east-1
 
-  - name: production-gateway
-    type: platform.apigateway
-    dependsOn: [aws-mock]
+  - name: iac-state
+    type: iac.state
     config:
-      account: aws-mock
-      provider: mock
+      backend: memory
+
+  - name: production-gateway
+    type: infra.api_gateway
+    dependsOn: [aws-provider]
+    config:
+      provider: aws-provider
       name: my-api
       stage: prod
       cors:
@@ -36,11 +41,10 @@ modules:
           auth_type: jwt
 
   - name: my-scaling
-    type: platform.autoscaling
-    dependsOn: [aws-mock]
+    type: infra.autoscaling_group
+    dependsOn: [aws-provider]
     config:
-      account: aws-mock
-      provider: mock
+      provider: aws-provider
       policies:
         - name: cpu-target
           type: target_tracking
@@ -85,9 +89,11 @@ pipelines:
         method: POST
     steps:
       - name: plan
-        type: step.apigw_plan
+        type: step.iac_plan
         config:
-          gateway: production-gateway
+          platform: production-gateway
+          resource_id: production-gateway
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
@@ -102,9 +108,11 @@ pipelines:
         method: POST
     steps:
       - name: apply
-        type: step.apigw_apply
+        type: step.iac_apply
         config:
-          gateway: production-gateway
+          platform: production-gateway
+          resource_id: production-gateway
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
@@ -119,9 +127,11 @@ pipelines:
         method: GET
     steps:
       - name: status
-        type: step.apigw_status
+        type: step.iac_status
         config:
-          gateway: production-gateway
+          platform: production-gateway
+          resource_id: production-gateway
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
@@ -136,9 +146,11 @@ pipelines:
         method: DELETE
     steps:
       - name: destroy
-        type: step.apigw_destroy
+        type: step.iac_destroy
         config:
-          gateway: production-gateway
+          platform: production-gateway
+          resource_id: production-gateway
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
@@ -153,9 +165,11 @@ pipelines:
         method: POST
     steps:
       - name: plan
-        type: step.scaling_plan
+        type: step.iac_plan
         config:
-          scaling: my-scaling
+          platform: my-scaling
+          resource_id: my-scaling
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
@@ -170,9 +184,11 @@ pipelines:
         method: POST
     steps:
       - name: apply
-        type: step.scaling_apply
+        type: step.iac_apply
         config:
-          scaling: my-scaling
+          platform: my-scaling
+          resource_id: my-scaling
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
@@ -187,9 +203,11 @@ pipelines:
         method: GET
     steps:
       - name: status
-        type: step.scaling_status
+        type: step.iac_status
         config:
-          scaling: my-scaling
+          platform: my-scaling
+          resource_id: my-scaling
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
@@ -204,9 +222,11 @@ pipelines:
         method: DELETE
     steps:
       - name: destroy
-        type: step.scaling_destroy
+        type: step.iac_destroy
         config:
-          scaling: my-scaling
+          platform: my-scaling
+          resource_id: my-scaling
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:

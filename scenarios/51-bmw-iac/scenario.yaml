@@ -8,9 +8,10 @@ description: |
   across 4 resource types: managed database, VPC/firewall, App Platform, DNS.
   State is persisted via the iac.state filesystem backend.
 
-  All platform modules use mock backends — no real cloud API calls.
+  DigitalOcean resources are declared through generic infra.* modules backed by
+  workflow-plugin-digitalocean.
 components:
   - workflow (engine)
-  - cloud plugin (cloud.account)
-  - platform plugin (platform.do_database, platform.do_networking, platform.do_app, platform.do_dns, iac.state)
+  - workflow-plugin-digitalocean (iac.provider, infra.database/vpc/firewall/container_service/dns)
+  - workflow IaC state and lifecycle steps
 status: testable

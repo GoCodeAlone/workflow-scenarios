@@ -102,8 +102,8 @@ pipelines:
                 provider_service: agent-scripted
                 max_iterations: 10
               input:
-                task: "{{ .steps.parse_request.task | default \"Diagnose and remediate any unhealthy pods in the production namespace.\" }}"
-                agent_id: "{{ .steps.parse_request.agent_id | default \"infra-agent\" }}"
+                task: "{{ .steps.parse_request.body.task | default \"Diagnose and remediate any unhealthy pods in the production namespace.\" }}"
+                agent_id: "{{ .steps.parse_request.body.agent_id | default \"infra-agent\" }}"
                 system_prompt: "You are an autonomous infrastructure agent. Diagnose issues and take remediation actions using the available tools."
             - name: respond
               type: step.json_response

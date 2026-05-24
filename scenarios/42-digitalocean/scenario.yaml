@@ -2,38 +2,30 @@ name: DigitalOcean Cloud Provider
 id: "42-digitalocean"
 category: C
 description: |
-  Demonstrates DigitalOcean as a first-class cloud provider using the mock backend.
-  Covers four platform modules:
-    - platform.doks: DigitalOcean Kubernetes (DOKS) cluster lifecycle (create/get/delete/list-node-pools)
-    - platform.do_networking: VPC and firewall management (plan/apply/status/destroy)
-    - platform.do_dns: Domain and DNS record management (plan/apply/status/destroy)
-    - platform.do_app: App Platform deployment (deploy/status/logs/scale/destroy)
+  Demonstrates DigitalOcean as an IaC provider through workflow-plugin-digitalocean.
+  Covers five generic IaC modules:
+    - infra.k8s_cluster: DigitalOcean Kubernetes (DOKS) cluster lifecycle
+    - infra.vpc: VPC management
+    - infra.firewall: firewall management
+    - infra.dns: domain and DNS record management
+    - infra.container_service: App Platform deployment
 
-  Also shows the five DO pipeline steps: step.do_deploy, step.do_status, step.do_logs,
-  step.do_scale, and step.do_destroy wired to a platform.do_app module.
-
-  No real DigitalOcean API calls are made — all state is tracked in-memory using
-  mock backends, making the scenario runnable without any cloud credentials.
-
-  When provider=digitalocean is set on a cloud.account module with credential
-  type api_token (or env reading DIGITALOCEAN_TOKEN), the real godo client is used
-  instead of the mock, enabling live DO API calls.
+  Provider-specific SDKs live in the plugin. The scenario config uses
+  iac.provider and generic step.iac_* lifecycle steps.
 
 components:
   - workflow (engine)
-  - cloud plugin (cloud.account with provider=digitalocean)
-  - platform plugin (platform.doks, platform.do_networking, platform.do_dns, platform.do_app)
-  - platform pipeline steps (step.do_deploy, step.do_status, step.do_logs, step.do_scale, step.do_destroy)
+  - workflow-plugin-digitalocean (iac.provider, infra.* resources)
+  - workflow IaC steps (step.iac_apply/status/destroy)
 status: testable
 
 modules:
-  cloud.account:
+  iac.provider:
     provider: digitalocean
     region: nyc3
-    credentials:
-      type: env  # reads DIGITALOCEAN_TOKEN from environment
+    credentials: env
 
-  platform.doks:
+  infra.k8s_cluster:
     cluster_name: staging-k8s
     region: nyc3
     version: "1.29.1-do.0"
@@ -45,12 +37,15 @@ modules:
       min_nodes: 1
       max_nodes: 5
 
-  platform.do_networking:
-    provider: mock
-    vpc:
-      name: staging-vpc
-      region: nyc3
-      ip_range: "10.20.0.0/16"
+  infra.vpc:
+    provider: do-provider
+    name: staging-vpc
+    region: nyc3
+    cidr: "10.20.0.0/16"
+
+  infra.firewall:
+    provider: do-provider
+    vpc: do-vpc
     firewalls:
       - name: allow-web
         inbound_rules:
@@ -61,8 +56,8 @@ modules:
             port_range: "443"
             sources: "0.0.0.0/0"
 
-  platform.do_dns:
-    provider: mock
+  infra.dns:
+    provider: do-provider
     domain: staging.example.com
     records:
       - name: api
@@ -74,12 +69,12 @@ modules:
         data: staging.example.com
         ttl: 3600
 
-  platform.do_app:
-    provider: mock
+  infra.container_service:
+    provider: do-provider
     name: my-api
     region: nyc
     image: "registry.example.com/my-api:v1.0.0"
-    instances: 2
+    replicas: 2
     http_port: 8080
     envs:
       APP_ENV: production
@@ -88,25 +83,29 @@ modules:
 pipelines:
   do-deploy:
     steps:
-      - type: step.do_deploy
+      - type: step.iac_apply
         config:
-          app: my-api
+          platform: do-app
+          resource_id: do-app
 
   do-status:
     steps:
-      - type: step.do_status
+      - type: step.iac_status
         config:
-          app: my-api
+          platform: do-app
+          resource_id: do-app
 
   do-scale:
     steps:
-      - type: step.do_scale
+      - type: step.iac_apply
         config:
-          app: my-api
-          instances: 4
+          platform: do-app
+          resource_id: do-app
+          desired_replicas: 4
 
   do-destroy:
     steps:
-      - type: step.do_destroy
+      - type: step.iac_destroy
         config:
-          app: my-api
+          platform: do-app
+          resource_id: do-app

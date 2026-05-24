@@ -2,15 +2,12 @@ name: API Gateway and Autoscaling
 id: "33-apigateway-autoscaling"
 category: C
 description: |
-  Demonstrates platform.apigateway and platform.autoscaling modules with mock backends.
+  Demonstrates API gateway and autoscaling resources via generic IaC modules.
   Exposes plan/apply/status/destroy operations for both module types via HTTP pipelines.
-  Uses step.apigw_plan, step.apigw_apply, step.apigw_status, step.apigw_destroy for
-  API gateway lifecycle and step.scaling_plan, step.scaling_apply, step.scaling_status,
-  step.scaling_destroy for autoscaling lifecycle.
-  No real cloud resources are created — all state is tracked entirely in-memory,
-  making the scenario runnable without any cloud tooling installed.
+  Uses step.iac_plan, step.iac_apply, step.iac_status, and step.iac_destroy for
+  both API gateway and autoscaling lifecycle operations.
 components:
   - workflow (engine)
-  - cloud plugin (cloud.account)
-  - platform plugin (platform.apigateway, platform.autoscaling, apigw pipeline steps, scaling pipeline steps)
+  - workflow-plugin-aws (infra.api_gateway, infra.autoscaling_group)
+  - workflow IaC steps (step.iac_plan/apply/status/destroy)
 status: testable

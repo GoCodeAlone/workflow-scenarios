@@ -60,8 +60,8 @@ pipelines:
                 provider_service: agent-ai
                 max_iterations: 5
               input:
-                task: "{{ .steps.parse_request.task | default \"Complete the assigned task.\" }}"
-                agent_id: "{{ .steps.parse_request.agent_id | default \"test-agent\" }}"
+                task: "{{ .steps.parse_request.body.task | default \"Complete the assigned task.\" }}"
+                agent_id: "{{ .steps.parse_request.body.agent_id | default \"test-agent\" }}"
             - name: respond
               type: step.json_response
               config:

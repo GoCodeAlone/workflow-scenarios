@@ -40,16 +40,16 @@ modules:
           mx: 10
           ttl: 3600
 
-workflows:
-  pipeline:
-    pipelines:
-      - name: dns-apply
-        steps:
-          - name: plan
-            type: step.iac_plan
-            config:
-              resources: [example-com]
-          - name: apply
-            type: step.iac_apply
-            config:
-              resources: [example-com]
+pipelines:
+  dns-apply:
+    trigger:
+      type: manual
+    steps:
+      - name: plan
+        type: step.iac_plan
+        config:
+          resources: [example-com]
+      - name: apply
+        type: step.iac_apply
+        config:
+          resources: [example-com]

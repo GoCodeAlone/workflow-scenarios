@@ -2,6 +2,12 @@ requires:
   plugins:
     - name: pipeline-steps
 
+modules:
+  - name: cli-runtime
+    type: cli.tool
+    config:
+      command: wfctl
+
 pipelines:
   # Pipeline 1: Logging steps at various levels
   log-demo:

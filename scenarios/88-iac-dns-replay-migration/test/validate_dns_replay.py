@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""Validate sanitized DNS/IaC replay fixtures without provider accounts."""
+
+from __future__ import annotations
+
+import ipaddress
+import json
+import sys
+from pathlib import Path
+
+
+class Reporter:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+    def pass_(self, message: str) -> None:
+        self.passed += 1
+        print(f"PASS: {message}")
+
+    def fail(self, message: str) -> None:
+        self.failed += 1
+        print(f"FAIL: {message}")
+
+    def check(self, condition: bool, message: str) -> None:
+        if condition:
+            self.pass_(message)
+        else:
+            self.fail(message)
+
+
+def canonical_name(name: str, domain: str) -> str:
+    if name in ("", "@"):
+        return domain.rstrip(".")
+    name = name.rstrip(".")
+    domain = domain.rstrip(".")
+    if name == domain or name.endswith("." + domain):
+        return name
+    return f"{name}.{domain}"
+
+
+def canonical_record(record: dict, domain: str) -> tuple:
+    record_type = str(record.get("type", "")).upper()
+    name = canonical_name(str(record.get("name", "")), domain)
+    value = str(record.get("value", record.get("data", ""))).rstrip(".")
+    ttl = int(record.get("ttl", 0))
+    priority = record.get("priority", record.get("mx"))
+    proxied = record.get("proxied")
+    return record_type, name, value, ttl, priority, proxied
+
+
+def is_reserved_address(value: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(value)
+    except ValueError:
+        return True
+    return addr.is_private or addr.is_loopback or addr.is_reserved
+
+
+def load_fixture(path: Path, reporter: Reporter) -> dict | None:
+    if not path.exists():
+        reporter.fail(f"fixture exists: {path}")
+        return None
+    try:
+        with path.open() as handle:
+            data = json.load(handle)
+    except json.JSONDecodeError as exc:
+        reporter.fail(f"fixture is valid JSON: {exc}")
+        return None
+    reporter.pass_("fixture is valid JSON")
+    return data
+
+
+def validate_snapshot_shape(data: dict, reporter: Reporter) -> list[dict]:
+    snapshots = data.get("snapshots", [])
+    reporter.check(isinstance(snapshots, list) and len(snapshots) >= 4, "fixture declares at least four provider snapshots")
+    for snapshot in snapshots:
+        label = snapshot.get("id", "<missing-id>")
+        reporter.check(bool(snapshot.get("provider")), f"{label} declares provider")
+        reporter.check(bool(snapshot.get("domain")), f"{label} declares domain")
+        reporter.check(bool(snapshot.get("authority")), f"{label} declares authority metadata")
+        records = snapshot.get("records", [])
+        reporter.check(isinstance(records, list) and bool(records), f"{label} declares records")
+        for idx, record in enumerate(records):
+            prefix = f"{label} record {idx}"
+            reporter.check(bool(record.get("type")), f"{prefix} has type")
+            reporter.check("name" in record, f"{prefix} has name")
+            reporter.check(bool(record.get("value", record.get("data"))), f"{prefix} has value")
+            reporter.check(isinstance(record.get("ttl"), int) and record.get("ttl") > 0, f"{prefix} has positive ttl")
+    return snapshots
+
+
+def validate_sanitized_addresses(snapshots: list[dict], reporter: Reporter) -> None:
+    unsafe = []
+    for snapshot in snapshots:
+        for record in snapshot.get("records", []):
+            if str(record.get("type", "")).upper() in {"A", "AAAA"}:
+                value = str(record.get("value", record.get("data", "")))
+                if not is_reserved_address(value):
+                    unsafe.append((snapshot.get("id"), record.get("name"), value))
+    reporter.check(not unsafe, "fixtures use only reserved/example IP addresses")
+
+
+def validate_provider_coverage(snapshots: list[dict], reporter: Reporter) -> None:
+    providers = {str(snapshot.get("provider", "")).lower() for snapshot in snapshots}
+    for provider in ("cloudflare", "digitalocean", "namecheap", "hover"):
+        reporter.check(provider in providers, f"provider coverage includes {provider}")
+
+
+def validate_record_preservation(data: dict, snapshots: list[dict], reporter: Reporter) -> None:
+    source = next((s for s in snapshots if s.get("id") == data.get("migration", {}).get("source_snapshot")), None)
+    target = next((s for s in snapshots if s.get("id") == data.get("migration", {}).get("target_snapshot")), None)
+    if source is None or target is None:
+        reporter.fail("migration source and target snapshots resolve")
+        return
+    reporter.pass_("migration source and target snapshots resolve")
+
+    source_records = {canonical_record(record, source["domain"]) for record in source.get("records", [])}
+    target_records = {canonical_record(record, target["domain"]) for record in target.get("records", [])}
+
+    source_by_type = {record[0] for record in source_records}
+    for required_type in ("MX", "TXT", "CNAME", "A"):
+        reporter.check(required_type in source_by_type, f"source includes {required_type} records")
+
+    target_by_type = {record[0] for record in target_records}
+    for required_type in ("MX", "TXT", "CNAME", "A"):
+        reporter.check(required_type in target_by_type, f"target includes migrated {required_type} records")
+
+    source_mx_values = {record[2:] for record in source_records if record[0] == "MX"}
+    target_mx_values = {record[2:] for record in target_records if record[0] == "MX"}
+    reporter.check(source_mx_values <= target_mx_values, "MX records are preserved in target")
+
+    source_txt_values = {record[2] for record in source_records if record[0] == "TXT"}
+    reporter.check(any("v=spf1" in value for value in source_txt_values), "source includes SPF TXT")
+    reporter.check(any("v=DMARC1" in value for value in source_txt_values), "source includes DMARC TXT")
+
+
+def validate_migration_safety(data: dict, snapshots: list[dict], reporter: Reporter) -> None:
+    migration = data.get("migration", {})
+    reporter.check(migration.get("delete_unlisted") is False, "destructive deletes require explicit opt-in")
+
+    target = next((s for s in snapshots if s.get("id") == migration.get("target_snapshot")), {})
+    nameservers = [str(ns).lower() for ns in target.get("authority", {}).get("name_servers", [])]
+    reporter.check(any(ns.endswith(".ns.cloudflare.com") for ns in nameservers), "target exposes Cloudflare nameservers")
+
+    required_steps = migration.get("required_manual_steps", [])
+    reporter.check("switch_registrar_nameservers" in required_steps, "migration tracks registrar nameserver switch")
+    reporter.check("verify_mx_delivery" in required_steps, "migration tracks MX delivery verification")
+
+
+def main(argv: list[str]) -> int:
+    reporter = Reporter()
+    if len(argv) != 2:
+        print("Usage: validate_dns_replay.py <dns-portfolio.json>")
+        return 2
+
+    data = load_fixture(Path(argv[1]), reporter)
+    if data is not None:
+        snapshots = validate_snapshot_shape(data, reporter)
+        validate_sanitized_addresses(snapshots, reporter)
+        validate_provider_coverage(snapshots, reporter)
+        validate_record_preservation(data, snapshots, reporter)
+        validate_migration_safety(data, snapshots, reporter)
+
+    print("")
+    print(f"Results: {reporter.passed} passed, {reporter.failed} failed")
+    return 0 if reporter.failed == 0 else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

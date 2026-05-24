@@ -67,3 +67,15 @@ modules:
       poll_interval: 30m
       detect_via: [ipify]
       quorum: 1
+
+pipelines:
+  dyndns-smoke:
+    trigger:
+      type: manual
+    steps:
+      - name: describe_records
+        type: step.set
+        config:
+          values:
+            providers: [digitalocean, namecheap, hover]
+            records: [home, office, lab]

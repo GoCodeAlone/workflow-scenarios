@@ -8,20 +8,24 @@ modules:
     type: http.router
     dependsOn: [server]
 
-  - name: aws-mock
-    type: cloud.account
+  - name: aws-provider
+    type: iac.provider
     config:
-      provider: mock
+      provider: aws
+      credentials: env
       region: us-east-1
 
-  - name: prod-network
-    type: platform.networking
+  - name: iac-state
+    type: iac.state
     config:
-      account: aws-mock
-      provider: mock
-      vpc:
-        cidr: "10.0.0.0/16"
-        name: prod-vpc
+      backend: memory
+
+  - name: prod-vpc
+    type: infra.vpc
+    config:
+      provider: aws-provider
+      cidr: "10.0.0.0/16"
+      name: prod-vpc
       subnets:
         - name: public-a
           cidr: "10.0.1.0/24"
@@ -40,6 +44,12 @@ modules:
           az: us-east-1b
           public: false
       nat_gateway: true
+
+  - name: prod-firewall
+    type: infra.firewall
+    config:
+      provider: aws-provider
+      vpc: prod-vpc
       security_groups:
         - name: web
           rules:
@@ -84,10 +94,18 @@ pipelines:
         path: /api/v1/networks/plan
         method: POST
     steps:
-      - name: plan
-        type: step.network_plan
+      - name: plan_vpc
+        type: step.iac_plan
         config:
-          network: prod-network
+          platform: prod-vpc
+          resource_id: prod-vpc
+          state_store: iac-state
+      - name: plan_firewall
+        type: step.iac_plan
+        config:
+          platform: prod-firewall
+          resource_id: prod-firewall
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
@@ -101,10 +119,18 @@ pipelines:
         path: /api/v1/networks/apply
         method: POST
     steps:
-      - name: apply
-        type: step.network_apply
+      - name: apply_vpc
+        type: step.iac_apply
         config:
-          network: prod-network
+          platform: prod-vpc
+          resource_id: prod-vpc
+          state_store: iac-state
+      - name: apply_firewall
+        type: step.iac_apply
+        config:
+          platform: prod-firewall
+          resource_id: prod-firewall
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
@@ -118,10 +144,18 @@ pipelines:
         path: /api/v1/networks/status
         method: GET
     steps:
-      - name: status
-        type: step.network_status
+      - name: status_vpc
+        type: step.iac_status
         config:
-          network: prod-network
+          platform: prod-vpc
+          resource_id: prod-vpc
+          state_store: iac-state
+      - name: status_firewall
+        type: step.iac_status
+        config:
+          platform: prod-firewall
+          resource_id: prod-firewall
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:

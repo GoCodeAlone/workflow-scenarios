@@ -68,9 +68,9 @@ pipelines:
                 provider_service: agent-operator
                 max_iterations: 20
               input:
-                task: "{{ .steps.parse_request.task | default \"Perform the assigned infrastructure task.\" }}"
-                agent_id: "{{ .steps.parse_request.agent_id | default \"operator-agent\" }}"
-                system_prompt: "{{ .steps.parse_request.system_prompt | default \"You are an expert infrastructure operator. Use the available tools to complete the given task safely and efficiently.\" }}"
+                task: "{{ .steps.parse_request.body.task | default \"Perform the assigned infrastructure task.\" }}"
+                agent_id: "{{ .steps.parse_request.body.agent_id | default \"operator-agent\" }}"
+                system_prompt: "{{ .steps.parse_request.body.system_prompt | default \"You are an expert infrastructure operator. Use the available tools to complete the given task safely and efficiently.\" }}"
             - name: respond
               type: step.json_response
               config:

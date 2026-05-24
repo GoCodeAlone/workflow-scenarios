@@ -8,20 +8,28 @@ modules:
     type: http.router
     dependsOn: [server]
 
-  - name: aws-mock
-    type: cloud.account
+  - name: aws-provider
+    type: iac.provider
     config:
-      provider: mock
+      provider: aws
+      credentials: env
       region: us-east-1
 
-  - name: staging-ecs
-    type: platform.ecs
+  - name: iac-state
+    type: iac.state
     config:
-      account: aws-mock
+      backend: memory
+
+  - name: staging-ecs
+    type: infra.container_service
+    config:
+      provider: aws-provider
+      name: staging-ecs
+      image: public.ecr.aws/nginx/nginx:latest
       cluster: staging-cluster
       region: us-east-1
-      launch_type: FARGATE
-      desired_count: 2
+      launchType: fargate
+      replicas: 2
       vpc_subnets:
         - subnet-abc123
         - subnet-def456
@@ -58,9 +66,11 @@ pipelines:
         method: POST
     steps:
       - name: plan
-        type: step.ecs_plan
+        type: step.iac_plan
         config:
-          service: staging-ecs
+          platform: staging-ecs
+          resource_id: staging-ecs
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
@@ -75,9 +85,11 @@ pipelines:
         method: POST
     steps:
       - name: apply
-        type: step.ecs_apply
+        type: step.iac_apply
         config:
-          service: staging-ecs
+          platform: staging-ecs
+          resource_id: staging-ecs
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
@@ -92,9 +104,11 @@ pipelines:
         method: GET
     steps:
       - name: status
-        type: step.ecs_status
+        type: step.iac_status
         config:
-          service: staging-ecs
+          platform: staging-ecs
+          resource_id: staging-ecs
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
@@ -109,9 +123,11 @@ pipelines:
         method: DELETE
     steps:
       - name: destroy
-        type: step.ecs_destroy
+        type: step.iac_destroy
         config:
-          service: staging-ecs
+          platform: staging-ecs
+          resource_id: staging-ecs
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:

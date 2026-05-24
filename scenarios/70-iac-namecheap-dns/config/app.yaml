@@ -40,16 +40,16 @@ modules:
           data: "v=spf1 -all"
           ttl: 3600
 
-workflows:
-  pipeline:
-    pipelines:
-      - name: dns-apply
-        steps:
-          - name: plan
-            type: step.iac_plan
-            config:
-              resources: [gocodealone-tech]
-          - name: apply
-            type: step.iac_apply
-            config:
-              resources: [gocodealone-tech]
+pipelines:
+  dns-apply:
+    trigger:
+      type: manual
+    steps:
+      - name: plan
+        type: step.iac_plan
+        config:
+          resources: [gocodealone-tech]
+      - name: apply
+        type: step.iac_apply
+        config:
+          resources: [gocodealone-tech]

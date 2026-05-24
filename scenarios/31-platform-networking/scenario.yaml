@@ -2,15 +2,13 @@ name: Platform Networking
 id: "31-platform-networking"
 category: C
 description: |
-  Demonstrates platform.networking module with the mock backend (in-memory state).
+  Demonstrates AWS-style networking via generic IaC modules.
   Exposes plan/apply/status operations via HTTP pipelines backed by
-  step.network_plan, step.network_apply, and step.network_status.
-  Uses a cloud.account (mock) as the credential provider.
-  No real VPC is created — network state is tracked entirely in-memory,
-  making the scenario runnable without any cloud tooling installed.
+  step.iac_plan, step.iac_apply, and step.iac_status.
+  Uses iac.provider plus infra.vpc and infra.firewall.
   Provisions a VPC with public/private subnets, a NAT gateway, and security groups.
 components:
   - workflow (engine)
-  - cloud plugin (cloud.account)
-  - platform plugin (platform.networking, network pipeline steps)
+  - workflow-plugin-aws (iac.provider, infra.vpc, infra.firewall)
+  - workflow IaC steps (step.iac_plan/apply/status)
 status: testable
