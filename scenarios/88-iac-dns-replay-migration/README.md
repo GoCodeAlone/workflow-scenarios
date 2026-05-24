@@ -2,17 +2,18 @@
 
 Offline replay scenario for DNS/IaC import and migration safety.
 
-The scenario does not call Cloudflare, DigitalOcean, Namecheap, Hover, or any registrar API. It validates sanitized `workflow.dns-portfolio.export.v1` snapshots that model imported provider state and a planned Cloudflare target zone.
+The scenario does not call Cloudflare, DigitalOcean, Namecheap, Hover, AWS, Azure, GCP, or any registrar API. It validates sanitized `workflow.dns-portfolio.export.v1` snapshots that model imported provider state and a planned Cloudflare target zone.
 
 ## What It Tests
 
-- Provider snapshot shape for Cloudflare, DigitalOcean, Namecheap, and Hover.
+- Provider snapshot shape for Cloudflare, DigitalOcean, Namecheap, Hover, AWS Route53, Azure DNS, and GCP Cloud DNS.
 - Export metadata marking the portfolio as sanitized before it can be used as a replay fixture.
 - NS authority metadata is present for source and target zones.
 - MX, SPF, DMARC, CNAME, A, and AAAA records survive normalization.
 - Documentation/example IP ranges are used instead of public or private production addresses.
 - TXT verification tokens and DKIM material are redacted before fixture commit.
 - Cloudflare target state exposes Cloudflare nameservers.
+- Route53 target state exposes authority and record outputs; Azure DNS and GCP Cloud DNS are marked as zone-authority coverage until record-set CRUD is implemented there.
 - Destructive deletes are disabled unless explicitly opted in, and migration defaults to `plan_only`.
 - Migration plans track manual nameserver switch and MX-delivery verification steps.
 

@@ -4,14 +4,18 @@ category: C
 description: |
   Offline replay scenario for DNS/IaC import and migration safety. Uses
   sanitized workflow.dns-portfolio.export.v1 provider snapshots for Hover,
-  DigitalOcean, Namecheap, and Cloudflare to validate record preservation,
-  redaction, and destructive-change guardrails without real provider accounts.
+  DigitalOcean, Namecheap, Cloudflare, AWS Route53, Azure DNS, and GCP Cloud
+  DNS to validate authority metadata, record preservation, redaction, and
+  destructive-change guardrails without real provider accounts.
 components:
   - workflow-scenarios replay fixture
   - iac.provider.cloudflare (target shape)
   - iac.provider.digitalocean (authoritative DNS source shape)
   - iac.provider.namecheap (registrar/DNS source shape)
   - iac.provider.hover (registrar-origin source shape)
+  - iac.provider.aws (Route53 authority and record shape)
+  - iac.provider.azure (Azure DNS authority shape)
+  - iac.provider.gcp (Cloud DNS authority shape)
   - infra.dns
 status: testable
 tags:

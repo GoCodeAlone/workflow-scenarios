@@ -92,6 +92,50 @@
       ],
       "delete_unlisted_flag": "unsupported",
       "apply_semantics": "read_only_import"
+    },
+    "aws": {
+      "resource_types": [
+        "infra.dns"
+      ],
+      "dns_required_outputs": [
+        "domain",
+        "records",
+        "record_count",
+        "name_servers",
+        "authority",
+        "authority.name_servers"
+      ],
+      "delete_unlisted_flag": "unsupported",
+      "apply_semantics": "record_upsert_preserve_unlisted"
+    },
+    "azure": {
+      "resource_types": [
+        "infra.dns"
+      ],
+      "dns_required_outputs": [
+        "domain",
+        "record_count",
+        "name_servers",
+        "authority",
+        "authority.name_servers"
+      ],
+      "delete_unlisted_flag": "unsupported",
+      "apply_semantics": "zone_create_update_delete",
+      "coverage": "zone_authority_only"
+    },
+    "gcp": {
+      "resource_types": [
+        "infra.dns"
+      ],
+      "dns_required_outputs": [
+        "domain",
+        "name_servers",
+        "authority",
+        "authority.name_servers"
+      ],
+      "delete_unlisted_flag": "unsupported",
+      "apply_semantics": "zone_create_update_delete",
+      "coverage": "zone_authority_only"
     }
   },
   "snapshots": [
@@ -299,6 +343,85 @@
           "name": "_dmarc",
           "value": "v=DMARC1; p=quarantine; rua=mailto:dmarc@example.invalid",
           "ttl": 3600
+        }
+      ]
+    },
+    {
+      "id": "aws-route53-authoritative",
+      "provider": "aws",
+      "domain": "aws-route53.example",
+      "authority": {
+        "role": "target_authoritative_dns",
+        "registrar": "Route53 Domains",
+        "dns_host": "Route53",
+        "name_servers": [
+          "ns-1.awsdns-01.com",
+          "ns-2.awsdns-02.net",
+          "ns-3.awsdns-03.org",
+          "ns-4.awsdns-04.co.uk"
+        ]
+      },
+      "records": [
+        {
+          "type": "A",
+          "name": "@",
+          "value": "198.51.100.53",
+          "ttl": 300
+        },
+        {
+          "type": "MX",
+          "name": "@",
+          "value": "10 mail.aws-route53.example.",
+          "priority": 10,
+          "ttl": 300
+        }
+      ]
+    },
+    {
+      "id": "azure-dns-authority",
+      "provider": "azure",
+      "domain": "azure-dns.example",
+      "authority": {
+        "role": "target_authoritative_dns",
+        "registrar": "external",
+        "dns_host": "Azure DNS",
+        "name_servers": [
+          "ns1-01.azure-dns.com.",
+          "ns2-01.azure-dns.net.",
+          "ns3-01.azure-dns.org.",
+          "ns4-01.azure-dns.info."
+        ]
+      },
+      "records": [
+        {
+          "type": "A",
+          "name": "@",
+          "value": "203.0.113.53",
+          "ttl": 300
+        }
+      ]
+    },
+    {
+      "id": "gcp-cloud-dns-authority",
+      "provider": "gcp",
+      "domain": "gcp-cloud-dns.example",
+      "authority": {
+        "role": "target_authoritative_dns",
+        "registrar": "Cloud Domains",
+        "dns_host": "Cloud DNS",
+        "name_servers": [
+          "ns-cloud-a1.googledomains.com.",
+          "ns-cloud-a2.googledomains.com.",
+          "ns-cloud-a3.googledomains.com.",
+          "ns-cloud-a4.googledomains.com."
+        ]
+      },
+      "records": [
+        {
+          "type": "A",
+          "name": "@",
+          "value": "192.0.2.53",
+          "ttl": 300
         }
       ]
     }
