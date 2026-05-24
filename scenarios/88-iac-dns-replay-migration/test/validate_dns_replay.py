@@ -186,6 +186,28 @@ def validate_provider_output_contracts(data: dict, reporter: Reporter) -> None:
     reporter.check(gcp.get("apply_semantics") == "record_upsert_preserve_unlisted", "GCP Cloud DNS contract declares record upsert semantics")
 
 
+def validate_import_state_contracts(data: dict, reporter: Reporter) -> None:
+    contracts = data.get("import_state_contracts", {})
+    reporter.check(isinstance(contracts, dict) and bool(contracts), "fixture declares import state contracts")
+    reporter.check(contracts.get("applied_config_source") == "adoption", "imported state is marked as adoption provenance")
+
+    dns_required = set(contracts.get("dns_required_applied_config", []))
+    for path in ("provider", "domain", "records"):
+        reporter.check(path in dns_required, f"DNS imported applied config requires {path}")
+
+    forbidden = set(contracts.get("forbidden_applied_config_fields", []))
+    for path in ("id", "provider_id", "record_id", "epp_code", "confirm_transfer"):
+        reporter.check(path in forbidden, f"imported applied config forbids {path}")
+
+    mappings = contracts.get("provider_record_mappings", {})
+    namecheap = mappings.get("namecheap", {})
+    reporter.check(namecheap.get("value_output") == "address", "Namecheap import maps address output to DNS record data")
+    reporter.check(namecheap.get("mx_output") == "mx_pref", "Namecheap import maps mx_pref output to DNS record mx")
+    cloudflare = mappings.get("cloudflare", {})
+    reporter.check(cloudflare.get("provider_record_id_output") == "id", "Cloudflare import treats record id as provider-only output")
+    reporter.check(cloudflare.get("provider_record_id_applied") == "forbidden", "Cloudflare import omits provider record id from applied config")
+
+
 def validate_record_preservation(data: dict, snapshots: list[dict], reporter: Reporter) -> None:
     source = next((s for s in snapshots if s.get("id") == data.get("migration", {}).get("source_snapshot")), None)
     target = next((s for s in snapshots if s.get("id") == data.get("migration", {}).get("target_snapshot")), None)
@@ -242,6 +264,7 @@ def main(argv: list[str]) -> int:
         validate_redaction(data, snapshots, reporter)
         validate_provider_coverage(snapshots, reporter)
         validate_provider_output_contracts(data, reporter)
+        validate_import_state_contracts(data, reporter)
         validate_record_preservation(data, snapshots, reporter)
         validate_migration_safety(data, snapshots, reporter)
 
