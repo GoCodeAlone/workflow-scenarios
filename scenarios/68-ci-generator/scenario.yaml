@@ -15,7 +15,7 @@ description: |
   No live CI execution — config-validation and file-generation testing only.
 components:
   - wfctl (config validation)
-  - ci.generator (provider: github + provider: gitlab)
+  - "ci.generator (provider: github + provider: gitlab)"
   - step.ci_generate
   - step.ci_validate
   - step.ci_diff

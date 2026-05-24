@@ -22,12 +22,13 @@ jobs:
         pip install pyyaml
         passed=0
         failed=0
-        for config in scenarios/*/config/app.yaml; do
-          scenario=$(echo "$config" | cut -d/ -f2)
-          if python3 -c "import yaml; yaml.safe_load(open('$config'))" 2>/dev/null; then
+        for yaml_file in scenarios/*/config/app.yaml scenarios/*/scenario.yaml; do
+          scenario=$(echo "$yaml_file" | cut -d/ -f2)
+          label=${yaml_file#scenarios/$scenario/}
+          if python3 -c "import yaml; yaml.safe_load(open('$yaml_file'))" 2>/dev/null; then
             passed=$((passed + 1))
           else
-            echo "FAIL: $scenario — invalid YAML"
+            echo "FAIL: $scenario $label — invalid YAML"
             failed=$((failed + 1))
           fi
         done
