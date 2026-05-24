@@ -12,8 +12,8 @@ This backlog preserves open work from the DNS/IaC and workflow-compute threads s
 ## Provider Plugins
 
 - Cloudflare plugin now supports import-first `infra.domain` for registrar metadata and explicit auto-renew updates; transfer/purchase flows remain out of public replay scope.
-- Keep DigitalOcean DNS import outputs aligned with Cloudflare/Namecheap canonical DNS replay shape.
-- Add or document a Hover importer path. Hover has no official API, so live automation may remain private or best-effort.
+- DigitalOcean DNS import outputs now include nested authoritative DNS metadata aligned with the canonical DNS replay shape.
+- Hover now supports and documents read-only `infra.dns` and `infra.dns_delegation` import. Hover has no official API, so live automation remains best-effort and should stay private-gated.
 - Namecheap plugin now supports explicit `infra.domain_transfer` creation/status using the provider API; destructive or cancellation-style operations remain separate work.
 
 ## DNS Management UI
@@ -24,9 +24,9 @@ This backlog preserves open work from the DNS/IaC and workflow-compute threads s
 
 ## workflow-compute
 
-- Return to short-lived task reuse modes for `workflow-compute`.
-- Add `workflow-compute-scenarios` coverage for residue policy, provider network settings, and reuse/isolation expectations.
-- Re-evaluate long-lived process/service behavior against the same residue and network-policy concerns.
+- Short-lived task residue policy support shipped in `workflow-compute`, including isolated, provider-bound, session-bound, and guarded worker-bound modes.
+- `workflow-compute-scenarios` now covers residue policy, provider/product network-mode rejection, reuse/isolation expectations, no-workspace WASM rejection, and long-lived service residue rejection.
+- Re-evaluate long-lived process/service behavior beyond residue rejection for network-policy concerns and durable session cleanup.
 - Keep plugin-based execution the primary path; CLI behavior should route through `wfctl` plugin-aware surfaces where possible.
 
 ## Ownership Boundaries
