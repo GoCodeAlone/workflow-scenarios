@@ -15,6 +15,12 @@ make upgrade COMPONENT=workflow VERSION=v0.3.0  # Upgrade + re-test
 make test-all                      # Run all available tests
 ```
 
+`workflow-scenarios` should track released `GoCodeAlone/workflow` versions. The
+`Bump Workflow Release` GitHub Action opens a PR when a newer Workflow release
+is available; it can be triggered by `repository_dispatch` type
+`workflow-release`, manually with `workflow_dispatch`, or by its scheduled
+fallback.
+
 ## Architecture
 
 Each scenario deploys to its own namespace (`wf-scenario-<id>`).
