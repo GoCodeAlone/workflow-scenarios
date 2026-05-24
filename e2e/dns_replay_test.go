@@ -21,10 +21,13 @@ func TestDNSReplayMigrationScenario(t *testing.T) {
 	}
 	text := string(output)
 	for _, want := range []string{
+		"PASS: fixture declares export schema v1",
+		"PASS: fixtures use only documentation/example IP addresses",
+		"PASS: TXT records redact verification tokens and DKIM public keys",
 		"PASS: provider coverage includes cloudflare",
 		"PASS: MX records are preserved in target",
 		"PASS: destructive deletes require explicit opt-in",
-		"Results: 123 passed, 0 failed",
+		"Results: 141 passed, 0 failed",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("DNS replay output missing %q\n%s", want, output)

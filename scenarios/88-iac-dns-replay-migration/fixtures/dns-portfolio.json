@@ -1,6 +1,29 @@
 {
-  "schema": "workflow.dns-replay.v1",
+  "schema": "workflow.dns-portfolio.export.v1",
   "description": "Sanitized DNS import and Cloudflare migration replay fixture.",
+  "metadata": {
+    "sanitized": true,
+    "generated_at": "2026-05-24T00:00:00Z",
+    "source_portfolio_id": "example-dns-portfolio",
+    "exporter": "workflow-scenarios/manual-fixture"
+  },
+  "sanitization": {
+    "status": "sanitized",
+    "rules": [
+      "domain_aliases",
+      "example_ip_addresses",
+      "txt_secret_redaction",
+      "email_redaction"
+    ],
+    "forbidden_patterns": [
+      "hover-source.test",
+      "do-authoritative.test",
+      "namecheap-managed.test",
+      "cloudflare-target.test",
+      "google-site-verification=",
+      "keybase-site-verification="
+    ]
+  },
   "snapshots": [
     {
       "id": "hover-source",
@@ -213,6 +236,7 @@
   "migration": {
     "source_snapshot": "hover-source",
     "target_snapshot": "cloudflare-target",
+    "apply_mode": "plan_only",
     "delete_unlisted": false,
     "required_manual_steps": [
       "verify_target_zone",

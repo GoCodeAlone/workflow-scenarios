@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-05-24T00:49:23.474853Z",
+  "lastUpdated": "2026-05-24T02:51:53.903292Z",
   "componentVersions": {
     "workflow": "v0.2.15",
     "workflow-cloud": "v0.1.0",
@@ -1054,12 +1054,12 @@
       "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "testCount": 123,
-      "passCount": 123,
+      "testCount": 141,
+      "passCount": 141,
       "failCount": 0,
       "localOnly": true,
       "notes": "Offline replay scenario for DNS/IaC import and migration safety. Validates sanitized Cloudflare, DigitalOcean, Namecheap, and Hover snapshots without provider accounts.",
-      "lastTested": "2026-05-24T00:49:23.474394Z",
+      "lastTested": "2026-05-24T02:51:53.903292Z",
       "lastResult": "pass"
     }
   }

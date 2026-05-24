@@ -8,6 +8,12 @@ import json
 import sys
 from pathlib import Path
 
+EXAMPLE_IPV4_NETWORKS = tuple(
+    ipaddress.ip_network(network)
+    for network in ("192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24")
+)
+EXAMPLE_IPV6_NETWORKS = (ipaddress.ip_network("2001:db8::/32"),)
+
 
 class Reporter:
     def __init__(self) -> None:
@@ -49,12 +55,13 @@ def canonical_record(record: dict, domain: str) -> tuple:
     return record_type, name, value, ttl, priority, proxied
 
 
-def is_reserved_address(value: str) -> bool:
+def is_example_address(value: str) -> bool:
     try:
         addr = ipaddress.ip_address(value)
     except ValueError:
-        return True
-    return addr.is_private or addr.is_loopback or addr.is_reserved
+        return False
+    networks = EXAMPLE_IPV6_NETWORKS if addr.version == 6 else EXAMPLE_IPV4_NETWORKS
+    return any(addr in network for network in networks)
 
 
 def load_fixture(path: Path, reporter: Reporter) -> dict | None:
@@ -69,6 +76,21 @@ def load_fixture(path: Path, reporter: Reporter) -> dict | None:
         return None
     reporter.pass_("fixture is valid JSON")
     return data
+
+
+def validate_export_envelope(data: dict, reporter: Reporter) -> None:
+    reporter.check(data.get("schema") == "workflow.dns-portfolio.export.v1", "fixture declares export schema v1")
+    metadata = data.get("metadata", {})
+    reporter.check(metadata.get("sanitized") is True, "fixture is explicitly marked sanitized")
+    reporter.check(bool(metadata.get("generated_at")), "fixture includes generation timestamp")
+    reporter.check(bool(metadata.get("source_portfolio_id")), "fixture includes non-sensitive source portfolio id")
+
+    sanitization = data.get("sanitization", {})
+    reporter.check(sanitization.get("status") == "sanitized", "sanitization status is sanitized")
+    rules = sanitization.get("rules", [])
+    for rule in ("domain_aliases", "example_ip_addresses", "txt_secret_redaction", "email_redaction"):
+        reporter.check(rule in rules, f"sanitization rule records {rule}")
+    reporter.check(isinstance(sanitization.get("forbidden_patterns"), list), "sanitization declares forbidden patterns")
 
 
 def validate_snapshot_shape(data: dict, reporter: Reporter) -> list[dict]:
@@ -96,9 +118,30 @@ def validate_sanitized_addresses(snapshots: list[dict], reporter: Reporter) -> N
         for record in snapshot.get("records", []):
             if str(record.get("type", "")).upper() in {"A", "AAAA"}:
                 value = str(record.get("value", record.get("data", "")))
-                if not is_reserved_address(value):
+                if not is_example_address(value):
                     unsafe.append((snapshot.get("id"), record.get("name"), value))
-    reporter.check(not unsafe, "fixtures use only reserved/example IP addresses")
+    reporter.check(not unsafe, "fixtures use only documentation/example IP addresses")
+
+
+def validate_redaction(data: dict, snapshots: list[dict], reporter: Reporter) -> None:
+    forbidden = [str(pattern).lower() for pattern in data.get("sanitization", {}).get("forbidden_patterns", [])]
+    serialized = json.dumps({"snapshots": snapshots, "migration": data.get("migration", {})}, sort_keys=True).lower()
+    for pattern in forbidden:
+        reporter.check(pattern not in serialized, f"fixture excludes forbidden pattern {pattern}")
+
+    txt_records = [
+        str(record.get("value", record.get("data", "")))
+        for snapshot in snapshots
+        for record in snapshot.get("records", [])
+        if str(record.get("type", "")).upper() == "TXT"
+    ]
+    secret_markers = ("google-site-verification=", "keybase-site-verification=")
+    leaked = [value for value in txt_records if any(marker in value.lower() for marker in secret_markers)]
+    leaked.extend(
+        value for value in txt_records
+        if "v=dkim1" in value.lower() and "<redacted>" not in value.lower()
+    )
+    reporter.check(not leaked, "TXT records redact verification tokens and DKIM public keys")
 
 
 def validate_provider_coverage(snapshots: list[dict], reporter: Reporter) -> None:
@@ -138,6 +181,7 @@ def validate_record_preservation(data: dict, snapshots: list[dict], reporter: Re
 def validate_migration_safety(data: dict, snapshots: list[dict], reporter: Reporter) -> None:
     migration = data.get("migration", {})
     reporter.check(migration.get("delete_unlisted") is False, "destructive deletes require explicit opt-in")
+    reporter.check(migration.get("apply_mode") == "plan_only", "migration defaults to plan-only apply mode")
 
     target = next((s for s in snapshots if s.get("id") == migration.get("target_snapshot")), {})
     nameservers = [str(ns).lower() for ns in target.get("authority", {}).get("name_servers", [])]
@@ -156,8 +200,10 @@ def main(argv: list[str]) -> int:
 
     data = load_fixture(Path(argv[1]), reporter)
     if data is not None:
+        validate_export_envelope(data, reporter)
         snapshots = validate_snapshot_shape(data, reporter)
         validate_sanitized_addresses(snapshots, reporter)
+        validate_redaction(data, snapshots, reporter)
         validate_provider_coverage(snapshots, reporter)
         validate_record_preservation(data, snapshots, reporter)
         validate_migration_safety(data, snapshots, reporter)
