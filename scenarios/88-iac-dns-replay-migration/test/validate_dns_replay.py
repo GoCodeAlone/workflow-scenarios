@@ -146,7 +146,7 @@ def validate_redaction(data: dict, snapshots: list[dict], reporter: Reporter) ->
 
 def validate_provider_coverage(snapshots: list[dict], reporter: Reporter) -> None:
     providers = {str(snapshot.get("provider", "")).lower() for snapshot in snapshots}
-    for provider in ("cloudflare", "digitalocean", "namecheap", "hover"):
+    for provider in ("cloudflare", "digitalocean", "namecheap", "hover", "aws", "azure", "gcp"):
         reporter.check(provider in providers, f"provider coverage includes {provider}")
 
 
@@ -158,6 +158,9 @@ def validate_provider_output_contracts(data: dict, reporter: Reporter) -> None:
         "digitalocean": {"domain", "records", "record_count", "zone_file", "authority", "authority.name_servers"},
         "namecheap": {"domain", "record_count", "authority", "authority.is_using_our_dns", "authority.email_type"},
         "hover": {"domain", "records", "record_count", "authority", "authority.name_servers"},
+        "aws": {"domain", "records", "record_count", "authority", "authority.name_servers"},
+        "azure": {"domain", "record_count", "authority", "authority.name_servers"},
+        "gcp": {"domain", "authority", "authority.name_servers"},
     }
     for provider, required_paths in required.items():
         contract = contracts.get(provider, {})
@@ -175,6 +178,12 @@ def validate_provider_output_contracts(data: dict, reporter: Reporter) -> None:
     reporter.check(namecheap.get("apply_semantics") == "whole_zone_replace", "Namecheap contract declares whole-zone replace semantics")
     hover = contracts.get("hover", {})
     reporter.check(hover.get("apply_semantics") == "read_only_import", "Hover contract remains read-only import")
+    aws = contracts.get("aws", {})
+    reporter.check(aws.get("apply_semantics") == "record_upsert_preserve_unlisted", "AWS Route53 contract declares record upsert semantics")
+    azure = contracts.get("azure", {})
+    reporter.check(azure.get("coverage") == "zone_authority_only", "Azure DNS contract is marked zone-authority-only")
+    gcp = contracts.get("gcp", {})
+    reporter.check(gcp.get("coverage") == "zone_authority_only", "GCP Cloud DNS contract is marked zone-authority-only")
 
 
 def validate_record_preservation(data: dict, snapshots: list[dict], reporter: Reporter) -> None:
