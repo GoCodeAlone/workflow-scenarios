@@ -8,10 +8,11 @@ modules:
     type: http.router
     dependsOn: [server]
 
-  - name: cloud-mock
-    type: cloud.account
+  - name: do-provider
+    type: iac.provider
     config:
-      provider: mock
+      provider: digitalocean
+      credentials: env
       region: nyc1
 
   - name: infra-state
@@ -21,24 +22,29 @@ modules:
       directory: /data/iac-state
 
   - name: bmw-database
-    type: platform.do_database
+    type: infra.database
     config:
-      provider: mock
-      engine: pg
+      provider: do-provider
+      engine: postgres
       version: "16"
       size: db-s-1vcpu-1gb
       region: nyc1
-      num_nodes: 1
+      replicas: 1
       name: bmw-db
 
-  - name: bmw-networking
-    type: platform.do_networking
+  - name: bmw-vpc
+    type: infra.vpc
     config:
-      provider: mock
-      vpc:
-        name: bmw-vpc
-        region: nyc1
-        ip_range: 10.10.10.0/24
+      provider: do-provider
+      name: bmw-vpc
+      region: nyc1
+      cidr: 10.10.10.0/24
+
+  - name: bmw-firewall
+    type: infra.firewall
+    config:
+      provider: do-provider
+      vpc: bmw-vpc
       firewalls:
         - name: bmw-firewall
           inbound:
@@ -47,22 +53,22 @@ modules:
               sources: ["0.0.0.0/0"]
 
   - name: bmw-app
-    type: platform.do_app
+    type: infra.container_service
     config:
-      provider: mock
+      provider: do-provider
       name: buymywishlist
       region: nyc
       image: ghcr.io/gocodealone/buymywishlist:latest
-      instances: 1
+      replicas: 1
       http_port: 8080
       envs:
         DATABASE_URL: "mock://db"
         JWT_SECRET: "mock-secret"
 
   - name: bmw-dns
-    type: platform.do_dns
+    type: infra.dns
     config:
-      provider: mock
+      provider: do-provider
       domain: buymywishlist.com
       records:
         - name: "@"
@@ -122,8 +128,14 @@ pipelines:
       - name: plan
         type: step.iac_plan
         config:
-          platform: bmw-networking.iac
-          resource_id: bmw-networking
+          platform: bmw-vpc
+          resource_id: bmw-vpc
+          state_store: infra-state
+      - name: plan-firewall
+        type: step.iac_plan
+        config:
+          platform: bmw-firewall
+          resource_id: bmw-firewall
           state_store: infra-state
       - name: respond
         type: step.json_response
@@ -141,7 +153,7 @@ pipelines:
       - name: plan
         type: step.iac_plan
         config:
-          platform: bmw-app.iac
+          platform: bmw-app
           resource_id: bmw-app
           state_store: infra-state
       - name: respond
@@ -160,7 +172,7 @@ pipelines:
       - name: plan
         type: step.iac_plan
         config:
-          platform: bmw-dns.iac
+          platform: bmw-dns
           resource_id: bmw-dns
           state_store: infra-state
       - name: respond
@@ -199,8 +211,14 @@ pipelines:
       - name: apply
         type: step.iac_apply
         config:
-          platform: bmw-networking.iac
-          resource_id: bmw-networking
+          platform: bmw-vpc
+          resource_id: bmw-vpc
+          state_store: infra-state
+      - name: apply-firewall
+        type: step.iac_apply
+        config:
+          platform: bmw-firewall
+          resource_id: bmw-firewall
           state_store: infra-state
       - name: respond
         type: step.json_response
@@ -218,7 +236,7 @@ pipelines:
       - name: apply
         type: step.iac_apply
         config:
-          platform: bmw-app.iac
+          platform: bmw-app
           resource_id: bmw-app
           state_store: infra-state
       - name: respond
@@ -237,7 +255,7 @@ pipelines:
       - name: apply
         type: step.iac_apply
         config:
-          platform: bmw-dns.iac
+          platform: bmw-dns
           resource_id: bmw-dns
           state_store: infra-state
       - name: respond
@@ -263,19 +281,25 @@ pipelines:
       - name: status-net
         type: step.iac_status
         config:
-          platform: bmw-networking.iac
-          resource_id: bmw-networking
+          platform: bmw-vpc
+          resource_id: bmw-vpc
+          state_store: infra-state
+      - name: status-firewall
+        type: step.iac_status
+        config:
+          platform: bmw-firewall
+          resource_id: bmw-firewall
           state_store: infra-state
       - name: status-app
         type: step.iac_status
         config:
-          platform: bmw-app.iac
+          platform: bmw-app
           resource_id: bmw-app
           state_store: infra-state
       - name: status-dns
         type: step.iac_status
         config:
-          platform: bmw-dns.iac
+          platform: bmw-dns
           resource_id: bmw-dns
           state_store: infra-state
       - name: respond
@@ -318,20 +342,26 @@ pipelines:
       - name: destroy-dns
         type: step.iac_destroy
         config:
-          platform: bmw-dns.iac
+          platform: bmw-dns
           resource_id: bmw-dns
           state_store: infra-state
       - name: destroy-app
         type: step.iac_destroy
         config:
-          platform: bmw-app.iac
+          platform: bmw-app
           resource_id: bmw-app
+          state_store: infra-state
+      - name: destroy-firewall
+        type: step.iac_destroy
+        config:
+          platform: bmw-firewall
+          resource_id: bmw-firewall
           state_store: infra-state
       - name: destroy-net
         type: step.iac_destroy
         config:
-          platform: bmw-networking.iac
-          resource_id: bmw-networking
+          platform: bmw-vpc
+          resource_id: bmw-vpc
           state_store: infra-state
       - name: destroy-db
         type: step.iac_destroy

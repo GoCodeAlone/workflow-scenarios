@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Scenario 42: DigitalOcean Cloud Provider Integration
-# Tests platform.doks, platform.do_networking, platform.do_dns, platform.do_app,
-# and the DO pipeline steps via HTTP and unit tests.
+# Tests DigitalOcean generic IaC resources and lifecycle pipelines.
 set -euo pipefail
 
 PORT=18042

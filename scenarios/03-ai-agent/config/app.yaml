@@ -16,3 +16,23 @@ endpoints:
   tasks: /api/tasks
   # Auth: POST /api/auth/login with {"username":"admin","password":"admin"}
   # Returns Bearer token for protected routes
+
+modules:
+  - name: ratchet
+    type: ratchet.service
+    config:
+      namespace: default
+      service: ratchet
+      port: 9090
+
+pipelines:
+  ratchet-smoke:
+    trigger:
+      type: manual
+    steps:
+      - name: describe_targets
+        type: step.set
+        config:
+          values:
+            status_endpoint: /api/status
+            agents_endpoint: /api/agents

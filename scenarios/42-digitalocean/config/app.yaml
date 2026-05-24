@@ -8,18 +8,24 @@ modules:
     type: http.router
     dependsOn: [server]
 
-  # DigitalOcean cloud account — mock backend, no real DO API calls.
-  - name: do-account
-    type: cloud.account
+  # DigitalOcean provider — mock credentials, no real DO API calls.
+  - name: do-provider
+    type: iac.provider
     config:
-      provider: mock
+      provider: digitalocean
+      credentials: env
       region: nyc3
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
 
   # DOKS: DigitalOcean Kubernetes Service cluster lifecycle.
   - name: doks-cluster
-    type: platform.doks
+    type: infra.k8s_cluster
     config:
-      account: do-account
+      provider: do-provider
       cluster_name: staging-k8s
       region: nyc3
       version: "1.29.1-do.0"
@@ -32,15 +38,19 @@ modules:
         max_nodes: 5
 
   # DO Networking: VPC and firewall management.
-  - name: do-networking
-    type: platform.do_networking
+  - name: do-vpc
+    type: infra.vpc
     config:
-      account: do-account
-      provider: mock
-      vpc:
-        name: staging-vpc
-        region: nyc3
-        ip_range: "10.20.0.0/16"
+      provider: do-provider
+      name: staging-vpc
+      region: nyc3
+      cidr: "10.20.0.0/16"
+
+  - name: do-firewall
+    type: infra.firewall
+    config:
+      provider: do-provider
+      vpc: do-vpc
       firewalls:
         - name: allow-web
           inbound_rules:
@@ -53,10 +63,9 @@ modules:
 
   # DO DNS: domain and DNS record management.
   - name: do-dns
-    type: platform.do_dns
+    type: infra.dns
     config:
-      account: do-account
-      provider: mock
+      provider: do-provider
       domain: staging.example.com
       records:
         - name: api
@@ -70,14 +79,13 @@ modules:
 
   # DO App Platform: deploy and manage containerized apps.
   - name: do-app
-    type: platform.do_app
+    type: infra.container_service
     config:
-      account: do-account
-      provider: mock
+      provider: do-provider
       name: my-api
       region: nyc
       image: "registry.example.com/my-api:v1.0.0"
-      instances: 2
+      replicas: 2
       http_port: 8080
       envs:
         APP_ENV: production
@@ -114,9 +122,11 @@ pipelines:
         method: POST
     steps:
       - name: deploy
-        type: step.do_deploy
+        type: step.iac_apply
         config:
-          app: do-app
+          platform: do-app
+          resource_id: do-app
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
@@ -132,9 +142,11 @@ pipelines:
         method: GET
     steps:
       - name: status
-        type: step.do_status
+        type: step.iac_status
         config:
-          app: do-app
+          platform: do-app
+          resource_id: do-app
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
@@ -150,9 +162,11 @@ pipelines:
         method: GET
     steps:
       - name: logs
-        type: step.do_logs
+        type: step.iac_status
         config:
-          app: do-app
+          platform: do-app
+          resource_id: do-app
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
@@ -168,10 +182,12 @@ pipelines:
         method: POST
     steps:
       - name: scale
-        type: step.do_scale
+        type: step.iac_apply
         config:
-          app: do-app
-          instances: 4
+          platform: do-app
+          resource_id: do-app
+          state_store: iac-state
+          desired_replicas: 4
       - name: respond
         type: step.json_response
         config:
@@ -187,9 +203,11 @@ pipelines:
         method: DELETE
     steps:
       - name: destroy
-        type: step.do_destroy
+        type: step.iac_destroy
         config:
-          app: do-app
+          platform: do-app
+          resource_id: do-app
+          state_store: iac-state
       - name: respond
         type: step.json_response
         config:
