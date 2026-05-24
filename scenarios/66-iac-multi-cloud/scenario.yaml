@@ -13,8 +13,8 @@ description: |
   No live cloud API calls — config-validation only.
 components:
   - wfctl (config validation)
-  - iac.provider (provider: aws + provider: digitalocean)
-  - iac.state (backend: memory)
+  - "iac.provider (provider: aws + provider: digitalocean)"
+  - "iac.state (backend: memory)"
   - infra.vpc
   - infra.database
   - infra.container_service
