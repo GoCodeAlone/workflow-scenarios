@@ -1,0 +1,228 @@
+{
+  "schema": "workflow.dns-replay.v1",
+  "description": "Sanitized DNS import and Cloudflare migration replay fixture.",
+  "snapshots": [
+    {
+      "id": "hover-source",
+      "provider": "hover",
+      "domain": "hover-source.example",
+      "authority": {
+        "role": "registrar_origin",
+        "registrar": "Hover",
+        "dns_host": "Hover",
+        "name_servers": [
+          "ns1.hover.example",
+          "ns2.hover.example"
+        ]
+      },
+      "records": [
+        {
+          "type": "A",
+          "name": "@",
+          "value": "192.0.2.10",
+          "ttl": 900
+        },
+        {
+          "type": "AAAA",
+          "name": "@",
+          "value": "2001:db8::10",
+          "ttl": 900
+        },
+        {
+          "type": "CNAME",
+          "name": "www",
+          "value": "hover-source.example.",
+          "ttl": 900
+        },
+        {
+          "type": "MX",
+          "name": "@",
+          "value": "aspmx.l.google.com.",
+          "priority": 1,
+          "ttl": 3600
+        },
+        {
+          "type": "MX",
+          "name": "@",
+          "value": "alt1.aspmx.l.google.com.",
+          "priority": 5,
+          "ttl": 3600
+        },
+        {
+          "type": "TXT",
+          "name": "@",
+          "value": "v=spf1 include:_spf.google.com ~all",
+          "ttl": 3600
+        },
+        {
+          "type": "TXT",
+          "name": "_dmarc",
+          "value": "v=DMARC1; p=quarantine; rua=mailto:dmarc@example.invalid",
+          "ttl": 3600
+        }
+      ]
+    },
+    {
+      "id": "digitalocean-authoritative",
+      "provider": "digitalocean",
+      "domain": "do-authoritative.example",
+      "authority": {
+        "role": "authoritative_dns",
+        "registrar": "Namecheap",
+        "dns_host": "DigitalOcean",
+        "name_servers": [
+          "ns1.digitalocean.com",
+          "ns2.digitalocean.com",
+          "ns3.digitalocean.com"
+        ]
+      },
+      "records": [
+        {
+          "type": "A",
+          "name": "@",
+          "value": "198.51.100.25",
+          "ttl": 300
+        },
+        {
+          "type": "CNAME",
+          "name": "app",
+          "value": "do-app-service.example.",
+          "ttl": 300
+        },
+        {
+          "type": "MX",
+          "name": "@",
+          "value": "mail.protonmail.ch.",
+          "priority": 10,
+          "ttl": 300
+        },
+        {
+          "type": "TXT",
+          "name": "@",
+          "value": "v=spf1 include:_spf.protonmail.ch mx ~all",
+          "ttl": 300
+        }
+      ]
+    },
+    {
+      "id": "namecheap-managed",
+      "provider": "namecheap",
+      "domain": "namecheap-managed.example",
+      "authority": {
+        "role": "registrar_and_dns",
+        "registrar": "Namecheap",
+        "dns_host": "Namecheap",
+        "is_using_our_dns": true,
+        "name_servers": [
+          "dns1.registrar-servers.example",
+          "dns2.registrar-servers.example"
+        ]
+      },
+      "records": [
+        {
+          "type": "A",
+          "name": "@",
+          "value": "203.0.113.40",
+          "ttl": 1800
+        },
+        {
+          "type": "CNAME",
+          "name": "docs",
+          "value": "namecheap-managed.example.",
+          "ttl": 1800
+        },
+        {
+          "type": "TXT",
+          "name": "@",
+          "value": "v=spf1 -all",
+          "ttl": 1800
+        }
+      ]
+    },
+    {
+      "id": "cloudflare-target",
+      "provider": "cloudflare",
+      "domain": "cloudflare-target.example",
+      "authority": {
+        "role": "target_authoritative_dns",
+        "registrar": "Cloudflare Registrar",
+        "dns_host": "Cloudflare",
+        "status": "pending",
+        "name_servers": [
+          "ada.ns.cloudflare.com",
+          "bob.ns.cloudflare.com"
+        ],
+        "original_name_servers": [
+          "ns1.hover.example",
+          "ns2.hover.example"
+        ],
+        "original_registrar": "Hover",
+        "original_dnshost": "Hover"
+      },
+      "records": [
+        {
+          "type": "A",
+          "name": "@",
+          "value": "192.0.2.10",
+          "ttl": 900,
+          "proxied": false
+        },
+        {
+          "type": "AAAA",
+          "name": "@",
+          "value": "2001:db8::10",
+          "ttl": 900,
+          "proxied": false
+        },
+        {
+          "type": "CNAME",
+          "name": "www",
+          "value": "hover-source.example.",
+          "ttl": 900,
+          "proxied": false
+        },
+        {
+          "type": "MX",
+          "name": "@",
+          "value": "aspmx.l.google.com.",
+          "priority": 1,
+          "ttl": 3600
+        },
+        {
+          "type": "MX",
+          "name": "@",
+          "value": "alt1.aspmx.l.google.com.",
+          "priority": 5,
+          "ttl": 3600
+        },
+        {
+          "type": "TXT",
+          "name": "@",
+          "value": "v=spf1 include:_spf.google.com ~all",
+          "ttl": 3600
+        },
+        {
+          "type": "TXT",
+          "name": "_dmarc",
+          "value": "v=DMARC1; p=quarantine; rua=mailto:dmarc@example.invalid",
+          "ttl": 3600
+        }
+      ]
+    }
+  ],
+  "migration": {
+    "source_snapshot": "hover-source",
+    "target_snapshot": "cloudflare-target",
+    "delete_unlisted": false,
+    "required_manual_steps": [
+      "verify_target_zone",
+      "verify_mx_delivery",
+      "switch_registrar_nameservers",
+      "monitor_dns_propagation"
+    ],
+    "known_gaps": [
+      "registrar transfer is not exercised by public replay",
+      "hover live import is not exercised by public replay"
+    ]
+  }
+}

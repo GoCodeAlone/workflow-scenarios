@@ -1049,6 +1049,18 @@
       "notes": "Autonomous agile agent scenario. Agent audits, plans, deploys, and verifies up to 5 iterations without human direction. Full loop: audit \u2192 plan \u2192 validate \u2192 deploy \u2192 verify \u2192 git_commit. Real Ollama + Gemma 4 via Docker Compose.",
       "lastTested": null,
       "lastResult": null
+    },
+    "88-iac-dns-replay-migration": {
+      "status": "testable",
+      "namespace": "local",
+      "deployed": false,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Offline replay scenario for DNS/IaC import and migration safety. Validates sanitized Cloudflare, DigitalOcean, Namecheap, and Hover snapshots without provider accounts.",
+      "lastTested": null,
+      "lastResult": null
     }
   }
 }
