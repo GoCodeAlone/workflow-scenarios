@@ -1,0 +1,82 @@
+name: Bump Workflow Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      workflow_version:
+        description: Workflow release tag, for example v0.63.1. Defaults to latest release.
+        required: false
+        type: string
+  repository_dispatch:
+    types:
+      - workflow-release
+  schedule:
+    - cron: '17 */6 * * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    name: Bump github.com/GoCodeAlone/workflow
+    runs-on: ubuntu-latest
+    env:
+      GOPRIVATE: github.com/GoCodeAlone/*
+      GONOSUMDB: github.com/GoCodeAlone/*
+      GIT_TERMINAL_PROMPT: "0"
+      RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
+      WORKFLOW_VERSION: ${{ github.event.inputs.workflow_version || github.event.client_payload.tag || '' }}
+    steps:
+      - name: Check out scenarios
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Configure private Go modules
+        run: |
+          git config --global url."https://x-access-token:${RELEASES_TOKEN}@github.com/GoCodeAlone/".insteadOf "https://github.com/GoCodeAlone/"
+          go env -w GOPRIVATE="${GOPRIVATE}"
+          go env -w GONOSUMDB="${GONOSUMDB}"
+
+      - name: Check GitHub CLI
+        run: gh --version
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
+
+      - name: Bump workflow module
+        id: bump
+        run: |
+          before="$(GOWORK=off go list -m -f '{{.Version}}' github.com/GoCodeAlone/workflow)"
+          ./scripts/bump-workflow-release.sh
+          after="$(GOWORK=off go list -m -f '{{.Version}}' github.com/GoCodeAlone/workflow)"
+          echo "before=$before" >> "$GITHUB_OUTPUT"
+          echo "after=$after" >> "$GITHUB_OUTPUT"
+          if [ "$before" = "$after" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
+
+      - name: Create bump PR
+        if: steps.bump.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: automation/bump-workflow-${{ steps.bump.outputs.after }}
+          delete-branch: true
+          title: Bump workflow to ${{ steps.bump.outputs.after }}
+          commit-message: "chore: bump workflow to ${{ steps.bump.outputs.after }}"
+          body: |
+            ## Summary
+            - bump `github.com/GoCodeAlone/workflow` from `${{ steps.bump.outputs.before }}` to `${{ steps.bump.outputs.after }}`
+            - run `GOWORK=off go mod tidy`
+
+            ## Verification
+            - `GOWORK=off go test ./...`
