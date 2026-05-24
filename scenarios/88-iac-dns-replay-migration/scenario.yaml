@@ -14,8 +14,8 @@ components:
   - iac.provider.namecheap (registrar/DNS source shape)
   - iac.provider.hover (registrar-origin source shape)
   - iac.provider.aws (Route53 authority and record shape)
-  - iac.provider.azure (Azure DNS authority shape)
-  - iac.provider.gcp (Cloud DNS authority shape)
+  - iac.provider.azure (Azure DNS authority and record shape)
+  - iac.provider.gcp (Cloud DNS authority and record shape)
   - infra.dns
 status: testable
 tags:

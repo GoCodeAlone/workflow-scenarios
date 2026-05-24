@@ -159,8 +159,8 @@ def validate_provider_output_contracts(data: dict, reporter: Reporter) -> None:
         "namecheap": {"domain", "record_count", "authority", "authority.is_using_our_dns", "authority.email_type"},
         "hover": {"domain", "records", "record_count", "authority", "authority.name_servers"},
         "aws": {"domain", "records", "record_count", "authority", "authority.name_servers"},
-        "azure": {"domain", "record_count", "authority", "authority.name_servers"},
-        "gcp": {"domain", "authority", "authority.name_servers"},
+        "azure": {"domain", "records", "record_count", "authority", "authority.name_servers"},
+        "gcp": {"domain", "records", "record_count", "authority", "authority.name_servers"},
     }
     for provider, required_paths in required.items():
         contract = contracts.get(provider, {})
@@ -181,9 +181,9 @@ def validate_provider_output_contracts(data: dict, reporter: Reporter) -> None:
     aws = contracts.get("aws", {})
     reporter.check(aws.get("apply_semantics") == "record_upsert_preserve_unlisted", "AWS Route53 contract declares record upsert semantics")
     azure = contracts.get("azure", {})
-    reporter.check(azure.get("coverage") == "zone_authority_only", "Azure DNS contract is marked zone-authority-only")
+    reporter.check(azure.get("apply_semantics") == "record_upsert_preserve_unlisted", "Azure DNS contract declares record upsert semantics")
     gcp = contracts.get("gcp", {})
-    reporter.check(gcp.get("coverage") == "zone_authority_only", "GCP Cloud DNS contract is marked zone-authority-only")
+    reporter.check(gcp.get("apply_semantics") == "record_upsert_preserve_unlisted", "GCP Cloud DNS contract declares record upsert semantics")
 
 
 def validate_record_preservation(data: dict, snapshots: list[dict], reporter: Reporter) -> None:

@@ -13,7 +13,7 @@ The scenario does not call Cloudflare, DigitalOcean, Namecheap, Hover, AWS, Azur
 - Documentation/example IP ranges are used instead of public or private production addresses.
 - TXT verification tokens and DKIM material are redacted before fixture commit.
 - Cloudflare target state exposes Cloudflare nameservers.
-- Route53 target state exposes authority and record outputs; Azure DNS and GCP Cloud DNS are marked as zone-authority coverage until record-set CRUD is implemented there.
+- Route53, Azure DNS, and GCP Cloud DNS target states expose authority and record outputs with non-destructive record upsert semantics.
 - Destructive deletes are disabled unless explicitly opted in, and migration defaults to `plan_only`.
 - Migration plans track manual nameserver switch and MX-delivery verification steps.
 
