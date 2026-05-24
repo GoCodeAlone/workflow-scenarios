@@ -25,9 +25,12 @@ func TestDNSReplayMigrationScenario(t *testing.T) {
 		"PASS: fixtures use only documentation/example IP addresses",
 		"PASS: TXT records redact verification tokens and DKIM public keys",
 		"PASS: provider coverage includes cloudflare",
+		"PASS: fixture declares provider output contracts",
+		"PASS: cloudflare output contract requires authority.name_servers",
+		"PASS: namecheap output contract requires authority.is_using_our_dns",
 		"PASS: MX records are preserved in target",
 		"PASS: destructive deletes require explicit opt-in",
-		"Results: 141 passed, 0 failed",
+		"Results: 176 passed, 0 failed",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("DNS replay output missing %q\n%s", want, output)

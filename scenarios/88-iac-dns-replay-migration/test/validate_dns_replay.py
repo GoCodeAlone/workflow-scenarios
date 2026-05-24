@@ -150,6 +150,33 @@ def validate_provider_coverage(snapshots: list[dict], reporter: Reporter) -> Non
         reporter.check(provider in providers, f"provider coverage includes {provider}")
 
 
+def validate_provider_output_contracts(data: dict, reporter: Reporter) -> None:
+    contracts = data.get("provider_output_contracts", {})
+    reporter.check(isinstance(contracts, dict) and bool(contracts), "fixture declares provider output contracts")
+    required = {
+        "cloudflare": {"domain", "records", "record_count", "authority", "authority.name_servers", "authority.original_name_servers"},
+        "digitalocean": {"domain", "records", "record_count", "zone_file", "authority", "authority.name_servers"},
+        "namecheap": {"domain", "record_count", "authority", "authority.is_using_our_dns", "authority.email_type"},
+        "hover": {"domain", "records", "record_count", "authority", "authority.name_servers"},
+    }
+    for provider, required_paths in required.items():
+        contract = contracts.get(provider, {})
+        reporter.check(isinstance(contract, dict), f"{provider} output contract is an object")
+        resource_types = contract.get("resource_types", [])
+        reporter.check("infra.dns" in resource_types, f"{provider} output contract covers infra.dns")
+        paths = set(contract.get("dns_required_outputs", []))
+        for path in sorted(required_paths):
+            reporter.check(path in paths, f"{provider} output contract requires {path}")
+    cloudflare = contracts.get("cloudflare", {})
+    reporter.check(cloudflare.get("delete_unlisted_flag") == "manage_unlisted", "Cloudflare contract requires explicit manage_unlisted for destructive reconciliation")
+    digitalocean = contracts.get("digitalocean", {})
+    reporter.check(digitalocean.get("delete_unlisted_flag") == "unsupported", "DigitalOcean contract does not delete undeclared DNS records")
+    namecheap = contracts.get("namecheap", {})
+    reporter.check(namecheap.get("apply_semantics") == "whole_zone_replace", "Namecheap contract declares whole-zone replace semantics")
+    hover = contracts.get("hover", {})
+    reporter.check(hover.get("apply_semantics") == "read_only_import", "Hover contract remains read-only import")
+
+
 def validate_record_preservation(data: dict, snapshots: list[dict], reporter: Reporter) -> None:
     source = next((s for s in snapshots if s.get("id") == data.get("migration", {}).get("source_snapshot")), None)
     target = next((s for s in snapshots if s.get("id") == data.get("migration", {}).get("target_snapshot")), None)
@@ -205,6 +232,7 @@ def main(argv: list[str]) -> int:
         validate_sanitized_addresses(snapshots, reporter)
         validate_redaction(data, snapshots, reporter)
         validate_provider_coverage(snapshots, reporter)
+        validate_provider_output_contracts(data, reporter)
         validate_record_preservation(data, snapshots, reporter)
         validate_migration_safety(data, snapshots, reporter)
 

@@ -24,6 +24,76 @@
       "keybase-site-verification="
     ]
   },
+  "provider_output_contracts": {
+    "cloudflare": {
+      "resource_types": [
+        "infra.dns",
+        "infra.domain"
+      ],
+      "dns_required_outputs": [
+        "domain",
+        "records",
+        "record_count",
+        "name_servers",
+        "original_name_servers",
+        "authority",
+        "authority.name_servers",
+        "authority.original_name_servers",
+        "authority.original_registrar",
+        "authority.original_dnshost"
+      ],
+      "delete_unlisted_flag": "manage_unlisted",
+      "apply_semantics": "record_upsert_preserve_unlisted"
+    },
+    "digitalocean": {
+      "resource_types": [
+        "infra.dns"
+      ],
+      "dns_required_outputs": [
+        "domain",
+        "records",
+        "record_count",
+        "zone_file",
+        "authoritative_nameservers",
+        "authority",
+        "authority.name_servers"
+      ],
+      "delete_unlisted_flag": "unsupported",
+      "apply_semantics": "record_upsert_preserve_unlisted"
+    },
+    "namecheap": {
+      "resource_types": [
+        "infra.dns",
+        "infra.domain_transfer"
+      ],
+      "dns_required_outputs": [
+        "domain",
+        "record_count",
+        "email_type",
+        "is_using_our_dns",
+        "authority",
+        "authority.email_type",
+        "authority.is_using_our_dns"
+      ],
+      "delete_unlisted_flag": "implicit_in_whole_zone_replace",
+      "apply_semantics": "whole_zone_replace"
+    },
+    "hover": {
+      "resource_types": [
+        "infra.dns",
+        "infra.dns_delegation"
+      ],
+      "dns_required_outputs": [
+        "domain",
+        "records",
+        "record_count",
+        "authority",
+        "authority.name_servers"
+      ],
+      "delete_unlisted_flag": "unsupported",
+      "apply_semantics": "read_only_import"
+    }
+  },
   "snapshots": [
     {
       "id": "hover-source",
