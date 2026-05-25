@@ -20,8 +20,8 @@ github.com/GoCodeAlone/modular/modules/auth v1.15.0 h1:pBSkPSf4k4GLSbUQFLuPa+nFb
 github.com/GoCodeAlone/modular/modules/auth v1.15.0/go.mod h1:vmIm/LQrcURS2p02YwaELb+CZoHPtT0XB0v1i+sj9i4=
 github.com/GoCodeAlone/modular/modules/eventbus/v2 v2.8.0 h1:buYs0TGNbAZgtTq1Qb+dfmTv3+ZOBIN0HbvVBLyNqxE=
 github.com/GoCodeAlone/modular/modules/eventbus/v2 v2.8.0/go.mod h1:329flAKmwrPq2JEwu9iltWv6A83H/Di82Xze+kvdKDw=
-github.com/GoCodeAlone/workflow v0.63.1 h1:3VvbJyyaj+eSUwnLSvP/vZcIgJItni70qNI1CKXX4t8=
-github.com/GoCodeAlone/workflow v0.63.1/go.mod h1:659GGDrw3QJ7b625y9rf8QhKIpt1VCoEG0MxKu5tGQs=
+github.com/GoCodeAlone/workflow v0.64.3 h1:r0jMoRJXJI8lz44c70mFjGcpy24IWpOTtkX7BC0/fas=
+github.com/GoCodeAlone/workflow v0.64.3/go.mod h1:659GGDrw3QJ7b625y9rf8QhKIpt1VCoEG0MxKu5tGQs=
 github.com/GoCodeAlone/workflow-plugin-data-engineering v0.3.1 h1:NPdPpSc3PjYJ5Xzu0YKitMPqrnLB3DW5/pvKFXNHxTM=
 github.com/GoCodeAlone/workflow-plugin-data-engineering v0.3.1/go.mod h1:vEqwFF4T/U9OVxbW8gfFFvkA3cMOqX918FBXAx3QaFY=
 github.com/GoCodeAlone/yaegi v0.17.2 h1:WK6Y6e0t1a6U7r+S2dN3CGWW1PizYD3zO0zneToZPxM=
