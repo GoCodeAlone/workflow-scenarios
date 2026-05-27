@@ -37,7 +37,7 @@ storage_state "$ADMIN_JAR" "$ADMIN_STATE"
 
 playwright screenshot \
   --load-storage "$ADMIN_STATE" \
-  --wait-for-selector 'text=ABAC Policies' \
+  --wait-for-selector '[role="tablist"]' \
   --full-page \
   "$BASE/admin/authz" \
   "$ARTIFACT_DIR/admin-authz-desktop.png" >/dev/null
@@ -46,7 +46,7 @@ playwright screenshot \
   --load-storage "$ADMIN_STATE" \
   --wait-for-selector 'form[action="/admin/authz/rebac/upsert"]' \
   --full-page \
-  "$BASE/admin/authz" \
+  "$BASE/admin/authz?tab=rebac" \
   "$ARTIFACT_DIR/admin-authz-management.png" >/dev/null
 
 playwright screenshot \

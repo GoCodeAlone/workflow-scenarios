@@ -142,6 +142,10 @@ def page(title, body, principal=None):
     .scope-option {{ display:grid; grid-template-columns:18px minmax(0, 1fr); gap:8px; align-items:start; background:white; border:1px solid var(--line); border-radius:7px; padding:8px; }}
     .scope-option input {{ min-width:0; width:18px; height:18px; flex:0 0 auto; margin:1px 0 0; padding:0; }}
     .scope-option span {{ overflow-wrap:anywhere; }}
+    .mode-tabs {{ display:flex; gap:6px; border-bottom:1px solid var(--line); margin:18px 0; overflow-x:auto; }}
+    .mode-tabs a {{ color:#334155; text-decoration:none; padding:10px 14px; border:1px solid transparent; border-bottom:0; border-radius:7px 7px 0 0; white-space:nowrap; }}
+    .mode-tabs a[aria-selected="true"] {{ color:var(--brand); background:white; border-color:var(--line); font-weight:700; margin-bottom:-1px; }}
+    .tab-panel {{ display:block; }}
     code {{ background:#edf2f7; padding:2px 5px; border-radius:5px; }}
     .login-shell {{ max-width:440px; margin:48px auto; }}
     .error {{ color:#991b1b; background:#fef2f2; border:1px solid #fecaca; border-radius:7px; padding:10px 12px; }}
@@ -257,6 +261,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/authz":
             if not self.require_scope("admin:authz.roles:read", html=True):
                 return
+            query = parse_qs(urlparse(self.path).query)
+            active_tab = query.get("tab", ["rbac"])[0]
+            if active_tab not in {"rbac", "abac", "rebac"}:
+                active_tab = "rbac"
             with state_lock:
                 roles = list(state["roles"])
                 policies = list(state["attribute_policies"])
@@ -283,40 +291,59 @@ class Handler(BaseHTTPRequestHandler):
                 f"<section class='card'><h2>{escape(cap['mode'].upper())}</h2><span class='pill'>{escape(cap['health'])}</span><p>{escape(', '.join(cap['operations']))}</p></section>"
                 for cap in provider_capabilities()["capability_descriptors"]
             )
+            tab_nav = "".join(
+                f"<a role=\"tab\" href=\"/admin/authz?tab={tab}\" aria-selected=\"{'true' if active_tab == tab else 'false'}\">{label}</a>"
+                for tab, label in [("rbac", "RBAC"), ("abac", "ABAC"), ("rebac", "ReBAC")]
+            )
+            rbac_panel = f"""
+              <section class="tab-panel" role="tabpanel" aria-label="RBAC">
+                <div class="scope-grid">{scope_cards}</div>
+                <form method="post" action="/api/authz/roles">
+                  <input name="user" placeholder="User" required />
+                  <input name="role" placeholder="Role" required />
+                  <select name="context"><option value="frontend">frontend</option><option value="admin">admin</option></select>
+                  <div class="scope-picker">{scope_options}</div>
+                  <button type="submit">Assign role</button>
+                </form>
+                <table><thead><tr><th>User</th><th>Role</th><th>Context</th><th>Direct Scopes</th></tr></thead><tbody>{role_rows}</tbody></table>
+              </section>
+            """
+            abac_panel = f"""
+              <section class="tab-panel" role="tabpanel" aria-label="ABAC">
+                <section class="card"><h2>ABAC Policies</h2><p>Policies bind declared resources, actions, and attributes. Unknown resources, actions, attributes, and values are rejected by the API.</p></section>
+                <form method="post" action="/admin/authz/abac/upsert">
+                  <input name="id" placeholder="Policy ID" required />
+                  <select name="context">{context_options}</select>
+                  <select name="resource">{resource_options}</select>
+                  <select name="action">{action_options}</select>
+                  <select name="effect"><option value="allow">allow</option><option value="deny">deny</option></select>
+                  <select name="department">{department_options}</select>
+                  <select name="visibility">{visibility_options}</select>
+                  <button type="submit">Save ABAC policy</button>
+                </form>
+                <table><thead><tr><th>ID</th><th>Context</th><th>Resource</th><th>Action</th><th>Effect</th><th>Conditions</th><th></th></tr></thead><tbody>{policy_rows}</tbody></table>
+              </section>
+            """
+            rebac_panel = f"""
+              <section class="tab-panel" role="tabpanel" aria-label="ReBAC">
+                <section class="card"><h2>ReBAC Tuples</h2><p>Relationship tuples are evaluated independently from RBAC scopes.</p></section>
+                <form method="post" action="/admin/authz/rebac/upsert">
+                  <select name="subject">{subject_options}</select>
+                  <select name="relation">{relation_options}</select>
+                  <select name="object">{object_options}</select>
+                  <select name="context">{context_options}</select>
+                  <button type="submit">Save relationship</button>
+                </form>
+                <table><thead><tr><th>Subject</th><th>Relation</th><th>Object</th><th>Context</th><th></th></tr></thead><tbody>{tuple_rows}</tbody></table>
+              </section>
+            """
+            panel = {"rbac": rbac_panel, "abac": abac_panel, "rebac": rebac_panel}[active_tab]
             self.send_html(page("Workflow Authz UI", f"""
               <h1>Role and Scope Administration</h1>
               <p>This admin contribution manages shared roles, attribute policies, and relationship tuples with explicit frontend and admin contexts. All selectable values come from the application declaration catalog.</p>
               <div class="grid">{capability_cards}</div>
-              <div class="scope-grid">{scope_cards}</div>
-              <form method="post" action="/api/authz/roles">
-                <input name="user" placeholder="User" required />
-                <input name="role" placeholder="Role" required />
-                <select name="context"><option value="frontend">frontend</option><option value="admin">admin</option></select>
-                <div class="scope-picker">{scope_options}</div>
-                <button type="submit">Assign role</button>
-              </form>
-              <table><thead><tr><th>User</th><th>Role</th><th>Context</th><th>Direct Scopes</th></tr></thead><tbody>{role_rows}</tbody></table>
-              <section class="card"><h2>ABAC Policies</h2><p>Policies bind declared resources, actions, and attributes. Unknown resources, actions, attributes, and values are rejected by the API.</p></section>
-              <form method="post" action="/admin/authz/abac/upsert">
-                <input name="id" placeholder="Policy ID" required />
-                <select name="context">{context_options}</select>
-                <select name="resource">{resource_options}</select>
-                <select name="action">{action_options}</select>
-                <select name="effect"><option value="allow">allow</option><option value="deny">deny</option></select>
-                <select name="department">{department_options}</select>
-                <select name="visibility">{visibility_options}</select>
-                <button type="submit">Save ABAC policy</button>
-              </form>
-              <table><thead><tr><th>ID</th><th>Context</th><th>Resource</th><th>Action</th><th>Effect</th><th>Conditions</th><th></th></tr></thead><tbody>{policy_rows}</tbody></table>
-              <section class="card"><h2>ReBAC Tuples</h2><p>Relationship tuples are evaluated independently from RBAC scopes.</p></section>
-              <form method="post" action="/admin/authz/rebac/upsert">
-                <select name="subject">{subject_options}</select>
-                <select name="relation">{relation_options}</select>
-                <select name="object">{object_options}</select>
-                <select name="context">{context_options}</select>
-                <button type="submit">Save relationship</button>
-              </form>
-              <table><thead><tr><th>Subject</th><th>Relation</th><th>Object</th><th>Context</th><th></th></tr></thead><tbody>{tuple_rows}</tbody></table>
+              <nav class="mode-tabs" role="tablist">{tab_nav}</nav>
+              {panel}
             """, principal))
             return
         if path == "/api/authz/roles":

@@ -49,16 +49,39 @@ contains "$admin" "/admin/authz" "Admin links authz contribution"
 
 authz="$(curl -b "$COOKIE_JAR" -fsS "$BASE/admin/authz")"
 contains "$authz" "Role and Scope Administration" "Authz UI page renders"
+contains "$authz" 'role="tablist"' "Authz UI groups access modes in tabs"
+contains "$authz" 'href="/admin/authz?tab=rbac"' "Authz UI has RBAC tab"
+contains "$authz" 'href="/admin/authz?tab=abac"' "Authz UI has ABAC tab"
+contains "$authz" 'href="/admin/authz?tab=rebac"' "Authz UI has ReBAC tab"
 contains "$authz" "frontend:orders:read" "Frontend scope visible"
 contains "$authz" "admin:authz.roles:update" "Admin scope visible"
 contains "$authz" "app.requests" "Application-declared scope visible"
 contains "$authz" "scope-picker" "Authz UI renders scope picker"
 contains "$authz" ".scope-option input" "Scope picker checkbox sizing isolated"
-contains "$authz" 'action="/admin/authz/abac/upsert"' "Authz UI provides ABAC policy create form"
-contains "$authz" 'name="department"' "ABAC form uses declared department lookup"
-contains "$authz" 'name="visibility"' "ABAC form uses declared visibility lookup"
-contains "$authz" 'action="/admin/authz/rebac/upsert"' "Authz UI provides ReBAC tuple create form"
-contains "$authz" 'name="relation"' "ReBAC form uses declared relation lookup"
+if grep -q 'action="/admin/authz/abac/upsert"' <<<"$authz" || grep -q 'action="/admin/authz/rebac/upsert"' <<<"$authz"; then
+  fail "RBAC tab should not render ABAC/ReBAC forms"
+else
+  pass "RBAC tab renders only RBAC management"
+fi
+authz_abac="$(curl -b "$COOKIE_JAR" -fsS "$BASE/admin/authz?tab=abac")"
+contains "$authz_abac" 'aria-selected="true">ABAC' "ABAC tab can be selected"
+if grep -q 'action="/api/authz/roles"' <<<"$authz_abac" || grep -q 'action="/admin/authz/rebac/upsert"' <<<"$authz_abac"; then
+  fail "ABAC tab should not render RBAC/ReBAC forms"
+else
+  pass "ABAC tab renders only ABAC management"
+fi
+authz_rebac="$(curl -b "$COOKIE_JAR" -fsS "$BASE/admin/authz?tab=rebac")"
+contains "$authz_rebac" 'aria-selected="true">ReBAC' "ReBAC tab can be selected"
+if grep -q 'action="/api/authz/roles"' <<<"$authz_rebac" || grep -q 'action="/admin/authz/abac/upsert"' <<<"$authz_rebac"; then
+  fail "ReBAC tab should not render RBAC/ABAC forms"
+else
+  pass "ReBAC tab renders only ReBAC management"
+fi
+contains "$authz_abac" 'action="/admin/authz/abac/upsert"' "Authz UI provides ABAC policy create form"
+contains "$authz_abac" 'name="department"' "ABAC form uses declared department lookup"
+contains "$authz_abac" 'name="visibility"' "ABAC form uses declared visibility lookup"
+contains "$authz_rebac" 'action="/admin/authz/rebac/upsert"' "Authz UI provides ReBAC tuple create form"
+contains "$authz_rebac" 'name="relation"' "ReBAC form uses declared relation lookup"
 if grep -q "Direct scopes, comma separated" <<<"$authz"; then
   fail "Authz UI should not render free-text scope entry"
 else
