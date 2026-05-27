@@ -9,6 +9,15 @@
 # Both fixtures deployed by test/run.sh to /tmp so the absolute path
 # resolves cleanly across the wfctl→plugin process boundary.
 modules:
+  # http.server is declared as an entry-point module so `wfctl validate`
+  # accepts the config (schema/validate.go's entryPointModuleTypes guard).
+  # No HTTP routes are wired — scenarios drive `wfctl infra import-all`
+  # directly.
+  - name: server
+    type: http.server
+    config:
+      address: ":0"
+
   - name: stub-A
     type: iac.provider
     config:

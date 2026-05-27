@@ -9,6 +9,15 @@
 # Module name MUST equal the SANITIZED zone ID produced by
 # `wfctl infra import-all` — see scenarios/89-.../test/run.sh comment.
 modules:
+  # http.server is declared as an entry-point module so `wfctl validate`
+  # accepts the config (schema/validate.go's entryPointModuleTypes guard).
+  # No HTTP routes are wired — scenarios drive `wfctl infra import-all`
+  # + `wfctl infra plan` directly, never spinning up the server.
+  - name: server
+    type: http.server
+    config:
+      address: ":0"
+
   - name: stub
     type: iac.provider
     config:
