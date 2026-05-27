@@ -1,0 +1,15 @@
+# scenarios/lib/dns-stub-plugin/fixtures/example.yaml
+#
+# Default fixture loaded by the DNS stub plugin when DNS_STUB_FIXTURE
+# (or the stub module's config.fixture_path) points here. Used by
+# scenario 89-dns-import-export-roundtrip to pre-populate state before
+# the test invokes `wfctl infra import-all`. Scenarios 90 and 91 supply
+# their own per-stub fixtures so the cross-provider transfer and
+# delegation paths can route to separate state files.
+zones:
+  - id: alpha.test
+    zone: alpha.test
+    records:
+      - {type: A, name: "@", data: "1.2.3.4", ttl: 300}
+      - {type: CNAME, name: www, data: alpha.test, ttl: 300}
+      - {type: MX, name: "@", data: mail.alpha.test, ttl: 3600, priority: 10}

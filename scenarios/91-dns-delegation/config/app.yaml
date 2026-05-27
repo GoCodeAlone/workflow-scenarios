@@ -1,0 +1,54 @@
+# Scenario 91 — DNS delegation across two stub providers.
+#
+# stub-A owns example.test (parent zone) loaded from
+# /tmp/dns-stub-91-parent-fixture.yaml — includes NS records for
+# child.example.test pointing at stub-B's nameservers.
+# stub-B owns child.example.test (child zone) loaded from
+# /tmp/dns-stub-91-child-fixture.yaml — serves the child records.
+#
+# Both fixtures deployed by test/run.sh to /tmp so the absolute path
+# resolves cleanly across the wfctl→plugin process boundary.
+modules:
+  # http.server is declared as an entry-point module so `wfctl validate`
+  # accepts the config (schema/validate.go's entryPointModuleTypes guard).
+  # No HTTP routes are wired — scenarios drive `wfctl infra import-all`
+  # directly.
+  - name: server
+    type: http.server
+    config:
+      address: ":0"
+
+  - name: stub-A
+    type: iac.provider
+    config:
+      provider: stub-A
+      state_path: /tmp/dns-stub-91-parent.json
+      fixture_path: /tmp/dns-stub-91-parent-fixture.yaml
+
+  - name: stub-B
+    type: iac.provider
+    config:
+      provider: stub-B
+      state_path: /tmp/dns-stub-91-child.json
+      fixture_path: /tmp/dns-stub-91-child-fixture.yaml
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: filesystem
+      directory: /tmp/dns-stub-91-statestore
+
+  # Module names = sanitized zone IDs (example.test → example-test,
+  # child.example.test → child-example-test) so import-all roundtrips
+  # key against the same Name.
+  - name: example-test
+    type: infra.dns
+    config:
+      provider: stub-A
+      domain: example.test
+
+  - name: child-example-test
+    type: infra.dns
+    config:
+      provider: stub-B
+      domain: child.example.test

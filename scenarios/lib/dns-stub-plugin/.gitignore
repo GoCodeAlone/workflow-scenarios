@@ -1,0 +1,3 @@
+# Built binary — scenarios build into /tmp/dns-stub, never into this dir.
+dns-stub-plugin
+*.test

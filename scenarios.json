@@ -1061,6 +1061,42 @@
       "notes": "Offline replay scenario for DNS/IaC import and migration safety. Validates sanitized Cloudflare, DigitalOcean, Namecheap, Hover, AWS, Azure, and GCP snapshots without provider accounts.",
       "lastTested": "2026-05-24T05:53:57.456253Z",
       "lastResult": "pass"
+    },
+    "89-dns-import-export-roundtrip": {
+      "status": "draft",
+      "namespace": "local",
+      "deployed": false,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Drives wfctl infra import-all against the shared dns-stub plugin (scenarios/lib/dns-stub-plugin), then asserts a plan against the same config emits the canonical zero-action `No changes` message. Validates IaCProviderEnumerator.EnumerateAll + IaCProvider.Import + ComputePlan roundtrip without provider credentials.",
+      "lastTested": null,
+      "lastResult": null
+    },
+    "90-dns-cross-provider-transfer": {
+      "status": "draft",
+      "namespace": "local",
+      "deployed": false,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Applies the same DNS record set against two stub IaCProvider instances (stub-A, stub-B) representing distinct clouds, imports both states, and asserts (type, name, data, ttl) parity per a per-(provider, record_type, field) lossiness charter. NS records excluded from the matrix.",
+      "lastTested": null,
+      "lastResult": null
+    },
+    "91-dns-delegation": {
+      "status": "draft",
+      "namespace": "local",
+      "deployed": false,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Parent zone at stub-A delegates child.example.test to stub-B via NS records; child zone served at stub-B. Single `wfctl infra apply` reconciles both providers; subsequent imports assert the delegation survives via .applied_config.records[] jq matchers.",
+      "lastTested": null,
+      "lastResult": null
     }
   }
 }
