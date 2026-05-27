@@ -20,7 +20,11 @@ services:
       # default like `stub` would point at a non-existent app-stub.yaml.
       # Spec-reviewer F1 on PR-2.
       VARIANT: ${VARIANT:-}
-      JWT_SECRET: scenario-92-jwt-secret-do-not-use-in-prod
+      # NB: no JWT_SECRET env var. The auth.jwt module reads
+      # hs256_secret from the YAML config at config/app{,-do-dryrun}.yaml.
+      # Adding an env var here would create a "which one wins" ambiguity
+      # when someone changes one but not the other. Test + Playwright
+      # JWT minting MUST use the literal hs256_secret from app.yaml.
     ports:
       - "127.0.0.1:18092:8080"
     volumes:

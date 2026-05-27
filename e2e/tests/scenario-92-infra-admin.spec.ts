@@ -192,11 +192,19 @@ test.describe('Scenario 92: Infra Admin (Dynamic, Proto-Driven)', () => {
     );
   });
 
-  test('@scenario-92 ListResources default-deny without evidence', async ({ page }) => {
+  test('@scenario-92 authenticated request without evidence still default-denies', async ({
+    page,
+  }) => {
+    // Two-tier security check exercised together: auth gate passes
+    // (Bearer header set in adminFetch), but handler-library default-
+    // deny rejects because the body omits the AdminAuthzEvidence
+    // payload. Result is 200 with tag-100 error string (per design's
+    // "errors surface via Output.error not Go-level errors" contract).
+    // Spec-reviewer PR-2 review item #4.
     await page.goto(BASE_URL);
     const { status, body } = await adminFetch(page, `${BASE_URL}/api/infra-admin/resources`, {});
     expect(status).toBe(200);
-    expect(body.error).toBeTruthy(); // tag-100 default-deny string
+    expect((body as { error?: string }).error).toBeTruthy();
   });
 
   test('@scenario-92 resources.html serves and references resources.js', async ({ page }) => {
