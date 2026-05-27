@@ -69,6 +69,11 @@ modules:
       asset_prefix:            /admin/infra-admin
       state_module:            iac-state
       http_module:             http
+      # auth_module wires T15's route-level auth gate (PR-1 47341ff6f):
+      # every /api/infra-admin/* and /admin/infra-admin/* request must
+      # carry a valid JWT bearer token issued by the named auth module.
+      # Mirrors admin.dashboard's auth_module convention above.
+      auth_module:             auth
       security_headers_module: security-headers
       provider_modules:        [stub-provider]
       access_log_path:         /var/log/infra-admin-audit.jsonl

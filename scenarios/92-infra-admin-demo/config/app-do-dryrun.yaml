@@ -71,6 +71,9 @@ modules:
       asset_prefix:            /admin/infra-admin
       state_module:            iac-state
       http_module:             http
+      # auth_module wires T15's route-level auth gate (PR-1 47341ff6f).
+      # See config/app.yaml for the rationale comment.
+      auth_module:             auth
       security_headers_module: security-headers
       provider_modules:        [stub-provider, do-provider]
       access_log_path:         /var/log/infra-admin-audit.jsonl

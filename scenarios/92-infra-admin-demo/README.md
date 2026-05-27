@@ -21,6 +21,28 @@ proto-driven admin UI surface introduced in workflow PR #791
 | `config/app.yaml` | stub-provider only | Always-pass; deterministic Playwright behavior |
 | `config/app-do-dryrun.yaml` | stub-provider + do-provider (no token) | DO provider fails any live API call; ListProviders + ListTypes still succeed against empty state |
 
+## Auth
+
+PR-1 T15 (commit 47341ff6f) added a route-level auth middleware that gates
+`/api/infra-admin/*` + `/admin/infra-admin/*` + `/api/admin/contributions`.
+The scenario wires it via `auth_module: auth` under `infra-admin.config`
+(mirroring `admin.dashboard.config.auth_module`).
+
+The scenario uses an HS256 baked-in JWT secret for demo simplicity:
+
+```
+hs256_secret: "scenario-92-jwt-secret-do-not-use-in-prod"
+```
+
+**This is test-only.** Both `test/run.sh` and the Playwright spec mint a
+short-lived Bearer token from this secret inline (no external dependency)
+and pass it as `Authorization: Bearer …`. Don't reuse this secret outside
+the scenario.
+
+The new Playwright test `unauthenticated /api/infra-admin/* returns 401`
+is the e2e regression gate that mirrors implementer-1's unit test
+`TestInfraAdmin_ClientCannotSpoofAuthzEvidence`.
+
 ## Running
 
 ```bash

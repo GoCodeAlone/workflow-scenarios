@@ -71,8 +71,39 @@ else
     fail "GET /healthz failed (is seed.sh up?)"
 fi
 
+# --- Mint HS256 JWT matching the scenario's auth.jwt module ---
+# Per PR-1 T15 auth gate (47341ff6f), /api/admin/contributions +
+# /api/infra-admin/* + /admin/infra-admin/* require a Bearer token
+# signed by the scenario's HS256 secret (config/app.yaml::auth.config.hs256_secret).
+# We mint a long-lived token inline so the smoke checks don't need
+# an external dependency. The token is test-only — the secret is
+# the literal "scenario-92-jwt-secret-do-not-use-in-prod".
+JWT_SECRET='scenario-92-jwt-secret-do-not-use-in-prod'
+NOW=$(date +%s)
+EXP=$((NOW + 3600))
+
+b64url() { openssl base64 -e -A | tr '+/' '-_' | tr -d '='; }
+
+HEADER=$(printf '%s' '{"alg":"HS256","typ":"JWT"}' | b64url)
+PAYLOAD=$(printf '{"iss":"scenario-92","sub":"scenario-92-run","iat":%d,"exp":%d}' "$NOW" "$EXP" | b64url)
+UNSIGNED="${HEADER}.${PAYLOAD}"
+SIGNATURE=$(printf '%s' "$UNSIGNED" | openssl dgst -sha256 -hmac "$JWT_SECRET" -binary | b64url)
+BEARER="${UNSIGNED}.${SIGNATURE}"
+AUTH_HEADER="Authorization: Bearer $BEARER"
+
+# T15 auth-gate regression check: unauthenticated request must 401.
+unauth_code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+    -H 'Content-Type: application/json' \
+    -d '{"evidence":{"authz_checked":true,"authz_allowed":true}}' \
+    "$BASE_URL/api/infra-admin/resources" || echo "000")
+if [ "$unauth_code" = "401" ]; then
+    pass "POST /api/infra-admin/resources without auth returns 401 (T15 auth gate)"
+else
+    fail "POST /api/infra-admin/resources without auth returned $unauth_code (want 401)"
+fi
+
 # Admin contributions endpoint (auto-populated by infra.admin.Start()).
-CONTRIB_RESPONSE=$(curl -fs "$BASE_URL/api/admin/contributions" 2>&1 || true)
+CONTRIB_RESPONSE=$(curl -fs -H "$AUTH_HEADER" "$BASE_URL/api/admin/contributions" 2>&1 || true)
 if echo "$CONTRIB_RESPONSE" | grep -q "infra.resources"; then
     pass "GET /api/admin/contributions includes infra.resources"
 else
@@ -88,7 +119,7 @@ fi
 RPC_BODY='{"evidence":{"authz_checked":true,"authz_allowed":true}}'
 for rpc in resources types providers; do
     code=$(curl -s -o /tmp/scenario-92-$rpc.json -w '%{http_code}' \
-        -X POST -H 'Content-Type: application/json' \
+        -X POST -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
         -d "$RPC_BODY" "$BASE_URL/api/infra-admin/$rpc" || echo "000")
     if [ "$code" = "200" ]; then
         pass "POST /api/infra-admin/$rpc returns 200"
@@ -98,7 +129,7 @@ for rpc in resources types providers; do
 done
 
 # Asset page reachable (proves embed.FS + middleware wiring).
-if curl -fs "$BASE_URL/admin/infra-admin/new.html" | grep -q '<title>Draft New Infra Resource</title>'; then
+if curl -fs -H "$AUTH_HEADER" "$BASE_URL/admin/infra-admin/new.html" | grep -q '<title>Draft New Infra Resource</title>'; then
     pass "GET /admin/infra-admin/new.html serves the form-builder page"
 else
     fail "new.html not served correctly"
