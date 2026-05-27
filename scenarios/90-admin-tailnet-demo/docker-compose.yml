@@ -1,0 +1,50 @@
+services:
+  app:
+    build:
+      context: ./app
+    container_name: workflow-admin-tailnet-demo
+    environment:
+      AUTHZ_PROVIDER: ${AUTHZ_PROVIDER:-keto}
+      KETO_READ_URL: http://keto:4466
+      KETO_WRITE_URL: http://keto:4467
+    ports:
+      - "127.0.0.1:18080:8080"
+    depends_on:
+      - keto
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/status')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  keto:
+    image: oryd/keto:v0.14.0
+    container_name: workflow-admin-tailnet-demo-keto
+    command: serve -c /etc/keto/keto.yml all
+    volumes:
+      - ./keto:/etc/keto:ro
+    ports:
+      - "4466"
+      - "4467"
+
+  tailscale:
+    image: tailscale/tailscale:stable
+    container_name: workflow-admin-tailnet-demo-ts
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_HOSTNAME: workflow-admin-demo
+      TS_STATE_DIR: /var/lib/tailscale
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    command: sh -c 'if [ -n "$$TS_AUTHKEY" ]; then tailscaled --state=$$TS_STATE_DIR/tailscaled.state & sleep 2 && tailscale up --authkey=$$TS_AUTHKEY --hostname=$$TS_HOSTNAME && tailscale serve --bg --http=80 http://app:8080 && wait; else echo "TS_AUTHKEY not set; sidecar idle" && sleep infinity; fi'
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  tailscale-state:
