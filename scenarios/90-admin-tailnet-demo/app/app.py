@@ -85,6 +85,11 @@ state = {
         {"subject": "admin@tailnet", "relation": "owner", "object": "request:1", "context": "frontend"},
         {"subject": "app-user@tailnet", "relation": "viewer", "object": "request:2", "context": "frontend"},
     ],
+    "objects": [
+        {"id": "request:1", "context": "frontend", "type": "request", "label": "Request 1"},
+        {"id": "request:2", "context": "frontend", "type": "request", "label": "Request 2"},
+        {"id": "admin-section:authz", "context": "admin", "type": "admin-section", "label": "Authorization admin section"},
+    ],
     "requests": [
         {"id": 1, "title": "Invite beta testers", "status": "open"},
         {"id": 2, "title": "Approve workflow-admin rollout", "status": "open"},
@@ -256,12 +261,24 @@ class Handler(BaseHTTPRequestHandler):
                 roles = list(state["roles"])
                 policies = list(state["attribute_policies"])
                 tuples = list(state["relation_tuples"])
+                objects = list(state["objects"])
             role_rows = "".join(f"<tr><td>{escape(r['user'])}</td><td>{escape(r['role'])}</td><td>{escape(r['context'])}</td><td>{', '.join(escape(s) for s in r['scopes'])}</td></tr>" for r in roles)
-            policy_rows = "".join(f"<tr><td>{escape(p['id'])}</td><td>{escape(p['context'])}</td><td>{escape(p['resource'])}</td><td>{escape(p['action'])}</td><td>{escape(p['effect'])}</td><td>{len(p.get('conditions', []))}</td></tr>" for p in policies)
-            tuple_rows = "".join(f"<tr><td>{escape(t['subject'])}</td><td>{escape(t['relation'])}</td><td>{escape(t['object'])}</td><td>{escape(t['context'])}</td></tr>" for t in tuples)
+            policy_rows = "".join(f"<tr><td>{escape(p['id'])}</td><td>{escape(p['context'])}</td><td>{escape(p['resource'])}</td><td>{escape(p['action'])}</td><td>{escape(p['effect'])}</td><td>{len(p.get('conditions', []))}</td><td><form method='post' action='/admin/authz/abac/delete'><input type='hidden' name='id' value='{escape(p['id'])}' /><button class='secondary' type='submit'>Delete</button></form></td></tr>" for p in policies)
+            tuple_rows = "".join(f"<tr><td>{escape(t['subject'])}</td><td>{escape(t['relation'])}</td><td>{escape(t['object'])}</td><td>{escape(t['context'])}</td><td><form method='post' action='/admin/authz/rebac/delete'><input type='hidden' name='subject' value='{escape(t['subject'])}' /><input type='hidden' name='relation' value='{escape(t['relation'])}' /><input type='hidden' name='object' value='{escape(t['object'])}' /><input type='hidden' name='context' value='{escape(t['context'])}' /><button class='secondary' type='submit'>Delete</button></form></td></tr>" for t in tuples)
             scopes = declared_scopes()
             scope_cards = "".join(f"<div class='scope-card'><strong>{escape(s['name'])}</strong><span>{escape(s['context'])} · {escape(s['resource'])} · {', '.join(escape(a) for a in s['actions'])}</span><span>{escape(s['category'])} · {escape(s['owner_plugin'])} · {escape(s['owner_module'])}</span><p>{escape(s['description'])}</p></div>" for s in scopes)
             scope_options = "".join(f"<label class='scope-option'><input type='checkbox' name='scopes' value='{escape(s['name'])}' /><span>{escape(s['name'])}</span></label>" for s in scopes)
+            declarations = authz_declarations()
+            context_options = "".join(f"<option value=\"{escape(context)}\">{escape(context)}</option>" for context in sorted({scope["context"] for scope in scopes}))
+            resource_options = "".join(f"<option value=\"{escape(resource['name'])}\">{escape(resource.get('display_name') or resource['name'])}</option>" for resource in declarations["resources"])
+            action_options = "".join(f"<option value=\"{escape(action['name'])}\">{escape(action['resource'])} · {escape(action['name'])}</option>" for action in declarations["actions"])
+            department = next(attr for attr in declarations["attributes"] if attr["name"] == "department")
+            visibility = next(attr for attr in declarations["attributes"] if attr["name"] == "visibility")
+            department_options = "".join(f"<option value=\"{escape(item['value'])}\">{escape(item.get('label') or item['value'])}</option>" for item in department["allowed_values"])
+            visibility_options = "".join(f"<option value=\"{escape(item['value'])}\">{escape(item.get('label') or item['value'])}</option>" for item in visibility["allowed_values"])
+            subject_options = "".join(f"<option value=\"{escape(subject)}\">{escape(subject)}</option>" for subject in sorted(users.keys()))
+            relation_options = "".join(f"<option value=\"{escape(relation['name'])}\">{escape(relation['context'])} · {escape(relation['name'])}</option>" for relation in declarations["relations"])
+            object_options = "".join(f"<option value=\"{escape(obj['id'])}\">{escape(obj['label'])}</option>" for obj in objects)
             capability_cards = "".join(
                 f"<section class='card'><h2>{escape(cap['mode'].upper())}</h2><span class='pill'>{escape(cap['health'])}</span><p>{escape(', '.join(cap['operations']))}</p></section>"
                 for cap in provider_capabilities()["capability_descriptors"]
@@ -280,9 +297,26 @@ class Handler(BaseHTTPRequestHandler):
               </form>
               <table><thead><tr><th>User</th><th>Role</th><th>Context</th><th>Direct Scopes</th></tr></thead><tbody>{role_rows}</tbody></table>
               <section class="card"><h2>ABAC Policies</h2><p>Policies bind declared resources, actions, and attributes. Unknown resources, actions, attributes, and values are rejected by the API.</p></section>
-              <table><thead><tr><th>ID</th><th>Context</th><th>Resource</th><th>Action</th><th>Effect</th><th>Conditions</th></tr></thead><tbody>{policy_rows}</tbody></table>
+              <form method="post" action="/admin/authz/abac/upsert">
+                <input name="id" placeholder="Policy ID" required />
+                <select name="context">{context_options}</select>
+                <select name="resource">{resource_options}</select>
+                <select name="action">{action_options}</select>
+                <select name="effect"><option value="allow">allow</option><option value="deny">deny</option></select>
+                <select name="department">{department_options}</select>
+                <select name="visibility">{visibility_options}</select>
+                <button type="submit">Save ABAC policy</button>
+              </form>
+              <table><thead><tr><th>ID</th><th>Context</th><th>Resource</th><th>Action</th><th>Effect</th><th>Conditions</th><th></th></tr></thead><tbody>{policy_rows}</tbody></table>
               <section class="card"><h2>ReBAC Tuples</h2><p>Relationship tuples are evaluated independently from RBAC scopes.</p></section>
-              <table><thead><tr><th>Subject</th><th>Relation</th><th>Object</th><th>Context</th></tr></thead><tbody>{tuple_rows}</tbody></table>
+              <form method="post" action="/admin/authz/rebac/upsert">
+                <select name="subject">{subject_options}</select>
+                <select name="relation">{relation_options}</select>
+                <select name="object">{object_options}</select>
+                <select name="context">{context_options}</select>
+                <button type="submit">Save relationship</button>
+              </form>
+              <table><thead><tr><th>Subject</th><th>Relation</th><th>Object</th><th>Context</th><th></th></tr></thead><tbody>{tuple_rows}</tbody></table>
             """, principal))
             return
         if path == "/api/authz/roles":
@@ -402,6 +436,56 @@ class Handler(BaseHTTPRequestHandler):
                         state["audit"].append({"event": f"request.{raw_id}.resolved", "actor": principal})
                         break
             self.redirect("/admin")
+            return
+        if path == "/admin/authz/abac/upsert":
+            if not self.require_scope("admin:authz.policies:update", html=True):
+                return
+            payload = attribute_policy_from_form(form)
+            valid, reason = validate_attribute_policy(payload)
+            if not valid:
+                self.send_html(page("Invalid ABAC Policy", f"<h1>Invalid ABAC Policy</h1><p class='error'>{escape(reason)}</p><p><a href='/admin/authz'>Back to authorization</a></p>", principal), HTTPStatus.BAD_REQUEST)
+                return
+            with state_lock:
+                state["attribute_policies"] = [p for p in state["attribute_policies"] if p.get("id") != payload["id"]]
+                state["attribute_policies"].append(payload)
+                state["audit"].append({"event": "authz.abac_policy.upserted", "actor": principal})
+            self.redirect("/admin/authz")
+            return
+        if path == "/admin/authz/abac/delete":
+            if not self.require_scope("admin:authz.policies:update", html=True):
+                return
+            policy_id = str(form.get("id", [""])[0]).strip()
+            with state_lock:
+                state["attribute_policies"] = [p for p in state["attribute_policies"] if p.get("id") != policy_id]
+                state["audit"].append({"event": "authz.abac_policy.deleted", "actor": principal})
+            self.redirect("/admin/authz")
+            return
+        if path == "/admin/authz/rebac/upsert":
+            if not self.require_scope("admin:authz.relations:update", html=True):
+                return
+            payload = relation_tuple_from_form(form)
+            valid, reason = validate_relation_tuple(payload)
+            if not valid:
+                self.send_html(page("Invalid ReBAC Tuple", f"<h1>Invalid ReBAC Tuple</h1><p class='error'>{escape(reason)}</p><p><a href='/admin/authz'>Back to authorization</a></p>", principal), HTTPStatus.BAD_REQUEST)
+                return
+            with state_lock:
+                if payload not in state["relation_tuples"]:
+                    state["relation_tuples"].append(payload)
+                    state["audit"].append({"event": "authz.relation_tuple.upserted", "actor": principal})
+            if authz_provider == "keto":
+                keto_put_relation_tuple(payload)
+            self.redirect("/admin/authz")
+            return
+        if path == "/admin/authz/rebac/delete":
+            if not self.require_scope("admin:authz.relations:update", html=True):
+                return
+            payload = relation_tuple_from_form(form)
+            with state_lock:
+                state["relation_tuples"] = [t for t in state["relation_tuples"] if not same_relation_tuple(t, payload)]
+                state["audit"].append({"event": "authz.relation_tuple.deleted", "actor": principal})
+            if authz_provider == "keto":
+                keto_delete_relation_tuple(payload)
+            self.redirect("/admin/authz")
             return
         if path == "/api/authz/roles":
             if not self.require_scope("admin:authz.roles:update"):
@@ -643,6 +727,15 @@ def authz_declarations():
                 "owner_module": scope["owner_module"],
                 "category": scope["category"],
             })
+    actions.append({
+        "name": "read",
+        "context": "frontend",
+        "resource": "requests",
+        "description": "Read requests when ABAC attributes allow access",
+        "owner_plugin": "workflow-plugin-authz",
+        "owner_module": "attribute-policy",
+        "category": "application",
+    })
     return {
         "scopes": scopes,
         "resources": sorted(resources.values(), key=lambda r: (r["context"], r["name"])),
@@ -686,6 +779,30 @@ def validate_assignment_scopes(context, scopes):
         if declared[scope]["context"] != context:
             return False, f"{scope} belongs to {declared[scope]['context']}, not {context}"
     return True, ""
+
+
+def attribute_policy_from_form(form):
+    return {
+        "id": str(form.get("id", [""])[0]).strip(),
+        "context": str(form.get("context", ["frontend"])[0]).strip() or "frontend",
+        "resource": str(form.get("resource", [""])[0]).strip(),
+        "action": str(form.get("action", [""])[0]).strip(),
+        "effect": str(form.get("effect", ["allow"])[0]).strip() or "allow",
+        "conditions": [
+            {"target": "subject", "attribute": "department", "operator": "equals", "values": [str(form.get("department", [""])[0]).strip()]},
+            {"target": "resource", "attribute": "visibility", "operator": "equals", "values": [str(form.get("visibility", [""])[0]).strip()]},
+        ],
+        "description": "Policy created from the admin demo UI.",
+    }
+
+
+def relation_tuple_from_form(form):
+    return {
+        "subject": str(form.get("subject", [""])[0]).strip(),
+        "relation": str(form.get("relation", [""])[0]).strip(),
+        "object": str(form.get("object", [""])[0]).strip(),
+        "context": str(form.get("context", ["frontend"])[0]).strip() or "frontend",
+    }
 
 
 def validate_attribute_policy(policy):

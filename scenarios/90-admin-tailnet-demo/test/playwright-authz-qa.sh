@@ -44,6 +44,13 @@ playwright screenshot \
 
 playwright screenshot \
   --load-storage "$ADMIN_STATE" \
+  --wait-for-selector 'form[action="/admin/authz/rebac/upsert"]' \
+  --full-page \
+  "$BASE/admin/authz" \
+  "$ARTIFACT_DIR/admin-authz-management.png" >/dev/null
+
+playwright screenshot \
+  --load-storage "$ADMIN_STATE" \
   --viewport-size "390,844" \
   --wait-for-selector '.scope-picker' \
   "$BASE/admin/authz" \

@@ -54,6 +54,11 @@ contains "$authz" "admin:authz.roles:update" "Admin scope visible"
 contains "$authz" "app.requests" "Application-declared scope visible"
 contains "$authz" "scope-picker" "Authz UI renders scope picker"
 contains "$authz" ".scope-option input" "Scope picker checkbox sizing isolated"
+contains "$authz" 'action="/admin/authz/abac/upsert"' "Authz UI provides ABAC policy create form"
+contains "$authz" 'name="department"' "ABAC form uses declared department lookup"
+contains "$authz" 'name="visibility"' "ABAC form uses declared visibility lookup"
+contains "$authz" 'action="/admin/authz/rebac/upsert"' "Authz UI provides ReBAC tuple create form"
+contains "$authz" 'name="relation"' "ReBAC form uses declared relation lookup"
 if grep -q "Direct scopes, comma separated" <<<"$authz"; then
   fail "Authz UI should not render free-text scope entry"
 else
@@ -115,6 +120,28 @@ rebac_allowed="$(curl -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' 
 contains "$rebac_allowed" '"allowed": true' "ReBAC allows seeded viewer relation"
 rebac_denied="$(curl -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' -d '{"subject":"app-user@tailnet","relation":"owner","object":"request:1","context":"frontend"}' "$BASE/api/authz/rebac/check")"
 contains "$rebac_denied" '"allowed": false' "ReBAC denies missing owner relation"
+
+curl -b "$COOKIE_JAR" -fsS -d 'id=finance-public-read&context=frontend&resource=requests&action=read&effect=allow&department=finance&visibility=public' "$BASE/admin/authz/abac/upsert" >/dev/null
+created_abac="$(curl -b "$COOKIE_JAR" -fsS "$BASE/api/authz/abac/policies")"
+contains "$created_abac" '"finance-public-read"' "ABAC form creates policy"
+curl -b "$COOKIE_JAR" -fsS -d 'id=finance-public-read' "$BASE/admin/authz/abac/delete" >/dev/null
+deleted_abac="$(curl -b "$COOKIE_JAR" -fsS "$BASE/api/authz/abac/policies")"
+if grep -q '"finance-public-read"' <<<"$deleted_abac"; then
+  fail "ABAC form delete should remove policy"
+else
+  pass "ABAC form deletes policy"
+fi
+
+curl -b "$COOKIE_JAR" -fsS -d 'subject=readonly-admin@tailnet&relation=delegated-admin&object=admin-section:authz&context=admin' "$BASE/admin/authz/rebac/upsert" >/dev/null
+created_rebac="$(curl -b "$COOKIE_JAR" -fsS "$BASE/api/authz/rebac/tuples")"
+contains "$created_rebac" '"delegated-admin"' "ReBAC form creates tuple"
+curl -b "$COOKIE_JAR" -fsS -d 'subject=readonly-admin@tailnet&relation=delegated-admin&object=admin-section:authz&context=admin' "$BASE/admin/authz/rebac/delete" >/dev/null
+deleted_rebac="$(curl -b "$COOKIE_JAR" -fsS "$BASE/api/authz/rebac/tuples")"
+if grep -q '"delegated-admin"' <<<"$deleted_rebac"; then
+  fail "ReBAC form delete should remove tuple"
+else
+  pass "ReBAC form deletes tuple"
+fi
 
 curl -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' -d '{"user":"temp@tailnet","role":"requester","context":"frontend","scopes":["frontend:requests:create"]}' "$BASE/api/authz/roles" >/dev/null
 rbac_granted="$(curl -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' -d '{"subject":"temp@tailnet","object":"frontend:requests:create","action":"granted"}' "$BASE/api/authz/enforce")"
