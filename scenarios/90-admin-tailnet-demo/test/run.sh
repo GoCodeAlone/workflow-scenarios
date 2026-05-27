@@ -71,6 +71,25 @@ contains "$scope_catalog" '"category": "application"' "Scopes include categories
 
 status="$(curl -fsS "$BASE/api/status")"
 contains "$status" '"provider": "keto"' "Status reports Keto authz provider"
+contains "$status" '"capabilities"' "Status reports provider capabilities"
+
+capabilities="$(curl -b "$COOKIE_JAR" -fsS "$BASE/api/authz/capabilities")"
+contains "$capabilities" '"mode": "rbac"' "Capabilities advertise RBAC"
+contains "$capabilities" '"mode": "abac"' "Capabilities advertise ABAC"
+contains "$capabilities" '"mode": "rebac"' "Capabilities advertise ReBAC"
+contains "$capabilities" '"manage_policies"' "ABAC capability lists policy management"
+contains "$capabilities" '"manage_relations"' "ReBAC capability lists relationship management"
+
+declarations="$(curl -b "$COOKIE_JAR" -fsS "$BASE/api/authz/declarations")"
+contains "$declarations" '"attributes"' "Declarations include attributes"
+contains "$declarations" '"relations"' "Declarations include relations"
+contains "$declarations" '"ui_actions"' "Declarations include UI actions"
+contains "$declarations" '"lookup_source_id": "directory.departments"' "Attribute values expose lookup source"
+
+projection="$(curl -b "$COOKIE_JAR" -fsS "$BASE/api/authz/projection-inputs")"
+contains "$projection" '"scope_names"' "Projection inputs include scope names"
+contains "$projection" '"attribute_names"' "Projection inputs include attribute names"
+contains "$projection" '"relation_names"' "Projection inputs include relation names"
 
 unknown_status="$(curl -b "$COOKIE_JAR" -s -o /dev/null -w "%{http_code}" -d 'user=admin@tailnet&role=bad&context=admin&scopes=admin:unknown:update' "$BASE/api/authz/roles")"
 if [[ "$unknown_status" == "400" ]]; then
@@ -78,6 +97,31 @@ if [[ "$unknown_status" == "400" ]]; then
 else
   fail "Unknown scope assignment expected 400, got $unknown_status"
 fi
+
+abac_policies="$(curl -b "$COOKIE_JAR" -fsS "$BASE/api/authz/abac/policies")"
+contains "$abac_policies" '"support-can-read-support-requests"' "ABAC policies list seeded policy"
+abac_allowed="$(curl -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' -d '{"subject":"app-user@tailnet","object":"requests","action":"read"}' "$BASE/api/authz/enforce")"
+contains "$abac_allowed" '"allowed": true' "ABAC allows support user on support request"
+invalid_abac_status="$(curl -b "$COOKIE_JAR" -s -o /dev/null -w "%{http_code}" -H 'content-type: application/json' -d '{"id":"bad-policy","context":"frontend","resource":"requests","action":"read","effect":"allow","conditions":[{"target":"subject","attribute":"department","operator":"equals","values":["unknown"]}]}' "$BASE/api/authz/abac/policies")"
+if [[ "$invalid_abac_status" == "400" ]]; then
+  pass "ABAC rejects undeclared attribute values"
+else
+  fail "ABAC invalid value expected 400, got $invalid_abac_status"
+fi
+
+rebac_tuples="$(curl -b "$COOKIE_JAR" -fsS "$BASE/api/authz/rebac/tuples")"
+contains "$rebac_tuples" '"relation": "viewer"' "ReBAC tuples list seeded relation"
+rebac_allowed="$(curl -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' -d '{"subject":"app-user@tailnet","relation":"viewer","object":"request:2","context":"frontend"}' "$BASE/api/authz/rebac/check")"
+contains "$rebac_allowed" '"allowed": true' "ReBAC allows seeded viewer relation"
+rebac_denied="$(curl -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' -d '{"subject":"app-user@tailnet","relation":"owner","object":"request:1","context":"frontend"}' "$BASE/api/authz/rebac/check")"
+contains "$rebac_denied" '"allowed": false' "ReBAC denies missing owner relation"
+
+curl -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' -d '{"user":"temp@tailnet","role":"requester","context":"frontend","scopes":["frontend:requests:create"]}' "$BASE/api/authz/roles" >/dev/null
+rbac_granted="$(curl -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' -d '{"subject":"temp@tailnet","object":"frontend:requests:create","action":"granted"}' "$BASE/api/authz/enforce")"
+contains "$rbac_granted" '"allowed": true' "RBAC grants newly assigned scope"
+curl -X DELETE -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' -d '{"user":"temp@tailnet","role":"requester","scopes":["frontend:requests:create"]}' "$BASE/api/authz/roles" >/dev/null
+rbac_removed="$(curl -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' -d '{"subject":"temp@tailnet","object":"frontend:requests:create","action":"granted"}' "$BASE/api/authz/enforce")"
+contains "$rbac_removed" '"allowed": false' "RBAC removal revokes assigned scope"
 
 curl -s -o /dev/null -c "$FRONTEND_COOKIE" -d 'email=app-user@tailnet&password=user' "$BASE/login"
 frontend_admin_status="$(curl -b "$FRONTEND_COOKIE" -s -o /dev/null -w "%{http_code}" "$BASE/admin")"

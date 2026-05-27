@@ -38,6 +38,10 @@ users = {
             "admin:authz.roles:read",
             "admin:authz.roles:update",
             "admin:authz.scopes:read",
+            "admin:authz.policies:read",
+            "admin:authz.policies:update",
+            "admin:authz.relations:read",
+            "admin:authz.relations:update",
         ],
     },
 }
@@ -53,11 +57,33 @@ state = {
         {"name": "admin:authz.roles:read", "context": "admin", "resource": "authz.roles", "actions": ["read"], "description": "Inspect role assignments", "owner_plugin": "workflow-plugin-authz", "owner_module": "scope-catalog", "category": "security"},
         {"name": "admin:authz.roles:update", "context": "admin", "resource": "authz.roles", "actions": ["update"], "description": "Create and remove role assignments", "owner_plugin": "workflow-plugin-authz", "owner_module": "scope-catalog", "category": "security"},
         {"name": "admin:authz.scopes:read", "context": "admin", "resource": "authz.scopes", "actions": ["read"], "description": "Inspect declared application scopes", "owner_plugin": "workflow-plugin-authz", "owner_module": "scope-catalog", "category": "security"},
+        {"name": "admin:authz.policies:read", "context": "admin", "resource": "authz.policies", "actions": ["read"], "description": "Inspect ABAC policy rules", "owner_plugin": "workflow-plugin-authz", "owner_module": "attribute-policy", "category": "security"},
+        {"name": "admin:authz.policies:update", "context": "admin", "resource": "authz.policies", "actions": ["update"], "description": "Create and remove ABAC policy rules", "owner_plugin": "workflow-plugin-authz", "owner_module": "attribute-policy", "category": "security"},
+        {"name": "admin:authz.relations:read", "context": "admin", "resource": "authz.relations", "actions": ["read"], "description": "Inspect ReBAC relationship tuples", "owner_plugin": "workflow-plugin-authz", "owner_module": "relationship-policy", "category": "security"},
+        {"name": "admin:authz.relations:update", "context": "admin", "resource": "authz.relations", "actions": ["update"], "description": "Create and remove ReBAC relationship tuples", "owner_plugin": "workflow-plugin-authz", "owner_module": "relationship-policy", "category": "security"},
     ],
     "roles": [
         {"user": "app-user@tailnet", "role": "requester", "context": "frontend", "scopes": ["frontend:orders:read", "frontend:requests:create"]},
         {"user": "readonly-admin@tailnet", "role": "authz-viewer", "context": "admin", "scopes": ["admin:dashboard:read", "admin:authz.roles:read", "admin:authz.scopes:read"]},
-        {"user": "admin@tailnet", "role": "authz-admin", "context": "admin", "scopes": ["admin:dashboard:read", "admin:app:update", "admin:authz.roles:read", "admin:authz.roles:update", "admin:authz.scopes:read"]},
+        {"user": "admin@tailnet", "role": "authz-admin", "context": "admin", "scopes": ["admin:dashboard:read", "admin:app:update", "admin:authz.roles:read", "admin:authz.roles:update", "admin:authz.scopes:read", "admin:authz.policies:read", "admin:authz.policies:update", "admin:authz.relations:read", "admin:authz.relations:update"]},
+    ],
+    "attribute_policies": [
+        {
+            "id": "support-can-read-support-requests",
+            "context": "frontend",
+            "resource": "requests",
+            "action": "read",
+            "effect": "allow",
+            "conditions": [
+                {"target": "subject", "attribute": "department", "operator": "equals", "values": ["support"]},
+                {"target": "resource", "attribute": "visibility", "operator": "in", "values": ["support", "public"]},
+            ],
+            "description": "Support staff can read support-visible requests.",
+        },
+    ],
+    "relation_tuples": [
+        {"subject": "admin@tailnet", "relation": "owner", "object": "request:1", "context": "frontend"},
+        {"subject": "app-user@tailnet", "relation": "viewer", "object": "request:2", "context": "frontend"},
     ],
     "requests": [
         {"id": 1, "title": "Invite beta testers", "status": "open"},
@@ -228,13 +254,22 @@ class Handler(BaseHTTPRequestHandler):
                 return
             with state_lock:
                 roles = list(state["roles"])
+                policies = list(state["attribute_policies"])
+                tuples = list(state["relation_tuples"])
             role_rows = "".join(f"<tr><td>{escape(r['user'])}</td><td>{escape(r['role'])}</td><td>{escape(r['context'])}</td><td>{', '.join(escape(s) for s in r['scopes'])}</td></tr>" for r in roles)
+            policy_rows = "".join(f"<tr><td>{escape(p['id'])}</td><td>{escape(p['context'])}</td><td>{escape(p['resource'])}</td><td>{escape(p['action'])}</td><td>{escape(p['effect'])}</td><td>{len(p.get('conditions', []))}</td></tr>" for p in policies)
+            tuple_rows = "".join(f"<tr><td>{escape(t['subject'])}</td><td>{escape(t['relation'])}</td><td>{escape(t['object'])}</td><td>{escape(t['context'])}</td></tr>" for t in tuples)
             scopes = declared_scopes()
             scope_cards = "".join(f"<div class='scope-card'><strong>{escape(s['name'])}</strong><span>{escape(s['context'])} · {escape(s['resource'])} · {', '.join(escape(a) for a in s['actions'])}</span><span>{escape(s['category'])} · {escape(s['owner_plugin'])} · {escape(s['owner_module'])}</span><p>{escape(s['description'])}</p></div>" for s in scopes)
             scope_options = "".join(f"<label class='scope-option'><input type='checkbox' name='scopes' value='{escape(s['name'])}' /><span>{escape(s['name'])}</span></label>" for s in scopes)
+            capability_cards = "".join(
+                f"<section class='card'><h2>{escape(cap['mode'].upper())}</h2><span class='pill'>{escape(cap['health'])}</span><p>{escape(', '.join(cap['operations']))}</p></section>"
+                for cap in provider_capabilities()["capability_descriptors"]
+            )
             self.send_html(page("Workflow Authz UI", f"""
               <h1>Role and Scope Administration</h1>
-              <p>This admin contribution manages shared roles with explicit frontend and admin contexts. Scope declarations come from the application stack catalog.</p>
+              <p>This admin contribution manages shared roles, attribute policies, and relationship tuples with explicit frontend and admin contexts. All selectable values come from the application declaration catalog.</p>
+              <div class="grid">{capability_cards}</div>
               <div class="scope-grid">{scope_cards}</div>
               <form method="post" action="/api/authz/roles">
                 <input name="user" placeholder="User" required />
@@ -244,6 +279,10 @@ class Handler(BaseHTTPRequestHandler):
                 <button type="submit">Assign role</button>
               </form>
               <table><thead><tr><th>User</th><th>Role</th><th>Context</th><th>Direct Scopes</th></tr></thead><tbody>{role_rows}</tbody></table>
+              <section class="card"><h2>ABAC Policies</h2><p>Policies bind declared resources, actions, and attributes. Unknown resources, actions, attributes, and values are rejected by the API.</p></section>
+              <table><thead><tr><th>ID</th><th>Context</th><th>Resource</th><th>Action</th><th>Effect</th><th>Conditions</th></tr></thead><tbody>{policy_rows}</tbody></table>
+              <section class="card"><h2>ReBAC Tuples</h2><p>Relationship tuples are evaluated independently from RBAC scopes.</p></section>
+              <table><thead><tr><th>Subject</th><th>Relation</th><th>Object</th><th>Context</th></tr></thead><tbody>{tuple_rows}</tbody></table>
             """, principal))
             return
         if path == "/api/authz/roles":
@@ -258,16 +297,58 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_json(declared_scopes())
             return
+        if path == "/api/authz/capabilities":
+            if not self.require_scope("admin:authz.scopes:read"):
+                return
+            self.send_json(provider_capabilities())
+            return
+        if path == "/api/authz/declarations":
+            if not self.require_scope("admin:authz.scopes:read"):
+                return
+            self.send_json(authz_declarations())
+            return
+        if path == "/api/authz/projection-inputs":
+            if not self.require_scope("admin:authz.scopes:read"):
+                return
+            self.send_json(projection_inputs())
+            return
+        if path == "/api/authz/abac/policies":
+            if not self.require_scope("admin:authz.policies:read"):
+                return
+            with state_lock:
+                policies = list(state["attribute_policies"])
+            self.send_json(policies)
+            return
+        if path == "/api/authz/rebac/tuples":
+            if not self.require_scope("admin:authz.relations:read"):
+                return
+            with state_lock:
+                tuples = list(state["relation_tuples"])
+            self.send_json(tuples)
+            return
+        if path == "/api/authz/model":
+            if not self.require_scope("admin:authz.scopes:read"):
+                return
+            self.send_json({"model": "workflow-demo rbac+abac+rebac declarations"})
+            return
+        if path == "/api/authz/policies":
+            if not self.require_scope("admin:authz.roles:read"):
+                return
+            with state_lock:
+                roles = list(state["roles"])
+            rules = [{"subject": role["user"], "object": scope, "action": "granted"} for role in roles for scope in role.get("scopes", [])]
+            self.send_json(rules)
+            return
         if path == "/api/admin/contributions":
             if not self.require_scope("admin:dashboard:read"):
                 return
-            self.send_json({"contributions": [{"id": "authz-roles", "title": "Authorization roles", "category": "security", "path": "/admin/authz", "render_mode": "iframe", "app_context": "tailnet-demo", "permissions": [{"permission": "admin:authz.roles:read", "resource": "authz.roles", "action": "read"}]}]})
+            self.send_json({"contributions": [{"id": "authz-console", "title": "Authorization", "category": "security", "path": "/admin/authz", "render_mode": "iframe", "app_context": "tailnet-demo", "permissions": [{"permission": "admin:authz.roles:read", "resource": "authz.roles", "action": "read"}, {"permission": "admin:authz.policies:read", "resource": "authz.policies", "action": "read"}, {"permission": "admin:authz.relations:read", "resource": "authz.relations", "action": "read"}]}]})
             return
         if path == "/api/status":
             with state_lock:
                 flag = state["flag"]
                 requests = list(state["requests"])
-            self.send_json({"app": "workflow-tailnet-admin-demo", "uptimeSeconds": round(time.time() - started_at, 1), "featureFlag": flag, "requests": requests, "admin": {"auth": "workflow-plugin-auth session gate modeled", "authz": {"provider": authz_provider, "mode": "declared scope role checks"}, "views": ["auth", "authz", "application", "audit"], "scopes": declared_scopes()}})
+            self.send_json({"app": "workflow-tailnet-admin-demo", "uptimeSeconds": round(time.time() - started_at, 1), "featureFlag": flag, "requests": requests, "admin": {"auth": "workflow-plugin-auth session gate modeled", "authz": provider_capabilities(), "views": ["auth", "authz", "application", "audit"], "declarations": authz_declarations()}})
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -340,14 +421,110 @@ class Handler(BaseHTTPRequestHandler):
                     state["roles"].append({"user": user, "role": role, "context": context, "scopes": scopes})
                     state["audit"].append({"event": "authz.role.assigned", "actor": principal})
                 seed_subject_scopes(user, scopes)
-            self.redirect("/admin/authz")
+            if self.is_json_request():
+                self.send_json({"ok": True})
+            else:
+                self.redirect("/admin/authz")
+            return
+        if path == "/api/authz/abac/policies":
+            if not self.require_scope("admin:authz.policies:update"):
+                return
+            payload = self.json_payload(form)
+            valid, reason = validate_attribute_policy(payload)
+            if not valid:
+                self.send_json({"error": "invalid_policy", "reason": reason}, HTTPStatus.BAD_REQUEST)
+                return
+            with state_lock:
+                state["attribute_policies"] = [p for p in state["attribute_policies"] if p.get("id") != payload["id"]]
+                state["attribute_policies"].append(payload)
+                state["audit"].append({"event": "authz.abac_policy.upserted", "actor": principal})
+            self.send_json({"ok": True})
+            return
+        if path == "/api/authz/rebac/tuples":
+            if not self.require_scope("admin:authz.relations:update"):
+                return
+            payload = self.json_payload(form)
+            valid, reason = validate_relation_tuple(payload)
+            if not valid:
+                self.send_json({"error": "invalid_relation_tuple", "reason": reason}, HTTPStatus.BAD_REQUEST)
+                return
+            with state_lock:
+                if payload not in state["relation_tuples"]:
+                    state["relation_tuples"].append(payload)
+                    state["audit"].append({"event": "authz.relation_tuple.upserted", "actor": principal})
+            if authz_provider == "keto":
+                keto_put_relation_tuple(payload)
+            self.send_json({"ok": True})
+            return
+        if path == "/api/authz/rebac/check":
+            if not self.require_scope("admin:authz.relations:read"):
+                return
+            payload = self.json_payload(form)
+            allowed = relation_allowed(payload.get("subject", ""), payload.get("relation", ""), payload.get("object", ""), payload.get("context", "frontend"))
+            self.send_json({**payload, "allowed": allowed, "reason": "tuple matched" if allowed else "no matching tuple"})
+            return
+        if path == "/api/authz/enforce":
+            if not self.require_scope("admin:authz.scopes:read"):
+                return
+            payload = self.json_payload(form)
+            self.send_json({"allowed": authorization_allowed(payload)})
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_DELETE(self):
-        if urlparse(self.path).path == "/api/authz/roles":
+        length = int(self.headers.get("content-length", "0"))
+        form = self.parse_body(self.rfile.read(length).decode())
+        payload = self.json_payload(form)
+        path = urlparse(self.path).path
+        principal = self.current_principal()
+        if path == "/api/authz/roles":
             if not self.require_scope("admin:authz.roles:update"):
                 return
+            user = str(payload.get("user", "")).strip()
+            role = str(payload.get("role", "")).strip()
+            scopes = payload.get("scopes", [])
+            if isinstance(scopes, str):
+                scopes = [scopes]
+            removed_scopes = []
+            with state_lock:
+                next_roles = []
+                for assignment in state["roles"]:
+                    if assignment.get("user") != user or assignment.get("role") != role:
+                        next_roles.append(assignment)
+                        continue
+                    if scopes:
+                        remaining = [scope for scope in assignment.get("scopes", []) if scope not in scopes]
+                        removed_scopes.extend(scope for scope in assignment.get("scopes", []) if scope in scopes)
+                        if remaining:
+                            updated = dict(assignment)
+                            updated["scopes"] = remaining
+                            next_roles.append(updated)
+                    else:
+                        removed_scopes.extend(assignment.get("scopes", []))
+                state["roles"] = next_roles
+                state["audit"].append({"event": "authz.role.removed", "actor": principal})
+            if authz_provider == "keto":
+                for scope in removed_scopes:
+                    keto_delete_tuple(user, scope)
+            self.send_json({"ok": True})
+            return
+        if path == "/api/authz/abac/policies":
+            if not self.require_scope("admin:authz.policies:update"):
+                return
+            policy_id = str(payload.get("id", "")).strip()
+            with state_lock:
+                state["attribute_policies"] = [p for p in state["attribute_policies"] if p.get("id") != policy_id]
+                state["audit"].append({"event": "authz.abac_policy.deleted", "actor": principal})
+            self.send_json({"ok": True})
+            return
+        if path == "/api/authz/rebac/tuples":
+            if not self.require_scope("admin:authz.relations:update"):
+                return
+            with state_lock:
+                state["relation_tuples"] = [t for t in state["relation_tuples"] if not same_relation_tuple(t, payload)]
+                state["audit"].append({"event": "authz.relation_tuple.deleted", "actor": principal})
+            if authz_provider == "keto":
+                keto_delete_relation_tuple(payload)
             self.send_json({"ok": True})
             return
         self.send_error(HTTPStatus.NOT_FOUND)
@@ -363,8 +540,20 @@ class Handler(BaseHTTPRequestHandler):
                 data = json.loads(raw_body or "{}")
             except json.JSONDecodeError:
                 return {}
-            return {key: value if isinstance(value, list) else [value] for key, value in data.items()}
+            wrapped = {key: value if isinstance(value, list) else [value] for key, value in data.items()}
+            wrapped["__json__"] = [data]
+            return wrapped
         return parse_qs(raw_body)
+
+    def is_json_request(self):
+        return self.headers.get("content-type", "").split(";")[0] == "application/json"
+
+    def json_payload(self, form):
+        if "__json__" in form:
+            return form["__json__"][0]
+        if not self.is_json_request():
+            return {key: value[0] if len(value) == 1 else value for key, value in form.items()}
+        return {key: value[0] if isinstance(value, list) and len(value) == 1 else value for key, value in form.items()}
 
     def session_token(self):
         for part in self.headers.get("cookie", "").split(";"):
@@ -413,6 +602,82 @@ def declared_scopes():
         return sorted((dict(scope) for scope in state["scopes"]), key=lambda s: s["name"])
 
 
+def provider_capabilities():
+    return {
+        "module": "workflow-plugin-authz",
+        "provider": authz_provider,
+        "capabilities": ["rbac", "abac", "rebac"],
+        "capability_descriptors": [
+            {"mode": "rbac", "operations": ["check", "manage_roles", "list"], "configured": True, "source": "provider", "health": "ok"},
+            {"mode": "abac", "operations": ["check", "manage_policies", "list"], "configured": True, "source": "declared", "health": "ok"},
+            {"mode": "rebac", "operations": ["check", "manage_relations", "list"], "configured": True, "source": "provider", "health": "ok"},
+        ],
+        "health": "ok",
+        "missing_requirements": [],
+    }
+
+
+def authz_declarations():
+    scopes = declared_scopes()
+    resources = {}
+    actions = []
+    for scope in scopes:
+        resource_key = (scope["context"], scope["resource"])
+        resources[resource_key] = {
+            "name": scope["resource"],
+            "context": scope["context"],
+            "display_name": scope["resource"].replace(".", " ").replace("_", " ").title(),
+            "description": f"Resource declared by {scope['owner_plugin']}/{scope['owner_module']}",
+            "owner_plugin": scope["owner_plugin"],
+            "owner_module": scope["owner_module"],
+            "category": scope["category"],
+            "lookup_source_id": f"{scope['context']}:{scope['resource']}",
+        }
+        for action in scope["actions"]:
+            actions.append({
+                "name": action,
+                "context": scope["context"],
+                "resource": scope["resource"],
+                "description": scope["description"],
+                "owner_plugin": scope["owner_plugin"],
+                "owner_module": scope["owner_module"],
+                "category": scope["category"],
+            })
+    return {
+        "scopes": scopes,
+        "resources": sorted(resources.values(), key=lambda r: (r["context"], r["name"])),
+        "actions": sorted(actions, key=lambda a: (a["context"], a["resource"], a["name"])),
+        "attributes": [
+            {"name": "department", "context": "frontend", "target": "subject", "data_type": "string", "allowed_values": [{"value": "support", "label": "Support"}, {"value": "security", "label": "Security"}, {"value": "finance", "label": "Finance"}], "lookup_source_id": "directory.departments", "description": "Department from the authenticated principal profile", "owner_plugin": "workflow-plugin-auth", "owner_module": "profiles", "category": "identity"},
+            {"name": "visibility", "context": "frontend", "target": "resource", "data_type": "string", "allowed_values": [{"value": "public", "label": "Public"}, {"value": "support", "label": "Support"}, {"value": "private", "label": "Private"}], "lookup_source_id": "requests.visibility", "description": "Request visibility classification", "owner_plugin": "workflow-scenarios", "owner_module": "tailnet-demo", "category": "application"},
+            {"name": "risk", "context": "admin", "target": "resource", "data_type": "string", "allowed_values": [{"value": "low", "label": "Low"}, {"value": "high", "label": "High"}], "lookup_source_id": "admin.risk", "description": "Administrative operation risk level", "owner_plugin": "workflow-plugin-admin", "owner_module": "admin", "category": "security"},
+        ],
+        "relations": [
+            {"name": "owner", "context": "frontend", "subject_type": "user", "object_type": "request", "description": "Subject owns the request", "owner_plugin": "workflow-plugin-authz", "owner_module": "relationship-policy", "category": "application"},
+            {"name": "viewer", "context": "frontend", "subject_type": "user", "object_type": "request", "description": "Subject can view the request", "owner_plugin": "workflow-plugin-authz", "owner_module": "relationship-policy", "category": "application"},
+            {"name": "delegated-admin", "context": "admin", "subject_type": "user", "object_type": "admin-section", "description": "Subject can administer the named admin section", "owner_plugin": "workflow-plugin-admin", "owner_module": "navigation", "category": "security"},
+        ],
+        "ui_actions": [
+            {"id": "frontend.create_request", "context": "frontend", "label": "Create request", "route": "/", "required_scopes": ["frontend:requests:create"], "description": "Show the create request form", "owner_plugin": "workflow-scenarios", "owner_module": "tailnet-demo", "category": "application"},
+            {"id": "admin.open_authz", "context": "admin", "label": "Open authorization", "route": "/admin/authz", "required_scopes": ["admin:authz.roles:read"], "description": "Show the authz admin contribution", "owner_plugin": "workflow-plugin-admin", "owner_module": "navigation", "category": "security"},
+            {"id": "admin.manage_abac", "context": "admin", "label": "Manage ABAC", "route": "/admin/authz", "required_scopes": ["admin:authz.policies:update"], "description": "Show ABAC policy editing controls", "owner_plugin": "workflow-plugin-authz-ui", "owner_module": "abac", "category": "security"},
+        ],
+    }
+
+
+def projection_inputs():
+    declarations = authz_declarations()
+    return {
+        "scope_names": sorted(scope["name"] for scope in declarations["scopes"]),
+        "resource_names": sorted({resource["name"] for resource in declarations["resources"]}),
+        "action_names": sorted({action["name"] for action in declarations["actions"]}),
+        "attribute_names": sorted({attribute["name"] for attribute in declarations["attributes"]}),
+        "relation_names": sorted({relation["name"] for relation in declarations["relations"]}),
+        "ui_action_ids": sorted(action["id"] for action in declarations["ui_actions"]),
+        "lookup_source_ids": sorted({item["lookup_source_id"] for item in declarations["resources"] + declarations["attributes"] if item.get("lookup_source_id")}),
+    }
+
+
 def validate_assignment_scopes(context, scopes):
     declared = {scope["name"]: scope for scope in declared_scopes()}
     for scope in scopes:
@@ -423,12 +688,144 @@ def validate_assignment_scopes(context, scopes):
     return True, ""
 
 
+def validate_attribute_policy(policy):
+    if not isinstance(policy, dict):
+        return False, "policy must be an object"
+    required = ["id", "context", "resource", "action", "effect", "conditions"]
+    if any(not policy.get(key) for key in required):
+        return False, "policy requires id, context, resource, action, effect, and conditions"
+    if policy["effect"] not in {"allow", "deny"}:
+        return False, "effect must be allow or deny"
+    declarations = authz_declarations()
+    actions = {(action["context"], action["resource"], action["name"]) for action in declarations["actions"]}
+    if (policy["context"], policy["resource"], policy["action"]) not in actions:
+        return False, f"{policy['context']} {policy['resource']} {policy['action']} is not declared"
+    attributes = {(attribute["context"], attribute["target"], attribute["name"]): attribute for attribute in declarations["attributes"]}
+    for condition in policy.get("conditions", []):
+        key = (policy["context"], condition.get("target"), condition.get("attribute"))
+        declaration = attributes.get(key)
+        if not declaration:
+            return False, f"{condition.get('target')}.{condition.get('attribute')} is not declared"
+        if condition.get("operator") not in {"equals", "in"}:
+            return False, "condition operator must be equals or in"
+        allowed = {item["value"] for item in declaration.get("allowed_values", [])}
+        values = condition.get("values", [])
+        if not isinstance(values, list) or not values:
+            return False, "condition values must be a non-empty list"
+        if allowed and any(value not in allowed for value in values):
+            return False, f"{condition.get('attribute')} contains an undeclared value"
+    return True, ""
+
+
+def validate_relation_tuple(tuple_data):
+    if not isinstance(tuple_data, dict):
+        return False, "tuple must be an object"
+    required = ["subject", "relation", "object", "context"]
+    if any(not tuple_data.get(key) for key in required):
+        return False, "tuple requires subject, relation, object, and context"
+    declarations = authz_declarations()
+    declared = {(relation["context"], relation["name"]) for relation in declarations["relations"]}
+    if (tuple_data["context"], tuple_data["relation"]) not in declared:
+        return False, f"{tuple_data['context']} {tuple_data['relation']} is not declared"
+    return True, ""
+
+
+def authorization_allowed(request):
+    subject = str(request.get("subject", ""))
+    obj = str(request.get("object", ""))
+    action = str(request.get("action", ""))
+    if obj in {scope["name"] for scope in declared_scopes()} and action in {"granted", "read", "check"}:
+        return principal_has_scope(subject, obj)
+    for scope in declared_scopes():
+        if scope["resource"] == obj and action in scope["actions"] and principal_has_scope(subject, scope["name"]):
+            return True
+    if attribute_policy_allows(subject, obj, action, request):
+        return True
+    relation = request.get("relation")
+    if relation and relation_allowed(subject, relation, obj, request.get("context", "frontend")):
+        return True
+    return False
+
+
+def attribute_policy_allows(subject, resource, action, request):
+    subject_attrs = default_subject_attributes(subject)
+    subject_attrs.update(request.get("subject_attributes", {}))
+    resource_attrs = default_resource_attributes(resource)
+    resource_attrs.update(request.get("resource_attributes", {}))
+    with state_lock:
+        policies = [p for p in state["attribute_policies"] if p.get("resource") == resource and p.get("action") == action]
+    denied = False
+    allowed = False
+    for policy in policies:
+        if all(condition_matches(condition, subject_attrs, resource_attrs) for condition in policy.get("conditions", [])):
+            if policy.get("effect") == "deny":
+                denied = True
+            if policy.get("effect") == "allow":
+                allowed = True
+    return allowed and not denied
+
+
+def condition_matches(condition, subject_attrs, resource_attrs):
+    attrs = subject_attrs if condition.get("target") == "subject" else resource_attrs
+    actual = attrs.get(condition.get("attribute"))
+    values = condition.get("values", [])
+    if condition.get("operator") == "equals":
+        return actual in values
+    if condition.get("operator") == "in":
+        if isinstance(actual, list):
+            return any(value in values for value in actual)
+        return actual in values
+    return False
+
+
+def default_subject_attributes(subject):
+    if subject == "app-user@tailnet":
+        return {"department": "support"}
+    if subject == "admin@tailnet":
+        return {"department": "security"}
+    return {"department": "finance"}
+
+
+def default_resource_attributes(resource):
+    if resource in {"requests", "request:2"}:
+        return {"visibility": "support"}
+    if resource == "request:1":
+        return {"visibility": "private"}
+    return {"visibility": "public", "risk": "low"}
+
+
+def relation_allowed(subject, relation, obj, context):
+    if authz_provider == "keto" and keto_relation_check(subject, relation, obj):
+        return True
+    with state_lock:
+        return any(
+            tuple_data.get("subject") == subject
+            and tuple_data.get("relation") == relation
+            and tuple_data.get("object") == obj
+            and tuple_data.get("context") == context
+            for tuple_data in state["relation_tuples"]
+        )
+
+
+def same_relation_tuple(left, right):
+    return all(left.get(key) == right.get(key) for key in ["subject", "relation", "object", "context"])
+
+
 def principal_has_scope(principal, scope):
     if not principal:
         return False
+    if not state_principal_has_scope(principal, scope):
+        return False
     if authz_provider == "keto":
         return keto_scope_check(principal, scope)
-    return scope in users.get(principal, {}).get("scopes", [])
+    return True
+
+
+def state_principal_has_scope(principal, scope):
+    if scope in users.get(principal, {}).get("scopes", []):
+        return True
+    with state_lock:
+        return any(principal == assignment.get("user") and scope in assignment.get("scopes", []) for assignment in state["roles"])
 
 
 def ensure_keto_seeded():
@@ -438,10 +835,13 @@ def ensure_keto_seeded():
     with state_lock:
         seed_pairs = [(user, scope) for user, data in users.items() for scope in data.get("scopes", [])]
         seed_pairs.extend((assignment["user"], scope) for assignment in state["roles"] for scope in assignment.get("scopes", []))
+        relation_tuples = list(state["relation_tuples"])
     for _ in range(20):
         try:
             for subject, scope in seed_pairs:
                 keto_put_tuple(subject, scope)
+            for tuple_data in relation_tuples:
+                keto_put_relation_tuple(tuple_data)
             keto_seeded = True
             return True
         except urllib.error.URLError:
@@ -474,6 +874,57 @@ def keto_put_tuple(subject, scope):
             raise
 
 
+def keto_delete_tuple(subject, scope):
+    payload = json.dumps({
+        "namespace": "scope",
+        "object": scope,
+        "relation": "granted",
+        "subject_id": subject,
+    }).encode()
+    request = urllib.request.Request(f"{keto_write_url}/admin/relation-tuples", data=payload, method="DELETE", headers={"content-type": "application/json"})
+    try:
+        urllib.request.urlopen(request, timeout=2).read()
+    except urllib.error.HTTPError as exc:
+        if exc.code not in {400, 404, 409}:
+            raise
+    except urllib.error.URLError:
+        return
+
+
+def keto_put_relation_tuple(tuple_data):
+    payload = json.dumps({
+        "namespace": "resource",
+        "object": tuple_data["object"],
+        "relation": tuple_data["relation"],
+        "subject_id": tuple_data["subject"],
+    }).encode()
+    request = urllib.request.Request(f"{keto_write_url}/admin/relation-tuples", data=payload, method="PUT", headers={"content-type": "application/json"})
+    try:
+        urllib.request.urlopen(request, timeout=2).read()
+    except urllib.error.HTTPError as exc:
+        if exc.code != 409:
+            raise
+    except urllib.error.URLError:
+        return
+
+
+def keto_delete_relation_tuple(tuple_data):
+    payload = json.dumps({
+        "namespace": "resource",
+        "object": tuple_data.get("object", ""),
+        "relation": tuple_data.get("relation", ""),
+        "subject_id": tuple_data.get("subject", ""),
+    }).encode()
+    request = urllib.request.Request(f"{keto_write_url}/admin/relation-tuples", data=payload, method="DELETE", headers={"content-type": "application/json"})
+    try:
+        urllib.request.urlopen(request, timeout=2).read()
+    except urllib.error.HTTPError as exc:
+        if exc.code not in {400, 404, 409}:
+            raise
+    except urllib.error.URLError:
+        return
+
+
 def keto_scope_check(subject, scope):
     if not ensure_keto_seeded():
         return False
@@ -481,6 +932,28 @@ def keto_scope_check(subject, scope):
         "namespace": "scope",
         "object": scope,
         "relation": "granted",
+        "subject_id": subject,
+        "max-depth": "32",
+    })
+    try:
+        with urllib.request.urlopen(f"{keto_read_url}/relation-tuples/check/openapi?{query}", timeout=2) as response:
+            data = json.loads(response.read().decode() or "{}")
+            return bool(data.get("allowed"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 403:
+            return False
+        return False
+    except urllib.error.URLError:
+        return False
+
+
+def keto_relation_check(subject, relation, obj):
+    if not ensure_keto_seeded():
+        return False
+    query = urllib.parse.urlencode({
+        "namespace": "resource",
+        "object": obj,
+        "relation": relation,
         "subject_id": subject,
         "max-depth": "32",
     })
