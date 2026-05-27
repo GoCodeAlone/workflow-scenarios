@@ -14,7 +14,12 @@ services:
     image: workflow-admin:scenario-92
     container_name: workflow-scenario-92-app
     environment:
-      VARIANT: ${VARIANT:-stub}
+      # VARIANT default empty matches seed.sh — line 16's substitution
+      # `app${VARIANT:+-${VARIANT}}.yaml` produces `app.yaml` when empty,
+      # `app-do-dryrun.yaml` when VARIANT=do-dryrun. Setting a non-empty
+      # default like `stub` would point at a non-existent app-stub.yaml.
+      # Spec-reviewer F1 on PR-2.
+      VARIANT: ${VARIANT:-}
       JWT_SECRET: scenario-92-jwt-secret-do-not-use-in-prod
     ports:
       - "127.0.0.1:18092:8080"
@@ -24,8 +29,6 @@ services:
     command:
       - server
       - "-config"
-      # VARIANT picks between app.yaml (stub) and app-do-dryrun.yaml.
-      # docker compose substitutes ${VARIANT} at compose-up time.
       - "/etc/scenario-92/app${VARIANT:+-${VARIANT}}.yaml"
     healthcheck:
       test:
