@@ -605,11 +605,11 @@ def declared_scopes():
 def provider_capabilities():
     return {
         "module": "workflow-plugin-authz",
-        "provider": authz_provider,
+        "provider": f"{authz_provider}+demo-attribute-policy",
         "capabilities": ["rbac", "abac", "rebac"],
         "capability_descriptors": [
             {"mode": "rbac", "operations": ["check", "manage_roles", "list"], "configured": True, "source": "provider", "health": "ok"},
-            {"mode": "abac", "operations": ["check", "manage_policies", "list"], "configured": True, "source": "declared", "health": "ok"},
+            {"mode": "abac", "operations": ["check", "manage_policies", "list"], "configured": True, "source": "application-demo", "health": "ok"},
             {"mode": "rebac", "operations": ["check", "manage_relations", "list"], "configured": True, "source": "provider", "health": "ok"},
         ],
         "health": "ok",

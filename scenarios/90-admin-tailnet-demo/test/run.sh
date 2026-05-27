@@ -70,7 +70,7 @@ contains "$scope_catalog" '"owner_plugin": "workflow-scenarios"' "Scopes include
 contains "$scope_catalog" '"category": "application"' "Scopes include categories"
 
 status="$(curl -fsS "$BASE/api/status")"
-contains "$status" '"provider": "keto"' "Status reports Keto authz provider"
+contains "$status" '"provider": "keto+demo-attribute-policy"' "Status reports composite Keto authz provider"
 contains "$status" '"capabilities"' "Status reports provider capabilities"
 
 capabilities="$(curl -b "$COOKIE_JAR" -fsS "$BASE/api/authz/capabilities")"
