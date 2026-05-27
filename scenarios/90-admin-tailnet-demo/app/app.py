@@ -160,6 +160,17 @@ def page(title, body, principal=None):
     .scope-option {{ display:grid; grid-template-columns:18px minmax(0, 1fr); gap:8px; align-items:start; background:white; border:1px solid var(--line); border-radius:7px; padding:8px; }}
     .scope-option input {{ min-width:0; width:18px; height:18px; flex:0 0 auto; margin:1px 0 0; padding:0; }}
     .scope-option span {{ overflow-wrap:anywhere; }}
+    .scope-option strong, .scope-option small {{ display:block; overflow-wrap:anywhere; }}
+    .field-grid {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px; margin:14px 0 20px; }}
+    .field {{ background:white; border:1px solid var(--line); border-radius:8px; padding:12px; min-width:0; }}
+    .field label {{ display:flex; align-items:center; justify-content:space-between; gap:8px; font-weight:700; color:#334155; }}
+    .field input[type="text"], .field input[type="url"], .field input[type="password"] {{ width:100%; min-width:0; margin-top:8px; }}
+    .field input[type="checkbox"] {{ min-width:0; width:18px; height:18px; flex:0 0 auto; }}
+    .field .help {{ color:var(--muted); font-size:12px; margin:8px 0 0; overflow-wrap:anywhere; }}
+    .field .disabled {{ color:#991b1b; font-size:12px; margin:8px 0 0; }}
+    .tip {{ display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; background:#e2e8f0; color:#334155; font-size:12px; flex:0 0 auto; }}
+    .settings-form {{ display:block; }}
+    .settings-form button {{ width:auto; min-width:0; }}
     .mode-tabs {{ display:flex; gap:6px; border-bottom:1px solid var(--line); margin:18px 0; overflow-x:auto; }}
     .mode-tabs a {{ color:#334155; text-decoration:none; padding:10px 14px; border:1px solid transparent; border-bottom:0; border-radius:7px 7px 0 0; white-space:nowrap; }}
     .mode-tabs a[aria-selected="true"] {{ color:var(--brand); background:white; border-color:var(--line); font-weight:700; margin-bottom:-1px; }}
@@ -179,7 +190,7 @@ def page(title, body, principal=None):
 <body>
   <header>
     <strong>Workflow Tailnet Demo</strong>
-    <nav><a href="/">App</a><a href="/admin">Admin</a><a href="/admin/authz">Authz</a><a href="/api/status">Status JSON</a>{session_nav}</nav>
+    <nav><a href="/">App</a><a href="/admin">Admin</a><a href="/admin/auth">Auth</a><a href="/admin/authz">Authz</a><a href="/api/status">Status JSON</a>{session_nav}</nav>
   </header>
   <main>{body}</main>
 </body>
@@ -270,10 +281,47 @@ class Handler(BaseHTTPRequestHandler):
                 <section class="card"><h2>Authz Plugin</h2><span class="pill">{escape(authz_provider)}</span><p>{', '.join(escape(s) for s in self.principal_scopes())}</p></section>
                 <section class="card"><h2>Registered Views</h2><div class="metric">4</div><p>auth, authz, app, audit</p></section>
               </div>
+              <section class="card"><h2>Authentication settings</h2><p>workflow-plugin-auth exposes a strict admin config contract at <code>/api/admin/auth/config</code>.</p><p><a href="/admin/auth">Open authentication administration</a></p></section>
               <section class="card"><h2>Authorization roles</h2><p>workflow-plugin-authz-ui is registered as an admin contribution at <code>/admin/authz</code>.</p><p><a href="/admin/authz">Open role and scope administration</a></p></section>
               <form method="post" action="/admin/toggle"><button type="submit">Toggle feature flag</button></form>
               <form method="post" action="/admin/resolve"><input name="id" placeholder="Request ID to resolve" required /><button class="secondary" type="submit">Resolve request</button></form>
               <table><thead><tr><th>Audit Event</th><th>Actor</th></tr></thead><tbody>{audit_rows}</tbody></table>
+            """, principal))
+            return
+        if path == "/admin/auth":
+            if not self.require_scope("admin:auth.settings:read", html=True):
+                return
+            query = parse_qs(urlparse(self.path).query)
+            describe = auth_admin_describe_output()
+            groups = describe["groups"]
+            active_group = query.get("group", [groups[0]["key"]])[0]
+            if active_group not in {group["key"] for group in groups}:
+                active_group = groups[0]["key"]
+            tab_nav = "".join(
+                f"<a role=\"tab\" href=\"/admin/auth?group={escape(group['key'])}\" aria-selected=\"{'true' if active_group == group['key'] else 'false'}\">{escape(group['label'])}</a>"
+                for group in groups
+            )
+            active = next(group for group in groups if group["key"] == active_group)
+            controls = "".join(render_auth_admin_control(control, describe["effective_config"]) for control in active["controls"])
+            diagnostics = "".join(f"<p class='error'>{escape(item['field'])}: {escape(item['message'])}</p>" for item in describe.get("warnings", []))
+            self.send_html(page("Workflow Auth Admin", f"""
+              <h1>Authentication Administration</h1>
+              <p>Controls are rendered from workflow-plugin-auth's admin config descriptor. Secret values are write-only and never displayed.</p>
+              <div class="grid">
+                <section class="card"><h2>Primary Methods</h2><div class="metric">{describe['methods_policy']['primary_method_count']}</div></section>
+                <section class="card"><h2>Passkeys</h2><span class="pill {'warn' if not describe['methods_policy']['passkey_enabled'] else ''}">{'enabled' if describe['methods_policy']['passkey_enabled'] else 'disabled'}</span></section>
+                <section class="card"><h2>OAuth</h2><p>{', '.join(escape(p) for p in describe['methods_policy']['oauth_providers']) or 'No providers login-ready'}</p></section>
+              </div>
+              {diagnostics}
+              <nav class="mode-tabs" role="tablist">{tab_nav}</nav>
+              <section class="tab-panel" role="tabpanel" aria-label="{escape(active['label'])}">
+                <section class="card"><h2>{escape(active['label'])}</h2><p>{escape(active['description'])}</p></section>
+                <form class="settings-form" method="post" action="/admin/auth/config/validate">
+                  <input type="hidden" name="require_primary_method" value="true" />
+                  <div class="field-grid">{controls}</div>
+                  <button type="submit">Validate settings</button>
+                </form>
+              </section>
             """, principal))
             return
         if path == "/admin/authz":
@@ -293,7 +341,7 @@ class Handler(BaseHTTPRequestHandler):
             tuple_rows = "".join(f"<tr><td>{escape(t['subject'])}</td><td>{escape(t['relation'])}</td><td>{escape(t['object'])}</td><td>{escape(t['context'])}</td><td><form method='post' action='/admin/authz/rebac/delete'><input type='hidden' name='subject' value='{escape(t['subject'])}' /><input type='hidden' name='relation' value='{escape(t['relation'])}' /><input type='hidden' name='object' value='{escape(t['object'])}' /><input type='hidden' name='context' value='{escape(t['context'])}' /><button class='secondary' type='submit'>Delete</button></form></td></tr>" for t in tuples)
             scopes = declared_scopes()
             scope_cards = "".join(f"<div class='scope-card'><strong>{escape(s['name'])}</strong><span>{escape(s['context'])} · {escape(s['resource'])} · {', '.join(escape(a) for a in s['actions'])}</span><span>{escape(s['category'])} · {escape(s['owner_plugin'])} · {escape(s['owner_module'])}</span><p>{escape(s['description'])}</p></div>" for s in scopes)
-            scope_options = "".join(f"<label class='scope-option'><input type='checkbox' name='scopes' value='{escape(s['name'])}' /><span>{escape(s['name'])}</span></label>" for s in scopes)
+            scope_options = "".join(f"<label class='scope-option' title='{escape(s['description'])}'><input type='checkbox' name='scopes' value='{escape(s['name'])}' /><span><strong>{escape(s['name'])}</strong><small>{escape(s['context'])} · {escape(s['resource'])}</small></span></label>" for s in scopes)
             declarations = authz_declarations()
             context_options = "".join(f"<option value=\"{escape(context)}\">{escape(context)}</option>" for context in sorted({scope["context"] for scope in scopes}))
             resource_options = "".join(f"<option value=\"{escape(resource['name'])}\">{escape(resource.get('display_name') or resource['name'])}</option>" for resource in declarations["resources"])
@@ -317,9 +365,9 @@ class Handler(BaseHTTPRequestHandler):
               <section class="tab-panel" role="tabpanel" aria-label="RBAC">
                 <div class="scope-grid">{scope_cards}</div>
                 <form method="post" action="/api/authz/roles">
-                  <input name="user" placeholder="User" required />
-                  <input name="role" placeholder="Role" required />
-                  <select name="context"><option value="frontend">frontend</option><option value="admin">admin</option></select>
+                  <div class="field"><label><span>Subject user</span><span class="tip" title="Authenticated principal receiving the role assignment.">?</span></label><input name="user" placeholder="user@example.com" required /></div>
+                  <div class="field"><label><span>Role name</span><span class="tip" title="Application role label that groups the selected scopes.">?</span></label><input name="role" placeholder="support-admin" required /></div>
+                  <div class="field"><label><span>Access context</span><span class="tip" title="Frontend scopes affect the primary app; admin scopes affect the administration portal.">?</span></label><select name="context"><option value="frontend">Frontend application</option><option value="admin">Admin portal</option></select></div>
                   <div class="scope-picker">{scope_options}</div>
                   <button type="submit">Assign role</button>
                 </form>
@@ -330,13 +378,13 @@ class Handler(BaseHTTPRequestHandler):
               <section class="tab-panel" role="tabpanel" aria-label="ABAC">
                 <section class="card"><h2>ABAC Policies</h2><p>Policies bind declared resources, actions, and attributes. Unknown resources, actions, attributes, and values are rejected by the API.</p></section>
                 <form method="post" action="/admin/authz/abac/upsert">
-                  <input name="id" placeholder="Policy ID" required />
-                  <select name="context">{context_options}</select>
-                  <select name="resource">{resource_options}</select>
-                  <select name="action">{action_options}</select>
-                  <select name="effect"><option value="allow">allow</option><option value="deny">deny</option></select>
-                  <select name="department">{department_options}</select>
-                  <select name="visibility">{visibility_options}</select>
+                  <div class="field"><label><span>Policy ID</span><span class="tip" title="Stable identifier for this ABAC rule.">?</span></label><input name="id" placeholder="support-public-read" required /></div>
+                  <div class="field"><label><span>Access context</span><span class="tip" title="Context determines which declared resources and attributes are valid.">?</span></label><select name="context">{context_options}</select></div>
+                  <div class="field"><label><span>Resource</span><span class="tip" title="Declared resource type controlled by this policy.">?</span></label><select name="resource">{resource_options}</select></div>
+                  <div class="field"><label><span>Action</span><span class="tip" title="Declared action on the selected resource.">?</span></label><select name="action">{action_options}</select></div>
+                  <div class="field"><label><span>Effect</span><span class="tip" title="Allow grants access when conditions match; deny blocks matching access.">?</span></label><select name="effect"><option value="allow">Allow</option><option value="deny">Deny</option></select></div>
+                  <div class="field"><label><span>Subject department</span><span class="tip" title="Subject attribute value from the declared directory lookup.">?</span></label><select name="department">{department_options}</select></div>
+                  <div class="field"><label><span>Resource visibility</span><span class="tip" title="Resource attribute value from the declared request lookup.">?</span></label><select name="visibility">{visibility_options}</select></div>
                   <button type="submit">Save ABAC policy</button>
                 </form>
                 <table><thead><tr><th>ID</th><th>Context</th><th>Resource</th><th>Action</th><th>Effect</th><th>Conditions</th><th></th></tr></thead><tbody>{policy_rows}</tbody></table>
@@ -346,10 +394,10 @@ class Handler(BaseHTTPRequestHandler):
               <section class="tab-panel" role="tabpanel" aria-label="ReBAC">
                 <section class="card"><h2>ReBAC Tuples</h2><p>Relationship tuples are evaluated independently from RBAC scopes.</p></section>
                 <form method="post" action="/admin/authz/rebac/upsert">
-                  <select name="subject">{subject_options}</select>
-                  <select name="relation">{relation_options}</select>
-                  <select name="object">{object_options}</select>
-                  <select name="context">{context_options}</select>
+                  <div class="field"><label><span>Subject</span><span class="tip" title="Principal that has the relationship to the object.">?</span></label><select name="subject">{subject_options}</select></div>
+                  <div class="field"><label><span>Relation</span><span class="tip" title="Declared relationship type, such as owner or viewer.">?</span></label><select name="relation">{relation_options}</select></div>
+                  <div class="field"><label><span>Object</span><span class="tip" title="Declared object instance that the subject relates to.">?</span></label><select name="object">{object_options}</select></div>
+                  <div class="field"><label><span>Access context</span><span class="tip" title="Frontend relations protect primary app objects; admin relations protect admin objects.">?</span></label><select name="context">{context_options}</select></div>
                   <button type="submit">Save relationship</button>
                 </form>
                 <table><thead><tr><th>Subject</th><th>Relation</th><th>Object</th><th>Context</th><th></th></tr></thead><tbody>{tuple_rows}</tbody></table>
@@ -490,10 +538,10 @@ class Handler(BaseHTTPRequestHandler):
                         break
             self.redirect("/admin")
             return
-        if path == "/api/admin/auth/config/validate":
+        if path in {"/api/admin/auth/config/validate", "/admin/auth/config/validate"}:
             if not self.require_scope("admin:auth.settings:update"):
                 return
-            payload = self.json_payload(form)
+            payload = self.json_payload(form) if self.is_json_request() else self.single_form_payload(form)
             desired = payload.get("desired_config", payload)
             if not isinstance(desired, dict):
                 self.send_json({"error": "invalid_config", "reason": "desired_config must be an object"}, HTTPStatus.BAD_REQUEST)
@@ -505,6 +553,13 @@ class Handler(BaseHTTPRequestHandler):
                     for field in result["secret_fields"]:
                         state["auth_config"][field] = "configured-secret"
                     state["audit"].append({"event": "auth.admin_config.validated", "actor": principal})
+            if not self.is_json_request() and path == "/admin/auth/config/validate":
+                if result["valid"]:
+                    self.redirect("/admin/auth")
+                else:
+                    message = "; ".join(f"{item['field']}: {item['message']}" for item in result["errors"])
+                    self.send_html(page("Invalid Auth Settings", f"<h1>Invalid Auth Settings</h1><p class='error'>{escape(message)}</p><p><a href='/admin/auth'>Back to authentication</a></p>", principal), HTTPStatus.BAD_REQUEST)
+                return
             self.send_json(result, HTTPStatus.OK if result["valid"] else HTTPStatus.BAD_REQUEST)
             return
         if path == "/admin/authz/abac/upsert":
@@ -709,6 +764,18 @@ class Handler(BaseHTTPRequestHandler):
             return {key: value[0] if len(value) == 1 else value for key, value in form.items()}
         return {key: value[0] if isinstance(value, list) and len(value) == 1 else value for key, value in form.items()}
 
+    def single_form_payload(self, form):
+        payload = {}
+        for key, value in form.items():
+            if key.startswith("__"):
+                continue
+            item = value[-1] if isinstance(value, list) else value
+            if item in {"true", "false"}:
+                payload[key] = item == "true"
+            elif item != "":
+                payload[key] = item
+        return payload
+
     def session_token(self):
         for part in self.headers.get("cookie", "").split(";"):
             key, _, value = part.strip().partition("=")
@@ -776,6 +843,34 @@ def auth_admin_describe_output():
         "warnings": auth_admin_warnings(config, policy),
         "secret_fields": auth_admin_secret_fields(config),
     }
+
+
+def render_auth_admin_control(control, effective_config):
+    key = control["config_key"]
+    label = escape(control["label"])
+    description = escape(control["description"])
+    help_text = escape(control["help_text"])
+    disabled = " disabled" if not control.get("enabled", True) else ""
+    disabled_note = f"<p class='disabled'>{escape(control['disabled_reason'])}</p>" if control.get("disabled_reason") else ""
+    title = escape(f"{control['description']} {control['help_text']}")
+    if control["input_type"] == "toggle":
+        checked = " checked" if auth_admin_bool(effective_config.get(key)) else ""
+        field = f"<input type='hidden' name='{escape(key)}' value='false' /><input aria-label='{label}' title='{title}' type='checkbox' name='{escape(key)}' value='true'{checked}{disabled} />"
+    elif control["input_type"] == "secret":
+        placeholder = "Configured - leave blank to keep" if control.get("configured") else "Enter secret value"
+        field = f"<input aria-label='{label}' title='{title}' type='password' name='{escape(key)}' placeholder='{escape(placeholder)}'{disabled} />"
+    else:
+        value = "" if control.get("secret") else str(effective_config.get(key, "") or "")
+        input_type = "url" if control["input_type"] == "url" else "text"
+        field = f"<input aria-label='{label}' title='{title}' type='{input_type}' name='{escape(key)}' value='{escape(value)}'{disabled} />"
+    return f"""
+      <div class="field">
+        <label for="{escape(key)}"><span>{label}</span><span class="tip" title="{title}">?</span></label>
+        {field}
+        <p class="help">{description} {help_text}</p>
+        {disabled_note}
+      </div>
+    """
 
 
 def auth_admin_validate_output(desired_config, require_primary_method=True):

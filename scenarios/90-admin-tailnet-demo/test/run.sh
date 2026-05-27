@@ -53,6 +53,8 @@ fi
 admin="$(curl -b "$COOKIE_JAR" -fsS "$BASE/admin")"
 contains "$admin" "Authorization roles" "Admin navigation includes authz UI"
 contains "$admin" "/admin/authz" "Admin links authz contribution"
+contains "$admin" "Authentication settings" "Admin navigation includes auth UI"
+contains "$admin" "/admin/auth" "Admin links auth contribution"
 
 auth_config="$(curl -b "$COOKIE_JAR" -fsS "$BASE/api/admin/auth/config")"
 contains "$auth_config" '"groups"' "Auth admin config exposes control groups"
@@ -82,6 +84,22 @@ else
   pass "Auth admin validate redacts submitted secret values"
 fi
 
+auth_page="$(curl -b "$COOKIE_JAR" -fsS "$BASE/admin/auth")"
+contains "$auth_page" "Authentication Administration" "Auth admin UI page renders"
+contains "$auth_page" 'role="tablist"' "Auth admin UI groups settings in tabs"
+contains "$auth_page" 'href="/admin/auth?group=primary_methods"' "Auth admin UI has primary methods tab"
+contains "$auth_page" 'href="/admin/auth?group=oauth_providers"' "Auth admin UI has OAuth providers tab"
+contains "$auth_page" "Passkey relying party ID" "Auth admin UI labels passkey RP ID clearly"
+contains "$auth_page" "Password login" "Auth admin UI labels password setting clearly"
+if grep -q 'configured-secret' <<<"$auth_page"; then
+  fail "Auth admin UI should not display secret values"
+else
+  pass "Auth admin UI does not display secret values"
+fi
+auth_oauth_page="$(curl -b "$COOKIE_JAR" -fsS "$BASE/admin/auth?group=oauth_providers")"
+contains "$auth_oauth_page" "Google client secret" "Auth admin OAuth tab labels Google secret"
+contains "$auth_oauth_page" "Write-only" "Auth admin OAuth tab explains write-only secrets"
+
 authz="$(curl -b "$COOKIE_JAR" -fsS "$BASE/admin/authz")"
 contains "$authz" "Role and Scope Administration" "Authz UI page renders"
 contains "$authz" 'role="tablist"' "Authz UI groups access modes in tabs"
@@ -93,6 +111,8 @@ contains "$authz" "admin:authz.roles:update" "Admin scope visible"
 contains "$authz" "app.requests" "Application-declared scope visible"
 contains "$authz" "scope-picker" "Authz UI renders scope picker"
 contains "$authz" ".scope-option input" "Scope picker checkbox sizing isolated"
+contains "$authz" "Subject user" "RBAC form labels subject user clearly"
+contains "$authz" "Access context" "RBAC form labels frontend/admin context clearly"
 if grep -q 'action="/admin/authz/abac/upsert"' <<<"$authz" || grep -q 'action="/admin/authz/rebac/upsert"' <<<"$authz"; then
   fail "RBAC tab should not render ABAC/ReBAC forms"
 else
@@ -115,8 +135,12 @@ fi
 contains "$authz_abac" 'action="/admin/authz/abac/upsert"' "Authz UI provides ABAC policy create form"
 contains "$authz_abac" 'name="department"' "ABAC form uses declared department lookup"
 contains "$authz_abac" 'name="visibility"' "ABAC form uses declared visibility lookup"
+contains "$authz_abac" "Subject department" "ABAC form labels subject attributes"
+contains "$authz_abac" "Resource visibility" "ABAC form labels resource attributes"
 contains "$authz_rebac" 'action="/admin/authz/rebac/upsert"' "Authz UI provides ReBAC tuple create form"
 contains "$authz_rebac" 'name="relation"' "ReBAC form uses declared relation lookup"
+contains "$authz_rebac" "Subject" "ReBAC form labels subject"
+contains "$authz_rebac" "Object" "ReBAC form labels object"
 if grep -q "Direct scopes, comma separated" <<<"$authz"; then
   fail "Authz UI should not render free-text scope entry"
 else

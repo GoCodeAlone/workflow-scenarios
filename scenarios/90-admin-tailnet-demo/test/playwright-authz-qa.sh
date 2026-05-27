@@ -39,6 +39,27 @@ playwright screenshot \
   --load-storage "$ADMIN_STATE" \
   --wait-for-selector '[role="tablist"]' \
   --full-page \
+  "$BASE/admin/auth" \
+  "$ARTIFACT_DIR/admin-auth-desktop.png" >/dev/null
+
+playwright screenshot \
+  --load-storage "$ADMIN_STATE" \
+  --wait-for-selector 'text=Google client secret' \
+  --full-page \
+  "$BASE/admin/auth?group=oauth_providers" \
+  "$ARTIFACT_DIR/admin-auth-oauth.png" >/dev/null
+
+playwright screenshot \
+  --load-storage "$ADMIN_STATE" \
+  --viewport-size "390,844" \
+  --wait-for-selector 'text=Password login' \
+  "$BASE/admin/auth" \
+  "$ARTIFACT_DIR/admin-auth-mobile.png" >/dev/null
+
+playwright screenshot \
+  --load-storage "$ADMIN_STATE" \
+  --wait-for-selector '[role="tablist"]' \
+  --full-page \
   "$BASE/admin/authz" \
   "$ARTIFACT_DIR/admin-authz-desktop.png" >/dev/null
 
