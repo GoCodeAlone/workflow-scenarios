@@ -27,6 +27,13 @@ type stubIaCServer struct {
 	pb.UnimplementedIaCProviderRequiredServer
 	pb.UnimplementedIaCProviderFinalizerServer
 	pb.UnimplementedIaCProviderEnumeratorServer
+	// ResourceDriverServer carries per-type CRUD for the strict-contract
+	// apply path (wfctlhelpers.ApplyPlanWithHooks dispatches per action
+	// via the typed adapter, which translates each call to a gRPC RPC).
+	// Without this server registered, wfctl's plan/apply path emits a
+	// gRPC Unimplemented status and surfaces it as
+	// interfaces.ErrProviderMethodUnimplemented to the operator.
+	pb.UnimplementedResourceDriverServer
 
 	provider *stubProvider
 }
@@ -35,6 +42,7 @@ var (
 	_ pb.IaCProviderRequiredServer   = (*stubIaCServer)(nil)
 	_ pb.IaCProviderFinalizerServer  = (*stubIaCServer)(nil)
 	_ pb.IaCProviderEnumeratorServer = (*stubIaCServer)(nil)
+	_ pb.ResourceDriverServer        = (*stubIaCServer)(nil)
 )
 
 func NewIaCServer() *stubIaCServer {
@@ -162,6 +170,129 @@ func (s *stubIaCServer) FinalizeApply(_ context.Context, _ *pb.FinalizeApplyRequ
 	return &pb.FinalizeApplyResponse{}, nil
 }
 
+// ── ResourceDriver gRPC service ──────────────────────────────────────────
+// wfctl's typed adapter routes per-action CRUD through these RPCs at apply
+// time, and through Diff at plan time. Each method forwards to the
+// underlying interfaces.ResourceDriver returned by stubProvider.
+
+func (s *stubIaCServer) Create(ctx context.Context, req *pb.ResourceCreateRequest) (*pb.ResourceCreateResponse, error) {
+	driver, err := s.provider.ResourceDriver(req.GetResourceType())
+	if err != nil {
+		return nil, err
+	}
+	spec, err := specFromPB(req.GetSpec())
+	if err != nil {
+		return nil, fmt.Errorf("stub iacserver: decode Create spec: %w", err)
+	}
+	out, err := driver.Create(ctx, spec)
+	if err != nil {
+		return nil, err
+	}
+	pbOut, err := outputToPB(out)
+	if err != nil {
+		return nil, fmt.Errorf("stub iacserver: encode Create output: %w", err)
+	}
+	return &pb.ResourceCreateResponse{Output: pbOut}, nil
+}
+
+func (s *stubIaCServer) Read(ctx context.Context, req *pb.ResourceReadRequest) (*pb.ResourceReadResponse, error) {
+	driver, err := s.provider.ResourceDriver(req.GetResourceType())
+	if err != nil {
+		return nil, err
+	}
+	out, err := driver.Read(ctx, refFromPB(req.GetRef()))
+	if err != nil {
+		return nil, err
+	}
+	pbOut, err := outputToPB(out)
+	if err != nil {
+		return nil, fmt.Errorf("stub iacserver: encode Read output: %w", err)
+	}
+	return &pb.ResourceReadResponse{Output: pbOut}, nil
+}
+
+func (s *stubIaCServer) Update(ctx context.Context, req *pb.ResourceUpdateRequest) (*pb.ResourceUpdateResponse, error) {
+	driver, err := s.provider.ResourceDriver(req.GetResourceType())
+	if err != nil {
+		return nil, err
+	}
+	spec, err := specFromPB(req.GetSpec())
+	if err != nil {
+		return nil, fmt.Errorf("stub iacserver: decode Update spec: %w", err)
+	}
+	out, err := driver.Update(ctx, refFromPB(req.GetRef()), spec)
+	if err != nil {
+		return nil, err
+	}
+	pbOut, err := outputToPB(out)
+	if err != nil {
+		return nil, fmt.Errorf("stub iacserver: encode Update output: %w", err)
+	}
+	return &pb.ResourceUpdateResponse{Output: pbOut}, nil
+}
+
+func (s *stubIaCServer) Delete(ctx context.Context, req *pb.ResourceDeleteRequest) (*pb.ResourceDeleteResponse, error) {
+	driver, err := s.provider.ResourceDriver(req.GetResourceType())
+	if err != nil {
+		return nil, err
+	}
+	if err := driver.Delete(ctx, refFromPB(req.GetRef())); err != nil {
+		return nil, err
+	}
+	return &pb.ResourceDeleteResponse{}, nil
+}
+
+func (s *stubIaCServer) Diff(ctx context.Context, req *pb.ResourceDiffRequest) (*pb.ResourceDiffResponse, error) {
+	driver, err := s.provider.ResourceDriver(req.GetResourceType())
+	if err != nil {
+		return nil, err
+	}
+	spec, err := specFromPB(req.GetDesired())
+	if err != nil {
+		return nil, fmt.Errorf("stub iacserver: decode Diff desired: %w", err)
+	}
+	current, err := outputFromPB(req.GetCurrent())
+	if err != nil {
+		return nil, fmt.Errorf("stub iacserver: decode Diff current: %w", err)
+	}
+	diff, err := driver.Diff(ctx, spec, current)
+	if err != nil {
+		return nil, err
+	}
+	pbDiff, err := diffResultToPB(diff)
+	if err != nil {
+		return nil, fmt.Errorf("stub iacserver: encode Diff result: %w", err)
+	}
+	return &pb.ResourceDiffResponse{Result: pbDiff}, nil
+}
+
+func (s *stubIaCServer) Scale(_ context.Context, req *pb.ResourceScaleRequest) (*pb.ResourceScaleResponse, error) {
+	return nil, fmt.Errorf("stub iacserver: Scale not supported for resource type %q", req.GetResourceType())
+}
+
+func (s *stubIaCServer) HealthCheck(ctx context.Context, req *pb.ResourceHealthCheckRequest) (*pb.ResourceHealthCheckResponse, error) {
+	driver, err := s.provider.ResourceDriver(req.GetResourceType())
+	if err != nil {
+		return nil, err
+	}
+	result, err := driver.HealthCheck(ctx, refFromPB(req.GetRef()))
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return &pb.ResourceHealthCheckResponse{}, nil
+	}
+	return &pb.ResourceHealthCheckResponse{Result: &pb.HealthResult{Healthy: result.Healthy, Message: result.Message}}, nil
+}
+
+func (s *stubIaCServer) SensitiveKeys(_ context.Context, req *pb.SensitiveKeysRequest) (*pb.SensitiveKeysResponse, error) {
+	driver, err := s.provider.ResourceDriver(req.GetResourceType())
+	if err != nil {
+		return nil, err
+	}
+	return &pb.SensitiveKeysResponse{Keys: append([]string(nil), driver.SensitiveKeys()...)}, nil
+}
+
 // EnumerateAll satisfies pb.IaCProviderEnumeratorServer.EnumerateAll —
 // wfctl infra import-all drives this for the stub.
 func (s *stubIaCServer) EnumerateAll(ctx context.Context, req *pb.EnumerateAllRequest) (*pb.EnumerateAllResponse, error) {
@@ -223,17 +354,6 @@ func marshalJSONAny(v any) ([]byte, error) {
 		return nil, nil
 	}
 	return json.Marshal(v)
-}
-
-func unmarshalJSONAny(b []byte) (any, error) {
-	if len(b) == 0 {
-		return nil, nil
-	}
-	var out any
-	if err := json.Unmarshal(b, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func timeToPB(t time.Time) *timestamppb.Timestamp {
@@ -428,6 +548,65 @@ func planActionToPB(a interfaces.PlanAction) (*pb.PlanAction, error) {
 	}, nil
 }
 
+func outputToPB(o *interfaces.ResourceOutput) (*pb.ResourceOutput, error) {
+	if o == nil {
+		return nil, nil
+	}
+	outputsJSON, err := marshalJSONMap(o.Outputs)
+	if err != nil {
+		return nil, err
+	}
+	sensitive := make(map[string]bool, len(o.Sensitive))
+	for k, v := range o.Sensitive {
+		sensitive[k] = v
+	}
+	return &pb.ResourceOutput{
+		Name:        o.Name,
+		Type:        o.Type,
+		ProviderId:  o.ProviderID,
+		OutputsJson: outputsJSON,
+		Sensitive:   sensitive,
+		Status:      o.Status,
+	}, nil
+}
+
+func outputFromPB(o *pb.ResourceOutput) (*interfaces.ResourceOutput, error) {
+	if o == nil {
+		return nil, nil
+	}
+	outputs, err := unmarshalJSONMap(o.GetOutputsJson())
+	if err != nil {
+		return nil, err
+	}
+	sensitive := make(map[string]bool, len(o.GetSensitive()))
+	for k, v := range o.GetSensitive() {
+		sensitive[k] = v
+	}
+	return &interfaces.ResourceOutput{
+		Name:       o.GetName(),
+		Type:       o.GetType(),
+		ProviderID: o.GetProviderId(),
+		Outputs:    outputs,
+		Sensitive:  sensitive,
+		Status:     o.GetStatus(),
+	}, nil
+}
+
+func diffResultToPB(d *interfaces.DiffResult) (*pb.DiffResult, error) {
+	if d == nil {
+		return nil, nil
+	}
+	pbChanges, err := changesToPB(d.Changes)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.DiffResult{
+		NeedsUpdate:  d.NeedsUpdate,
+		NeedsReplace: d.NeedsReplace,
+		Changes:      pbChanges,
+	}, nil
+}
+
 func planToPB(p *interfaces.IaCPlan) (*pb.IaCPlan, error) {
 	if p == nil {
 		return nil, nil
@@ -464,10 +643,3 @@ func copyStringMap(m map[string]string) map[string]string {
 	return out
 }
 
-// unused-import guards so a future maintainer doesn't trim a helper that's
-// referenced solely from a test in this package (none yet, but the slot
-// exists for backstop coverage).
-var (
-	_ = unmarshalJSONAny
-	_ = changesToPB
-)

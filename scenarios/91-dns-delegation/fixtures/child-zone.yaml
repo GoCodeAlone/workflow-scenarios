@@ -1,0 +1,9 @@
+# Child zone (child.example.test) loaded into stub-B. Served independently
+# of the parent zone in stub-A. Scenario 91 asserts these records survive
+# a round-trip through wfctl infra import-all.
+zones:
+  - id: child.example.test
+    zone: child.example.test
+    records:
+      - {type: A, name: "@", data: "10.0.0.2", ttl: 300}
+      - {type: CNAME, name: www, data: child.example.test, ttl: 300}

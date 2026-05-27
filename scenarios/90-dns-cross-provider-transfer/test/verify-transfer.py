@@ -18,6 +18,7 @@ Exit codes:
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -93,12 +94,14 @@ def main(argv: list[str]) -> int:
         return 2
     matrix: list[str] = charter.get("matrix") or []
     exclude: list[dict[str, Any]] = charter.get("exclude") or []
-    # For the stub-driven scenario, both sides report provider name
-    # "stub-A" / "stub-B"; treat them as their underlying-cloud
-    # equivalents for exclusion lookup so the charter is reusable
-    # when the stub is swapped for a real provider.
-    source_provider = "digitalocean"
-    target_provider = "cloudflare"
+    # Provider names default to the underlying-cloud labels the charter
+    # uses for exclusions (digitalocean source → cloudflare target).
+    # Scenarios that use real providers (or different stub aliases) can
+    # override via env vars VERIFY_SOURCE_PROVIDER / VERIFY_TARGET_PROVIDER
+    # without editing this script — keeps the verifier reusable when the
+    # stub is swapped for a real plugin.
+    source_provider = os.environ.get("VERIFY_SOURCE_PROVIDER", "digitalocean")
+    target_provider = os.environ.get("VERIFY_TARGET_PROVIDER", "cloudflare")
     # Build sets of normalized keys per side, scoped to matrix types.
     src_keys = {
         normalize(r, source_provider, exclude)

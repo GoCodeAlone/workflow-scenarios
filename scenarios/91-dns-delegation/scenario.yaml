@@ -13,7 +13,7 @@ components:
   - workflow >= 0.65.0
   - workflow-scenarios stub DNS provider plugin
   - infra.dns
-status: testable
+status: draft
 tags:
   - iac
   - dns

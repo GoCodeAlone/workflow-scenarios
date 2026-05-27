@@ -1,45 +1,45 @@
 # Scenario 91 — DNS delegation across two stub providers.
 #
-# stub-A owns example.test (the parent zone). The parent zone declares
-# NS records pointing at stub-B's nameservers for the child subdomain.
-# stub-B owns child.example.test (the child zone) and serves its own
-# A/CNAME records there. A single `wfctl infra apply` reconciles both
-# providers; the test then imports each side and asserts the delegation
-# survives.
+# stub-A owns example.test (parent zone) loaded from
+# /tmp/dns-stub-91-parent-fixture.yaml — includes NS records for
+# child.example.test pointing at stub-B's nameservers.
+# stub-B owns child.example.test (child zone) loaded from
+# /tmp/dns-stub-91-child-fixture.yaml — serves the child records.
+#
+# Both fixtures deployed by test/run.sh to /tmp so the absolute path
+# resolves cleanly across the wfctl→plugin process boundary.
 modules:
   - name: stub-A
     type: iac.provider
     config:
       provider: stub-A
       state_path: /tmp/dns-stub-91-parent.json
+      fixture_path: /tmp/dns-stub-91-parent-fixture.yaml
 
   - name: stub-B
     type: iac.provider
     config:
       provider: stub-B
       state_path: /tmp/dns-stub-91-child.json
+      fixture_path: /tmp/dns-stub-91-child-fixture.yaml
 
   - name: iac-state
     type: iac.state
     config:
-      backend: memory
+      backend: filesystem
+      directory: /tmp/dns-stub-91-statestore
 
-resources:
-  - name: parent-zone
+  # Module names = sanitized zone IDs (example.test → example-test,
+  # child.example.test → child-example-test) so import-all roundtrips
+  # key against the same Name.
+  - name: example-test
     type: infra.dns
     config:
       provider: stub-A
       domain: example.test
-      records:
-        - {type: A, name: "@", data: "10.0.0.1", ttl: 300}
-        - {type: NS, name: child.example.test, data: ns1.stub-b.test, ttl: 300}
-        - {type: NS, name: child.example.test, data: ns2.stub-b.test, ttl: 300}
 
-  - name: child-zone
+  - name: child-example-test
     type: infra.dns
     config:
       provider: stub-B
       domain: child.example.test
-      records:
-        - {type: A, name: "@", data: "10.0.0.2", ttl: 300}
-        - {type: CNAME, name: www, data: child.example.test, ttl: 300}

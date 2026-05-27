@@ -1,0 +1,10 @@
+# Parent zone (example.test) loaded into stub-A. Includes NS records
+# delegating child.example.test to stub-B's "nameservers". Scenario 91
+# asserts these NS rows survive a round-trip through wfctl infra import-all.
+zones:
+  - id: example.test
+    zone: example.test
+    records:
+      - {type: A, name: "@", data: "10.0.0.1", ttl: 300}
+      - {type: NS, name: child.example.test, data: ns1.stub-b.test, ttl: 300}
+      - {type: NS, name: child.example.test, data: ns2.stub-b.test, ttl: 300}

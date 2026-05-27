@@ -272,7 +272,12 @@ func (d *stubDriver) Read(_ context.Context, ref interfaces.ResourceRef) (*inter
 		return nil, fmt.Errorf("stub %q: read %q: %w", d.provider, id, err)
 	}
 	if z == nil {
-		return nil, fmt.Errorf("stub %q: read: zone %q not found", d.provider, id)
+		// Surface not-found by wrapping interfaces.ErrResourceNotFound so the
+		// wfctl host's isIaCNotFound string-fallback (workflow/cmd/wfctl/
+		// infra_apply.go:919-937) and the typed-sentinel errors.Is path both
+		// recognise it. The Go wrap chain is stripped across the gRPC wire,
+		// so the literal "iac: resource not found" tail is what survives.
+		return nil, fmt.Errorf("stub %q: read %q: %w", d.provider, id, interfaces.ErrResourceNotFound)
 	}
 	return &interfaces.ResourceOutput{
 		Name:       ref.Name,
@@ -305,14 +310,13 @@ func (d *stubDriver) Delete(_ context.Context, ref interfaces.ResourceRef) error
 }
 
 // Diff classifies whether spec needs an update relative to current. The
-// stub intentionally returns NeedsUpdate=false whenever current is non-
-// nil — scenarios that exercise import→plan NoOp rely on this: imported
-// state with full record content shouldn't be reported as drift from a
-// minimal config that only declares the zone name.
-func (d *stubDriver) Diff(_ context.Context, _ interfaces.ResourceSpec, current *interfaces.ResourceOutput) (*interfaces.DiffResult, error) {
-	if current == nil {
-		return &interfaces.DiffResult{NeedsUpdate: false, NeedsReplace: false}, nil
-	}
+// stub intentionally returns NeedsUpdate=false unconditionally — scenarios
+// that exercise import→plan NoOp rely on this so imported state with full
+// record content isn't reported as drift from a minimal config that only
+// declares the zone name. ComputePlan still emits Create actions when
+// current is absent (driven by Read returning not-found), so apply paths
+// still work end-to-end.
+func (d *stubDriver) Diff(_ context.Context, _ interfaces.ResourceSpec, _ *interfaces.ResourceOutput) (*interfaces.DiffResult, error) {
 	return &interfaces.DiffResult{NeedsUpdate: false, NeedsReplace: false}, nil
 }
 

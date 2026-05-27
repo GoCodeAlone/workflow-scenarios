@@ -6,24 +6,23 @@
 # importing this state and then planning against this config emits
 # zero actions ("No changes").
 #
-# fixture_path is relative to the working directory of the stub plugin
-# process. test/run.sh exports DNS_STUB_FIXTURE pointing at the shared
-# fixtures dir; that env var is the canonical source.
+# Module name MUST equal the SANITIZED zone ID produced by
+# `wfctl infra import-all` — see scenarios/89-.../test/run.sh comment.
 modules:
   - name: stub
     type: iac.provider
     config:
       provider: stub
-      # Stub-specific config keys (state_path + fixture_path) flow
-      # through ConfigJson on Initialize. See scenarios/lib/dns-stub-plugin/provider.go.
       state_path: /tmp/dns-stub-89-state.json
 
   - name: iac-state
     type: iac.state
     config:
-      backend: memory
+      backend: filesystem
+      directory: /tmp/dns-stub-89-statestore
 
-resources:
+  # Resource name must equal the sanitized zone ID emitted by
+  # import-all (sanitizeImportedZoneName replaces `.` with `-`).
   - name: alpha-test
     type: infra.dns
     config:
