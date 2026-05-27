@@ -24,7 +24,7 @@ contains() {
 }
 
 admin_status="$(curl -s -o /dev/null -w "%{http_code}:%{redirect_url}:%{header_json}" "$BASE/admin")"
-if [[ "$admin_status" == 303:*"/login?next=%2Fadmin"* ]]; then
+if [[ "$admin_status" == 303:*"/login?next=admin"* ]]; then
   pass "Anonymous admin redirects to login"
 else
   fail "Anonymous admin redirect expected, got $admin_status"
