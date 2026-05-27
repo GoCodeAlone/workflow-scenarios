@@ -97,37 +97,40 @@ test.describe('Scenario 92: Infra Admin (Dynamic, Proto-Driven)', () => {
   });
 
   test('@scenario-92 unauthenticated /api/infra-admin/* returns 401', async ({
-    page,
+    request,
   }) => {
     // PR-1 T15 auth-middleware regression gate. Without an
     // Authorization header, the auth gate MUST return 401 BEFORE
     // any handler runs — clients can't spoof the in-body evidence
     // {authz_checked:true, authz_allowed:true} to bypass the
-    // application-level default-deny. Mirrors implementer-1's unit
-    // test TestInfraAdmin_ClientCannotSpoofAuthzEvidence at the e2e
-    // tier per spec-reviewer F2 (PR-2) + team-lead's option 2.
-    const { status, body } = await page.evaluate(async url => {
-      const resp = await fetch(`${url}/api/infra-admin/resources`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          evidence: { authz_checked: true, authz_allowed: true },
-        }),
-      });
-      let parsed: unknown = null;
-      try {
-        parsed = await resp.json();
-      } catch (_) {
-        /* not JSON — leave null */
-      }
-      return { status: resp.status, body: parsed };
-    }, BASE_URL);
-    expect(status).toBe(401);
+    // application-level default-deny.
+    //
+    // CRITICAL: uses the `request` fixture (fresh APIRequestContext
+    // with no inherited headers) NOT `page` — Playwright's
+    // setExtraHTTPHeaders() applies at the browser network layer to
+    // ALL browser-initiated requests, including fetch() inside
+    // page.evaluate. Using `page` here would silently leak the
+    // beforeEach-set Authorization header into this test and the
+    // request would be authenticated. Spec-reviewer PR-2 F1 catch.
+    //
+    // Mirrors implementer-1's unit test
+    // TestInfraAdmin_ClientCannotSpoofAuthzEvidence at the e2e tier.
+    const resp = await request.post(`${BASE_URL}/api/infra-admin/resources`, {
+      headers: { 'Content-Type': 'application/json' },
+      data: { evidence: { authz_checked: true, authz_allowed: true } },
+    });
+    expect(resp.status()).toBe(401);
     // 401 is enforced by the auth middleware BEFORE the handler runs,
     // so the body should NOT contain a handler-shaped
     // `AdminListResourcesOutput` with a tag-100 error. Just assert no
     // 200-shaped resources field — the 401 status is the load-bearing
     // assertion here.
+    let body: unknown = null;
+    try {
+      body = await resp.json();
+    } catch (_) {
+      /* 401 body may not be JSON — leave null */
+    }
     if (body && typeof body === 'object') {
       expect((body as Record<string, unknown>).resources).toBeUndefined();
     }
