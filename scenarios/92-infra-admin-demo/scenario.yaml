@@ -1,0 +1,35 @@
+name: Infra Admin (Dynamic, Proto-Driven)
+id: "92-infra-admin-demo"
+category: C
+description: |
+  Boots a workflow server with admin.dashboard + infra.admin host-side module +
+  stub iac.provider. Exercises the typed admin RPC contracts (5 read RPCs +
+  audit) and the new-resource form-builder UI's dependent dropdowns end-to-end.
+
+  Two variants:
+    - app.yaml         — stub iac.provider only (deterministic, always-pass)
+    - app-do-dryrun.yaml — adds an iac.provider type=digitalocean (no token,
+                          fails any live API call; ListProviders + ListTypes
+                          still succeed against empty state)
+
+  v1 is read-only: no PLAN/APPLY/DESTROY/DRIFT-CHECK mutations from the UI.
+  Mutations remain in `wfctl infra apply/destroy/drift` as before.
+
+  Playwright spec at e2e/tests/scenario-92-infra-admin.spec.ts covers:
+    - admin shell registers the 3 infra contributions
+    - resources table populates from pre-seeded state
+    - resource detail view renders typed summary + applied_config + outputs
+    - new-resource form-builder: type dropdown, dependent provider→region
+      dropdowns, --field submission, YAML output preview
+components:
+  - workflow (host-side infra.admin module)
+  - workflow-plugin-admin
+  - iac.state (memory)
+  - iac.provider (stub)
+status: testable
+tags:
+  - admin
+  - iac
+  - proto-contracts
+  - dropdown-forms
+  - playwright

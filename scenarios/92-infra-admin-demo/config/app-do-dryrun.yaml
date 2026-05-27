@@ -1,0 +1,124 @@
+# ============================================================
+# Scenario 92 — Infra Admin (DigitalOcean dry-run variant)
+#
+# Identical to config/app.yaml except adds an iac.provider type=digitalocean
+# alongside the stub provider. No DIGITALOCEAN_TOKEN env var is set, so any
+# live API call would fail — but the admin RPC surface (ListProviders,
+# ListResourceTypes, ListResources against empty state) succeeds without
+# touching the API. Verifies the catalog's region/engine matrix for DO is
+# wired correctly.
+# ============================================================
+
+modules:
+  - name: auth
+    type: auth.jwt
+    config:
+      issuer: "scenario-92"
+      secret: "scenario-92-jwt-secret-do-not-use-in-prod"
+
+  - name: authz
+    type: authz.casbin
+    config:
+      policy_path: /etc/scenario-92/policy.csv
+
+  - name: security-headers
+    type: http.middleware.securityheaders
+    config:
+      frameOptions: SAMEORIGIN
+      contentSecurityPolicy: >-
+        default-src 'self'; script-src 'self'; style-src 'self';
+        img-src 'self' data:; frame-ancestors 'self'
+
+  - name: http
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: http-router
+    type: http.router
+    dependsOn: [http]
+
+  - name: admin
+    type: admin.dashboard
+    config:
+      route_prefix: /admin
+      app_name: Scenario 92 — Infra Admin (DO dry-run)
+      auth_module: auth
+      authz_module: authz
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  - name: stub-provider
+    type: iac.provider
+    config:
+      provider: stub
+
+  # No DIGITALOCEAN_TOKEN set — any live API call fails, but admin RPCs
+  # against empty state succeed. Tests the DO branch of the region +
+  # engine catalogs.
+  - name: do-provider
+    type: iac.provider
+    config:
+      provider: digitalocean
+
+  - name: infra-admin
+    type: infra.admin
+    config:
+      route_prefix:            /api/infra-admin
+      asset_prefix:            /admin/infra-admin
+      state_module:            iac-state
+      http_module:             http
+      # auth_module wires T15's route-level auth gate (PR-1 47341ff6f).
+      # See config/app.yaml for the rationale comment.
+      auth_module:             auth
+      security_headers_module: security-headers
+      provider_modules:        [stub-provider, do-provider]
+      access_log_path:         /var/log/infra-admin-audit.jsonl
+
+workflows:
+  http:
+    server: http
+    router: http-router
+    routes: []
+
+pipelines:
+  register-infra-admin-resources:
+    trigger: { type: manual }
+    steps:
+      - name: register
+        type: step.admin_register_contribution
+        config: { module: admin }
+
+  register-infra-admin-resource-detail:
+    trigger: { type: manual }
+    steps:
+      - name: register
+        type: step.admin_register_contribution
+        config: { module: admin }
+
+  register-infra-admin-new-resource:
+    trigger: { type: manual }
+    steps:
+      - name: register
+        type: step.admin_register_contribution
+        config: { module: admin }
+
+  list-admin-contributions:
+    trigger:
+      type: http
+      config:
+        path: /api/admin/contributions
+        method: GET
+    steps:
+      - name: list
+        type: step.admin_list_contributions
+        config: { module: admin }
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            contributions: { _from: "contributions" }

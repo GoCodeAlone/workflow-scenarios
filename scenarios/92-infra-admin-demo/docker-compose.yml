@@ -1,0 +1,48 @@
+# ============================================================
+# Scenario 92 — Infra Admin docker-compose
+#
+# Brings up a single workflow-server container with the
+# workflow-plugin-admin plugin baked in (via the pre-built
+# `workflow-admin:scenario-92` image from seed/build.sh).
+#
+# Port 18092 exposed locally so it doesn't collide with other
+# scenarios running concurrently (convention: 180<scenario-id>).
+# ============================================================
+
+services:
+  app:
+    image: workflow-admin:scenario-92
+    container_name: workflow-scenario-92-app
+    environment:
+      # VARIANT default empty matches seed.sh — line 16's substitution
+      # `app${VARIANT:+-${VARIANT}}.yaml` produces `app.yaml` when empty,
+      # `app-do-dryrun.yaml` when VARIANT=do-dryrun. Setting a non-empty
+      # default like `stub` would point at a non-existent app-stub.yaml.
+      # Spec-reviewer F1 on PR-2.
+      VARIANT: ${VARIANT:-}
+      # NB: no JWT_SECRET env var. The auth.jwt module reads
+      # secret from the YAML config at config/app{,-do-dryrun}.yaml.
+      # Adding an env var here would create a "which one wins" ambiguity
+      # when someone changes one but not the other. Test + Playwright
+      # JWT minting MUST use the literal secret from app.yaml.
+    ports:
+      - "127.0.0.1:18092:8080"
+    volumes:
+      - ./config:/etc/scenario-92:ro
+      - audit-log:/var/log
+    command:
+      - server
+      - "-config"
+      - "/etc/scenario-92/app${VARIANT:+-${VARIANT}}.yaml"
+    healthcheck:
+      test:
+        - CMD
+        - sh
+        - -c
+        - "wget -q -O- http://127.0.0.1:8080/healthz || exit 1"
+      interval: 3s
+      timeout: 2s
+      retries: 30
+
+volumes:
+  audit-log:

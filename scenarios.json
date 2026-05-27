@@ -1109,6 +1109,17 @@
       "notes": "Parent zone at stub-A delegates child.example.test to stub-B via NS records; child zone served at stub-B. Single `wfctl infra apply` reconciles both providers; subsequent imports assert the delegation survives via .applied_config.records[] jq matchers.",
       "lastTested": null,
       "lastResult": null
+    },
+    "92-infra-admin-demo": {
+      "status": "pending",
+      "namespace": "wf-scenario-92",
+      "deployed": false,
+      "lastTested": "",
+      "lastResult": "",
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": []
     }
   }
 }

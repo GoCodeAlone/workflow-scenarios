@@ -1,0 +1,134 @@
+# ============================================================
+# Scenario 92 — Infra Admin (stub variant)
+#
+# Full app YAML mirroring docs/plans/2026-05-27-infra-admin-dynamic-design.md
+# §App Integration. Boots:
+#   - auth.jwt + authz.casbin
+#   - http.middleware.securityheaders (permissive frame-ancestors 'self')
+#   - http.server + http.router
+#   - admin.dashboard (workflow-plugin-admin)
+#   - iac.state (memory) + stub iac.provider
+#   - infra.admin (host-side module) — fires 3 registration pipelines on Start
+#
+# Three single-step pipelines register the iframe contributions via the
+# STRICT_PROTO step.admin_register_contribution. The list-admin-contributions
+# pipeline backs admin shell's GET /api/admin/contributions.
+# ============================================================
+
+modules:
+  - name: auth
+    type: auth.jwt
+    config:
+      issuer: "scenario-92"
+      secret: "scenario-92-jwt-secret-do-not-use-in-prod"
+
+  - name: authz
+    type: authz.casbin
+    config:
+      policy_path: /etc/scenario-92/policy.csv
+
+  - name: security-headers
+    type: http.middleware.securityheaders
+    config:
+      frameOptions: SAMEORIGIN
+      contentSecurityPolicy: >-
+        default-src 'self'; script-src 'self'; style-src 'self';
+        img-src 'self' data:; frame-ancestors 'self'
+
+  - name: http
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: http-router
+    type: http.router
+    dependsOn: [http]
+
+  - name: admin
+    type: admin.dashboard
+    config:
+      route_prefix: /admin
+      app_name: Scenario 92 — Infra Admin Demo
+      auth_module: auth
+      authz_module: authz
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+  - name: stub-provider
+    type: iac.provider
+    config:
+      provider: stub
+
+  - name: infra-admin
+    type: infra.admin
+    config:
+      route_prefix:            /api/infra-admin
+      asset_prefix:            /admin/infra-admin
+      state_module:            iac-state
+      http_module:             http
+      # auth_module wires T15's route-level auth gate (PR-1 47341ff6f):
+      # every /api/infra-admin/* and /admin/infra-admin/* request must
+      # carry a valid JWT bearer token issued by the named auth module.
+      # Mirrors admin.dashboard's auth_module convention above.
+      auth_module:             auth
+      security_headers_module: security-headers
+      provider_modules:        [stub-provider]
+      access_log_path:         /var/log/infra-admin-audit.jsonl
+
+workflows:
+  http:
+    server: http
+    router: http-router
+    routes: []   # routes mounted by infra.admin module + list-admin-contributions pipeline
+
+pipelines:
+  # Three single-step pipelines fired by infra.admin.Start() via
+  # engine.TriggerWorkflow. Each merges its `data` payload into
+  # PipelineContext.Current; the typed step reads TypedInput from
+  # Current per the STRICT_PROTO RegisterContributionInput shape.
+  register-infra-admin-resources:
+    trigger: { type: manual }
+    steps:
+      - name: register
+        type: step.admin_register_contribution
+        config: { module: admin }
+
+  register-infra-admin-resource-detail:
+    trigger: { type: manual }
+    steps:
+      - name: register
+        type: step.admin_register_contribution
+        config: { module: admin }
+
+  register-infra-admin-new-resource:
+    trigger: { type: manual }
+    steps:
+      - name: register
+        type: step.admin_register_contribution
+        config: { module: admin }
+
+  # HTTP-triggered pipeline the admin shell GETs to enumerate contributions.
+  # Terminating step.json_response with `_from` reference sets the response
+  # body explicitly — step.http_trigger otherwise returns the generic 202
+  # envelope (design cycle-6 Critical #2). Admin shell at
+  # workflow-plugin-admin/internal/ui_dist/index.html:328 reads
+  # `payload.contributions`.
+  list-admin-contributions:
+    trigger:
+      type: http
+      config:
+        path: /api/admin/contributions
+        method: GET
+    steps:
+      - name: list
+        type: step.admin_list_contributions
+        config: { module: admin }
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            contributions: { _from: "contributions" }
