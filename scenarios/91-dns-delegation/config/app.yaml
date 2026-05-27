@@ -1,0 +1,45 @@
+# Scenario 91 — DNS delegation across two stub providers.
+#
+# stub-A owns example.test (the parent zone). The parent zone declares
+# NS records pointing at stub-B's nameservers for the child subdomain.
+# stub-B owns child.example.test (the child zone) and serves its own
+# A/CNAME records there. A single `wfctl infra apply` reconciles both
+# providers; the test then imports each side and asserts the delegation
+# survives.
+modules:
+  - name: stub-A
+    type: iac.provider
+    config:
+      provider: stub-A
+      state_path: /tmp/dns-stub-91-parent.json
+
+  - name: stub-B
+    type: iac.provider
+    config:
+      provider: stub-B
+      state_path: /tmp/dns-stub-91-child.json
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+resources:
+  - name: parent-zone
+    type: infra.dns
+    config:
+      provider: stub-A
+      domain: example.test
+      records:
+        - {type: A, name: "@", data: "10.0.0.1", ttl: 300}
+        - {type: NS, name: child.example.test, data: ns1.stub-b.test, ttl: 300}
+        - {type: NS, name: child.example.test, data: ns2.stub-b.test, ttl: 300}
+
+  - name: child-zone
+    type: infra.dns
+    config:
+      provider: stub-B
+      domain: child.example.test
+      records:
+        - {type: A, name: "@", data: "10.0.0.2", ttl: 300}
+        - {type: CNAME, name: www, data: child.example.test, ttl: 300}
