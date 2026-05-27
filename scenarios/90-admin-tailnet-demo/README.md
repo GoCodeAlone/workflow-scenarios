@@ -5,13 +5,28 @@ This scenario runs a small app with an auth-gated administration portal, a decla
 - App: <http://localhost:18080/>
 - Admin: <http://localhost:18080/admin>
 - Authz admin contribution: <http://localhost:18080/admin/authz>
+- Auth provider catalog API: <http://localhost:18080/api/admin/auth/providers>
 - Status API: <http://localhost:18080/api/status>
 
 Demo users:
 
 - `admin@tailnet` / `admin`: full admin and frontend scopes.
+- `provider-admin@tailnet` / `provider`: auth provider read-only admin.
 - `readonly-admin@tailnet` / `readonly`: admin read scopes only.
 - `app-user@tailnet` / `user`: frontend scopes only.
+
+The auth provider catalog composes descriptor-shaped records for released
+Workflow provider plugins:
+
+- `workflow-plugin-auth v0.2.11`
+- `workflow-plugin-sso v0.1.6`
+- `workflow-plugin-okta v0.2.4`
+- `workflow-plugin-auth0 v0.1.0`
+- `workflow-plugin-entra v0.1.0`
+- `workflow-plugin-ory-kratos v0.1.0`
+- `workflow-plugin-ory-hydra v0.1.0`
+- `workflow-plugin-ory-polis v0.1.0`
+- `workflow-plugin-scalekit v0.1.0`
 
 The authz contribution displays frontend and admin scopes from the declared scope catalog, including owner plugin/module metadata. The demo defaults to `AUTHZ_PROVIDER=keto`, runs a local Ory Keto container, and resolves role assignments into Keto scope relationship checks for the app/admin surfaces.
 

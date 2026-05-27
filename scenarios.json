@@ -1086,6 +1086,18 @@
       "lastTested": null,
       "lastResult": null
     },
+    "90-admin-tailnet-demo": {
+      "status": "testable",
+      "namespace": "local",
+      "deployed": false,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Docker Compose app/admin demo with auth-gated admin portal, dynamic auth provider descriptor catalog, authz RBAC/ABAC/ReBAC UI, Ory Keto enforcement, and optional Tailscale sidecar.",
+      "lastTested": null,
+      "lastResult": null
+    },
     "91-dns-delegation": {
       "status": "draft",
       "namespace": "local",
