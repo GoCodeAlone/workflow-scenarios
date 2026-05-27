@@ -1,0 +1,27 @@
+# Scenario 90 — target config (stub-B, simulating a Cloudflare-shape
+# DNS account). Same record set as source.yaml, declared against a
+# distinct provider module — exercises the cross-provider apply path.
+modules:
+  - name: stub-B
+    type: iac.provider
+    config:
+      provider: stub-B
+      state_path: /tmp/dns-stub-90-target.json
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+resources:
+  - name: shared-zone
+    type: infra.dns
+    config:
+      provider: stub-B
+      domain: shared.test
+      records:
+        - {type: A, name: "@", data: "10.0.0.1", ttl: 300}
+        - {type: AAAA, name: "@", data: "2001:db8::1", ttl: 300}
+        - {type: CNAME, name: www, data: shared.test, ttl: 300}
+        - {type: MX, name: "@", data: mail.shared.test, ttl: 3600, priority: 10}
+        - {type: TXT, name: "@", data: "v=spf1 -all", ttl: 3600}

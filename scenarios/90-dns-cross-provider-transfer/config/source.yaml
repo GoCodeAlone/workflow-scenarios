@@ -1,0 +1,27 @@
+# Scenario 90 — source config (stub-A, simulating a DigitalOcean-shape
+# DNS account). Records mirror target.yaml so a roundtrip can assert
+# per-record parity modulo lossiness.yaml's per-provider exclusions.
+modules:
+  - name: stub-A
+    type: iac.provider
+    config:
+      provider: stub-A
+      state_path: /tmp/dns-stub-90-source.json
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+resources:
+  - name: shared-zone
+    type: infra.dns
+    config:
+      provider: stub-A
+      domain: shared.test
+      records:
+        - {type: A, name: "@", data: "10.0.0.1", ttl: 300}
+        - {type: AAAA, name: "@", data: "2001:db8::1", ttl: 300}
+        - {type: CNAME, name: www, data: shared.test, ttl: 300}
+        - {type: MX, name: "@", data: mail.shared.test, ttl: 3600, priority: 10}
+        - {type: TXT, name: "@", data: "v=spf1 -all", ttl: 3600}
