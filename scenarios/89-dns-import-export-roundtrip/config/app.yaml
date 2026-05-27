@@ -1,0 +1,31 @@
+# Scenario 89 — DNS import-export roundtrip config.
+#
+# Single stub IaCProvider module pre-loaded from the shared example
+# fixture (alpha.test zone with A/CNAME/MX records). The infra.dns
+# resource declares the zone by name only — the test asserts that
+# importing this state and then planning against this config emits
+# zero actions ("No changes").
+#
+# fixture_path is relative to the working directory of the stub plugin
+# process. test/run.sh exports DNS_STUB_FIXTURE pointing at the shared
+# fixtures dir; that env var is the canonical source.
+modules:
+  - name: stub
+    type: iac.provider
+    config:
+      provider: stub
+      # Stub-specific config keys (state_path + fixture_path) flow
+      # through ConfigJson on Initialize. See scenarios/lib/dns-stub-plugin/provider.go.
+      state_path: /tmp/dns-stub-89-state.json
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: memory
+
+resources:
+  - name: alpha-test
+    type: infra.dns
+    config:
+      provider: stub
+      domain: alpha.test
