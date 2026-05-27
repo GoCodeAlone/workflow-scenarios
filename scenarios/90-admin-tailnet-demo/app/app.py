@@ -6,12 +6,18 @@ import os
 import secrets
 import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from urllib.parse import parse_qs, urlparse
 
 
 started_at = time.time()
 authz_provider = os.environ.get("AUTHZ_PROVIDER", "keto")
+keto_read_url = os.environ.get("KETO_READ_URL", "http://keto:4466")
+keto_write_url = os.environ.get("KETO_WRITE_URL", "http://keto:4467")
 state_lock = threading.RLock()
+keto_seeded = False
 sessions = {}
 users = {
     "app-user@tailnet": {
@@ -103,6 +109,7 @@ def page(title, body, principal=None):
     .scope-card span {{ color:var(--muted); font-size:12px; margin-top:4px; }}
     .scope-picker {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px; flex-basis:100%; }}
     .scope-option {{ display:grid; grid-template-columns:18px minmax(0, 1fr); gap:8px; align-items:start; background:white; border:1px solid var(--line); border-radius:7px; padding:8px; }}
+    .scope-option input {{ min-width:0; width:18px; height:18px; flex:0 0 auto; margin:1px 0 0; padding:0; }}
     .scope-option span {{ overflow-wrap:anywhere; }}
     code {{ background:#edf2f7; padding:2px 5px; border-radius:5px; }}
     .login-shell {{ max-width:440px; margin:48px auto; }}
@@ -332,6 +339,7 @@ class Handler(BaseHTTPRequestHandler):
                 with state_lock:
                     state["roles"].append({"user": user, "role": role, "context": context, "scopes": scopes})
                     state["audit"].append({"event": "authz.role.assigned", "actor": principal})
+                seed_subject_scopes(user, scopes)
             self.redirect("/admin/authz")
             return
         self.send_error(HTTPStatus.NOT_FOUND)
@@ -391,7 +399,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_json({"error": "unauthenticated"}, HTTPStatus.UNAUTHORIZED)
             return False
-        if scope not in self.principal_scopes():
+        if not principal_has_scope(principal, scope):
             if html:
                 self.send_html(page("Forbidden", "<h1>Forbidden</h1><p>This session does not have the required scope.</p>", principal), HTTPStatus.FORBIDDEN)
             else:
@@ -413,6 +421,79 @@ def validate_assignment_scopes(context, scopes):
         if declared[scope]["context"] != context:
             return False, f"{scope} belongs to {declared[scope]['context']}, not {context}"
     return True, ""
+
+
+def principal_has_scope(principal, scope):
+    if not principal:
+        return False
+    if authz_provider == "keto":
+        return keto_scope_check(principal, scope)
+    return scope in users.get(principal, {}).get("scopes", [])
+
+
+def ensure_keto_seeded():
+    global keto_seeded
+    if authz_provider != "keto" or keto_seeded:
+        return True
+    with state_lock:
+        seed_pairs = [(user, scope) for user, data in users.items() for scope in data.get("scopes", [])]
+        seed_pairs.extend((assignment["user"], scope) for assignment in state["roles"] for scope in assignment.get("scopes", []))
+    for _ in range(20):
+        try:
+            for subject, scope in seed_pairs:
+                keto_put_tuple(subject, scope)
+            keto_seeded = True
+            return True
+        except urllib.error.URLError:
+            time.sleep(0.2)
+    return False
+
+
+def seed_subject_scopes(subject, scopes):
+    if authz_provider != "keto":
+        return
+    for scope in scopes:
+        try:
+            keto_put_tuple(subject, scope)
+        except urllib.error.URLError:
+            return
+
+
+def keto_put_tuple(subject, scope):
+    payload = json.dumps({
+        "namespace": "scope",
+        "object": scope,
+        "relation": "granted",
+        "subject_id": subject,
+    }).encode()
+    request = urllib.request.Request(f"{keto_write_url}/admin/relation-tuples", data=payload, method="PUT", headers={"content-type": "application/json"})
+    try:
+        urllib.request.urlopen(request, timeout=2).read()
+    except urllib.error.HTTPError as exc:
+        if exc.code != 409:
+            raise
+
+
+def keto_scope_check(subject, scope):
+    if not ensure_keto_seeded():
+        return False
+    query = urllib.parse.urlencode({
+        "namespace": "scope",
+        "object": scope,
+        "relation": "granted",
+        "subject_id": subject,
+        "max-depth": "32",
+    })
+    try:
+        with urllib.request.urlopen(f"{keto_read_url}/relation-tuples/check/openapi?{query}", timeout=2) as response:
+            data = json.loads(response.read().decode() or "{}")
+            return bool(data.get("allowed"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 403:
+            return False
+        return False
+    except urllib.error.URLError:
+        return False
 
 
 if __name__ == "__main__":

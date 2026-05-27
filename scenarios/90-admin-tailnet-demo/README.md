@@ -13,7 +13,7 @@ Demo users:
 - `readonly-admin@tailnet` / `readonly`: admin read scopes only.
 - `app-user@tailnet` / `user`: frontend scopes only.
 
-The authz contribution displays frontend and admin scopes from the declared scope catalog, including owner plugin/module metadata. The demo defaults to `AUTHZ_PROVIDER=keto` and resolves role assignments into scope checks for the app/admin surfaces.
+The authz contribution displays frontend and admin scopes from the declared scope catalog, including owner plugin/module metadata. The demo defaults to `AUTHZ_PROVIDER=keto`, runs a local Ory Keto container, and resolves role assignments into Keto scope relationship checks for the app/admin surfaces.
 
 ## Run
 

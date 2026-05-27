@@ -1,0 +1,12 @@
+dsn: memory
+
+serve:
+  read:
+    host: 0.0.0.0
+    port: 4466
+  write:
+    host: 0.0.0.0
+    port: 4467
+
+namespaces:
+  location: file:///etc/keto/namespaces.ts

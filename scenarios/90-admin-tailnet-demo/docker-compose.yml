@@ -5,13 +5,27 @@ services:
     container_name: workflow-admin-tailnet-demo
     environment:
       AUTHZ_PROVIDER: ${AUTHZ_PROVIDER:-keto}
+      KETO_READ_URL: http://keto:4466
+      KETO_WRITE_URL: http://keto:4467
     ports:
       - "18080:8080"
+    depends_on:
+      - keto
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/status')"]
       interval: 5s
       timeout: 3s
       retries: 10
+
+  keto:
+    image: oryd/keto:v0.14.0
+    container_name: workflow-admin-tailnet-demo-keto
+    command: serve -c /etc/keto/keto.yml all
+    volumes:
+      - ./keto:/etc/keto:ro
+    ports:
+      - "4466"
+      - "4467"
 
   tailscale:
     image: tailscale/tailscale:stable

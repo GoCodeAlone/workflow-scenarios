@@ -53,6 +53,7 @@ contains "$authz" "frontend:orders:read" "Frontend scope visible"
 contains "$authz" "admin:authz.roles:update" "Admin scope visible"
 contains "$authz" "app.requests" "Application-declared scope visible"
 contains "$authz" "scope-picker" "Authz UI renders scope picker"
+contains "$authz" ".scope-option input" "Scope picker checkbox sizing isolated"
 if grep -q "Direct scopes, comma separated" <<<"$authz"; then
   fail "Authz UI should not render free-text scope entry"
 else
