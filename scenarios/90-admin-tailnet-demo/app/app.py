@@ -197,6 +197,20 @@ def page(title, body, principal=None):
 </html>"""
 
 
+def safe_redirect_location(location, default="/admin"):
+    if not isinstance(location, str) or not location:
+        return default
+    if any(char in location for char in "\r\n") or any(ord(char) < 32 or ord(char) == 127 for char in location):
+        return default
+    parsed = urllib.parse.urlsplit(location)
+    if parsed.scheme or parsed.netloc:
+        return default
+    if not parsed.path.startswith("/") or parsed.path.startswith("//"):
+        return default
+    query = f"?{parsed.query}" if parsed.query else ""
+    return f"{parsed.path}{query}"
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print("%s - %s" % (self.address_string(), fmt % args), flush=True)
@@ -243,7 +257,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/login":
             query = parse_qs(urlparse(self.path).query)
-            next_path = query.get("next", ["/admin"])[0]
+            next_path = safe_redirect_location(query.get("next", ["/admin"])[0])
             self.send_html(page("Workflow Tailnet Demo Login", f"""
               <section class="card login-shell">
                 <h1>Sign in</h1>
@@ -495,14 +509,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/login":
             email = str(form.get("email", [""])[0]).strip()
             password = str(form.get("password", [""])[0])
-            next_path = str(form.get("next", ["/admin"])[0]) or "/admin"
+            next_path = safe_redirect_location(str(form.get("next", ["/admin"])[0]))
             user = users.get(email)
             if user and secrets.compare_digest(user["password"], password):
                 token = secrets.token_urlsafe(24)
                 with state_lock:
                     sessions[token] = email
                 self.send_response(HTTPStatus.SEE_OTHER)
-                self.send_header("location", next_path if next_path.startswith("/") else "/admin")
+                self.send_header("location", next_path)
                 self.send_header("set-cookie", f"wf_demo_session={token}; Path=/; HttpOnly; SameSite=Lax")
                 self.end_headers()
                 return
@@ -740,7 +754,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def redirect(self, location):
         self.send_response(HTTPStatus.SEE_OTHER)
-        self.send_header("location", location)
+        self.send_header("location", safe_redirect_location(location, "/"))
         self.end_headers()
 
     def parse_body(self, raw_body):
@@ -805,7 +819,8 @@ class Handler(BaseHTTPRequestHandler):
         principal = self.current_principal()
         if not principal:
             if html:
-                self.redirect(f"/login?next={urlparse(self.path).path}")
+                next_path = safe_redirect_location(urlparse(self.path).path)
+                self.redirect(f"/login?next={urllib.parse.quote(next_path, safe='')}")
             else:
                 self.send_json({"error": "unauthenticated"}, HTTPStatus.UNAUTHORIZED)
             return False

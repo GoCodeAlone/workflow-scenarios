@@ -4,9 +4,10 @@ set -euo pipefail
 BASE="${BASE:-http://127.0.0.1:18080}"
 COOKIE_JAR="$(mktemp)"
 FRONTEND_COOKIE="$(mktemp)"
+MALICIOUS_COOKIE="$(mktemp)"
 PASS_COUNT=0
 FAIL_COUNT=0
-trap 'rm -f "$COOKIE_JAR" "$FRONTEND_COOKIE"' EXIT
+trap 'rm -f "$COOKIE_JAR" "$FRONTEND_COOKIE" "$MALICIOUS_COOKIE"' EXIT
 
 pass() { echo "PASS: $1"; PASS_COUNT=$((PASS_COUNT + 1)); }
 fail() { echo "FAIL: $1"; FAIL_COUNT=$((FAIL_COUNT + 1)); }
@@ -23,7 +24,7 @@ contains() {
 }
 
 admin_status="$(curl -s -o /dev/null -w "%{http_code}:%{redirect_url}:%{header_json}" "$BASE/admin")"
-if [[ "$admin_status" == 303:*"/login?next=/admin"* ]]; then
+if [[ "$admin_status" == 303:*"/login?next=%2Fadmin"* ]]; then
   pass "Anonymous admin redirects to login"
 else
   fail "Anonymous admin redirect expected, got $admin_status"
@@ -48,6 +49,13 @@ if [[ "$login_status" == "303" ]]; then
   pass "Admin login creates a session"
 else
   fail "Admin login expected 303, got $login_status"
+fi
+
+malicious_login_headers="$(curl -s -D - -o /dev/null -c "$MALICIOUS_COOKIE" --data-urlencode 'email=admin@tailnet' --data-urlencode 'password=admin' --data-urlencode $'next=/admin\r\nx-injected: bad' "$BASE/login" | tr -d '\r')"
+if grep -qi '^location: /admin$' <<<"$malicious_login_headers" && ! grep -qi '^x-injected:' <<<"$malicious_login_headers"; then
+  pass "Login redirect rejects response-splitting next values"
+else
+  fail "Login redirect should sanitize malicious next header"
 fi
 
 admin="$(curl -b "$COOKIE_JAR" -fsS "$BASE/admin")"
