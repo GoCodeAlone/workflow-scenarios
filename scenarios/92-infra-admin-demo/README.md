@@ -31,7 +31,7 @@ The scenario wires it via `auth_module: auth` under `infra-admin.config`
 The scenario uses an HS256 baked-in JWT secret for demo simplicity:
 
 ```
-hs256_secret: "scenario-92-jwt-secret-do-not-use-in-prod"
+secret: "scenario-92-jwt-secret-do-not-use-in-prod"
 ```
 
 **This is test-only.** Both `test/run.sh` and the Playwright spec mint a

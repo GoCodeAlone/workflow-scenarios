@@ -18,7 +18,7 @@ import { createHmac } from 'crypto';
 
 const BASE_URL = process.env.SCENARIO_URL || 'http://127.0.0.1:18092';
 
-// Must match config/app.yaml::modules[name=auth].config.hs256_secret.
+// Must match config/app.yaml::modules[name=auth].config.secret.
 const JWT_SECRET = 'scenario-92-jwt-secret-do-not-use-in-prod';
 const JWT_ISSUER = 'scenario-92';
 

@@ -74,7 +74,7 @@ fi
 # --- Mint HS256 JWT matching the scenario's auth.jwt module ---
 # Per PR-1 T15 auth gate (47341ff6f), /api/admin/contributions +
 # /api/infra-admin/* + /admin/infra-admin/* require a Bearer token
-# signed by the scenario's HS256 secret (config/app.yaml::auth.config.hs256_secret).
+# signed by the scenario's HS256 secret (config/app.yaml::auth.config.secret).
 # We mint a long-lived token inline so the smoke checks don't need
 # an external dependency. The token is test-only — the secret is
 # the literal "scenario-92-jwt-secret-do-not-use-in-prod".

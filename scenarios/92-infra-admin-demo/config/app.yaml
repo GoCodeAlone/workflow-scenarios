@@ -20,7 +20,7 @@ modules:
     type: auth.jwt
     config:
       issuer: "scenario-92"
-      hs256_secret: "scenario-92-jwt-secret-do-not-use-in-prod"
+      secret: "scenario-92-jwt-secret-do-not-use-in-prod"
 
   - name: authz
     type: authz.casbin
