@@ -44,7 +44,7 @@ playwright screenshot \
 
 playwright screenshot \
   --load-storage "$ADMIN_STATE" \
-  --wait-for-selector 'text=Google client secret' \
+  --wait-for-selector 'text=Auth0 client secret' \
   --full-page \
   "$BASE/admin/auth?group=oauth_providers" \
   "$ARTIFACT_DIR/admin-auth-oauth.png" >/dev/null

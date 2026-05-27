@@ -5,9 +5,10 @@ BASE="${BASE:-http://127.0.0.1:18080}"
 COOKIE_JAR="$(mktemp)"
 FRONTEND_COOKIE="$(mktemp)"
 MALICIOUS_COOKIE="$(mktemp)"
+PROVIDER_COOKIE="$(mktemp)"
 PASS_COUNT=0
 FAIL_COUNT=0
-trap 'rm -f "$COOKIE_JAR" "$FRONTEND_COOKIE" "$MALICIOUS_COOKIE"' EXIT
+trap 'rm -f "$COOKIE_JAR" "$FRONTEND_COOKIE" "$MALICIOUS_COOKIE" "$PROVIDER_COOKIE"' EXIT
 
 pass() { echo "PASS: $1"; PASS_COUNT=$((PASS_COUNT + 1)); }
 fail() { echo "FAIL: $1"; FAIL_COUNT=$((FAIL_COUNT + 1)); }
@@ -20,6 +21,20 @@ contains() {
     pass "$label"
   else
     fail "$label missing pattern: $pattern"
+  fi
+}
+
+validate_provider_config() {
+  local provider="$1"
+  local payload="$2"
+  local label="$3"
+  local response
+  response="$(curl -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' -d "$payload" "$BASE/api/admin/auth/providers/config")"
+  contains "$response" '"valid": true' "$label"
+  if grep -q 'rotation-secret' <<<"$response"; then
+    fail "$label should redact submitted provider secrets"
+  else
+    pass "$label redacts submitted provider secrets"
   fi
 }
 
@@ -68,7 +83,11 @@ auth_config="$(curl -b "$COOKIE_JAR" -fsS "$BASE/api/admin/auth/config")"
 contains "$auth_config" '"groups"' "Auth admin config exposes control groups"
 contains "$auth_config" '"config_key": "webauthn_rp_id"' "Auth admin config maps passkey RP ID to real config key"
 contains "$auth_config" '"config_key": "password_auth_enabled"' "Auth admin config maps password toggle to real config key"
-contains "$auth_config" '"Google client secret"' "Auth admin config exposes OAuth secret control metadata"
+contains "$auth_config" '"provider_catalog"' "Auth admin config includes provider catalog"
+contains "$auth_config" '"workflow-plugin-auth0"' "Auth admin config includes Auth0 provider descriptor"
+contains "$auth_config" '"workflow-plugin-entra"' "Auth admin config includes Entra provider descriptor"
+contains "$auth_config" '"workflow-plugin-scalekit"' "Auth admin config includes Scalekit provider descriptor"
+contains "$auth_config" '"Auth0 client secret"' "Auth admin config exposes descriptor-backed OAuth secret control metadata"
 contains "$auth_config" '"secret_fields"' "Auth admin config declares write-only secret fields"
 if grep -q 'configured-secret' <<<"$auth_config"; then
   fail "Auth admin config should not echo configured secret values"
@@ -83,7 +102,7 @@ else
   fail "Auth admin unsafe password expected 400 with diagnostic, got $unsafe_auth_status"
 fi
 
-safe_auth="$(curl -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' -d '{"require_primary_method":true,"desired_config":{"environment":"development","webauthn_rp_id":"tailnet-demo.local","webauthn_origin":"http://127.0.0.1:18080","google_oauth_client_secret":"new-secret"}}' "$BASE/api/admin/auth/config/validate")"
+safe_auth="$(curl -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' -d '{"require_primary_method":true,"desired_config":{"environment":"development","webauthn_rp_id":"tailnet-demo.local","webauthn_origin":"http://127.0.0.1:18080","auth0_client_secret":"new-secret"}}' "$BASE/api/admin/auth/config/validate")"
 contains "$safe_auth" '"valid": true' "Auth admin accepts safe passkey config patch"
 contains "$safe_auth" '"webauthn_rp_id": "tailnet-demo.local"' "Auth admin returns accepted non-secret config"
 if grep -q 'new-secret' <<<"$safe_auth"; then
@@ -105,8 +124,58 @@ else
   pass "Auth admin UI does not display secret values"
 fi
 auth_oauth_page="$(curl -b "$COOKIE_JAR" -fsS "$BASE/admin/auth?group=oauth_providers")"
-contains "$auth_oauth_page" "Google client secret" "Auth admin OAuth tab labels Google secret"
+contains "$auth_oauth_page" "Provider catalog" "Auth admin provider tab is descriptor-backed"
+contains "$auth_oauth_page" "Active login provider" "Auth admin provider tab uses selectable provider choices"
+contains "$auth_oauth_page" "Auth0 client secret" "Auth admin provider tab labels Auth0 secret"
+contains "$auth_oauth_page" "Scalekit Client secret" "Auth admin provider tab labels Scalekit secret"
 contains "$auth_oauth_page" "Write-only" "Auth admin OAuth tab explains write-only secrets"
+
+provider_catalog="$(curl -b "$COOKIE_JAR" -fsS "$BASE/api/admin/auth/providers")"
+contains "$provider_catalog" '"provider_count": 9' "Provider catalog exposes all composed providers"
+contains "$provider_catalog" '"id": "generic-oidc"' "Provider catalog includes generic OIDC"
+contains "$provider_catalog" '"id": "okta"' "Provider catalog includes Okta"
+contains "$provider_catalog" '"id": "auth0"' "Provider catalog includes Auth0"
+contains "$provider_catalog" '"id": "entra"' "Provider catalog includes Entra"
+contains "$provider_catalog" '"id": "ory-kratos"' "Provider catalog includes Ory Kratos"
+contains "$provider_catalog" '"id": "ory-hydra"' "Provider catalog includes Ory Hydra"
+contains "$provider_catalog" '"id": "ory-polis"' "Provider catalog includes Ory Polis"
+contains "$provider_catalog" '"id": "scalekit"' "Provider catalog includes Scalekit"
+contains "$provider_catalog" '"config_fields"' "Provider catalog exposes lookup-backed field descriptors"
+
+provider_save="$(curl -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' -d '{"provider_id":"auth0","desired_config":{"auth0_domain":"demo.auth0.example","auth0_client_id":"updated-client"}}' "$BASE/api/admin/auth/providers/config")"
+contains "$provider_save" '"valid": true' "Auth admin can save accepted non-secret provider config"
+pass "Provider config save has no submitted secret to echo"
+
+validate_provider_config "local-auth" '{"provider_id":"local-auth","desired_config":{"webauthn_rp_id":"tailnet-demo.local","webauthn_origin":"http://127.0.0.1:18080"}}' "Provider rotation validates local auth"
+validate_provider_config "generic-oidc" '{"provider_id":"generic-oidc","desired_config":{"generic_oidc_issuer_url":"https://issuer.example.test","generic_oidc_client_id":"generic-client","generic_oidc_client_secret":"rotation-secret","generic_oidc_scopes":"openid profile email"}}' "Provider rotation validates generic OIDC"
+validate_provider_config "okta" '{"provider_id":"okta","desired_config":{"okta_org_url":"https://dev-123456.okta.com","okta_client_id":"okta-client","okta_client_secret":"rotation-secret"}}' "Provider rotation validates Okta"
+validate_provider_config "auth0" '{"provider_id":"auth0","desired_config":{"auth0_domain":"demo.auth0.example","auth0_client_id":"auth0-client","auth0_client_secret":"rotation-secret","auth0_callback_url":"http://127.0.0.1:18080/auth/auth0/callback"}}' "Provider rotation validates Auth0"
+validate_provider_config "entra" '{"provider_id":"entra","desired_config":{"entra_tenant_id":"common","entra_client_id":"entra-client","entra_client_secret":"rotation-secret"}}' "Provider rotation validates Entra"
+validate_provider_config "ory-kratos" '{"provider_id":"ory-kratos","desired_config":{"kratos_admin_url":"http://kratos.example.test/admin","kratos_session_cookie_name":"ory_kratos_session"}}' "Provider rotation validates Ory Kratos"
+validate_provider_config "ory-hydra" '{"provider_id":"ory-hydra","desired_config":{"hydra_admin_url":"http://hydra.example.test/admin","hydra_public_issuer_url":"https://hydra.example.test/"}}' "Provider rotation validates Ory Hydra"
+validate_provider_config "ory-polis" '{"provider_id":"ory-polis","desired_config":{"polis_api_url":"https://polis.example.test","polis_api_token":"rotation-secret"}}' "Provider rotation validates Ory Polis"
+validate_provider_config "scalekit" '{"provider_id":"scalekit","desired_config":{"scalekit_environment_url":"https://demo.scalekit.com","scalekit_client_id":"scalekit-client","scalekit_client_secret":"rotation-secret"}}' "Provider rotation validates Scalekit"
+
+invalid_provider_status="$(curl -b "$COOKIE_JAR" -s -o /dev/null -w "%{http_code}" -H 'content-type: application/json' -d '{"provider_id":"unknown","desired_config":{}}' "$BASE/api/admin/auth/providers/config")"
+if [[ "$invalid_provider_status" == "400" ]]; then
+  pass "Unknown provider config fails closed"
+else
+  fail "Unknown provider config expected 400, got $invalid_provider_status"
+fi
+
+curl -s -o /dev/null -c "$PROVIDER_COOKIE" -d 'email=provider-admin@tailnet&password=provider' "$BASE/login"
+provider_page_status="$(curl -b "$PROVIDER_COOKIE" -s -o /dev/null -w "%{http_code}" "$BASE/admin/auth?group=oauth_providers")"
+if [[ "$provider_page_status" == "200" ]]; then
+  pass "Provider admin can view descriptor-backed provider controls"
+else
+  fail "Provider admin expected auth provider page 200, got $provider_page_status"
+fi
+provider_write_status="$(curl -b "$PROVIDER_COOKIE" -s -o /dev/null -w "%{http_code}" -H 'content-type: application/json' -d '{"provider_id":"auth0","desired_config":{"auth0_client_secret":"readonly-secret"}}' "$BASE/api/admin/auth/providers/config")"
+if [[ "$provider_write_status" == "403" ]]; then
+  pass "Provider admin without write scope cannot save secrets"
+else
+  fail "Provider admin secret save expected 403, got $provider_write_status"
+fi
 
 authz="$(curl -b "$COOKIE_JAR" -fsS "$BASE/admin/authz")"
 contains "$authz" "Role and Scope Administration" "Authz UI page renders"

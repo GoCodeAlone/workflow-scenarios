@@ -28,6 +28,10 @@ users = {
         "password": "readonly",
         "scopes": ["admin:dashboard:read", "admin:authz.roles:read", "admin:authz.scopes:read"],
     },
+    "provider-admin@tailnet": {
+        "password": "provider",
+        "scopes": ["admin:dashboard:read", "admin:auth.settings:read", "admin:auth.providers:read"],
+    },
     "admin@tailnet": {
         "password": "admin",
         "scopes": [
@@ -37,6 +41,8 @@ users = {
             "admin:app:update",
             "admin:auth.settings:read",
             "admin:auth.settings:update",
+            "admin:auth.providers:read",
+            "admin:auth.providers:update",
             "admin:authz.roles:read",
             "admin:authz.roles:update",
             "admin:authz.scopes:read",
@@ -58,6 +64,8 @@ state = {
         {"name": "admin:app:update", "context": "admin", "resource": "app", "actions": ["update"], "description": "Update application operations from admin", "owner_plugin": "workflow-plugin-admin", "owner_module": "admin", "category": "admin"},
         {"name": "admin:auth.settings:read", "context": "admin", "resource": "auth.settings", "actions": ["read"], "description": "Inspect authentication plugin settings", "owner_plugin": "workflow-plugin-auth", "owner_module": "admin-config", "category": "security"},
         {"name": "admin:auth.settings:update", "context": "admin", "resource": "auth.settings", "actions": ["update"], "description": "Validate and update authentication plugin settings", "owner_plugin": "workflow-plugin-auth", "owner_module": "admin-config", "category": "security"},
+        {"name": "admin:auth.providers:read", "context": "admin", "resource": "auth.providers", "actions": ["read"], "description": "Inspect registered authentication provider descriptors", "owner_plugin": "workflow-plugin-auth", "owner_module": "provider-catalog", "category": "security"},
+        {"name": "admin:auth.providers:update", "context": "admin", "resource": "auth.providers", "actions": ["update"], "description": "Update authentication provider configuration", "owner_plugin": "workflow-plugin-auth", "owner_module": "provider-catalog", "category": "security"},
         {"name": "admin:authz.roles:read", "context": "admin", "resource": "authz.roles", "actions": ["read"], "description": "Inspect role assignments", "owner_plugin": "workflow-plugin-authz", "owner_module": "scope-catalog", "category": "security"},
         {"name": "admin:authz.roles:update", "context": "admin", "resource": "authz.roles", "actions": ["update"], "description": "Create and remove role assignments", "owner_plugin": "workflow-plugin-authz", "owner_module": "scope-catalog", "category": "security"},
         {"name": "admin:authz.scopes:read", "context": "admin", "resource": "authz.scopes", "actions": ["read"], "description": "Inspect declared application scopes", "owner_plugin": "workflow-plugin-authz", "owner_module": "scope-catalog", "category": "security"},
@@ -69,7 +77,8 @@ state = {
     "roles": [
         {"user": "app-user@tailnet", "role": "requester", "context": "frontend", "scopes": ["frontend:orders:read", "frontend:requests:create"]},
         {"user": "readonly-admin@tailnet", "role": "authz-viewer", "context": "admin", "scopes": ["admin:dashboard:read", "admin:authz.roles:read", "admin:authz.scopes:read"]},
-        {"user": "admin@tailnet", "role": "authz-admin", "context": "admin", "scopes": ["admin:dashboard:read", "admin:app:update", "admin:auth.settings:read", "admin:auth.settings:update", "admin:authz.roles:read", "admin:authz.roles:update", "admin:authz.scopes:read", "admin:authz.policies:read", "admin:authz.policies:update", "admin:authz.relations:read", "admin:authz.relations:update"]},
+        {"user": "provider-admin@tailnet", "role": "auth-provider-viewer", "context": "admin", "scopes": ["admin:dashboard:read", "admin:auth.settings:read", "admin:auth.providers:read"]},
+        {"user": "admin@tailnet", "role": "authz-admin", "context": "admin", "scopes": ["admin:dashboard:read", "admin:app:update", "admin:auth.settings:read", "admin:auth.settings:update", "admin:auth.providers:read", "admin:auth.providers:update", "admin:authz.roles:read", "admin:authz.roles:update", "admin:authz.scopes:read", "admin:authz.policies:read", "admin:authz.policies:update", "admin:authz.relations:read", "admin:authz.relations:update"]},
     ],
     "auth_config": {
         "environment": "development",
@@ -84,6 +93,15 @@ state = {
         "google_oauth_redirect_url": "https://tailnet-demo.local/auth/google/callback",
         "totp_auth_enabled": True,
         "jwt_secret": "configured-secret",
+        "auth0_domain": "demo.auth0.example",
+        "auth0_client_id": "auth0-demo-client",
+        "auth0_client_secret": "configured-secret",
+        "auth0_callback_url": "http://127.0.0.1:18080/auth/auth0/callback",
+        "entra_tenant_id": "common",
+        "entra_client_id": "entra-demo-client",
+        "scalekit_environment_url": "https://demo.scalekit.com",
+        "scalekit_client_id": "scalekit-demo-client",
+        "scalekit_client_secret": "configured-secret",
     },
     "attribute_policies": [
         {
@@ -258,7 +276,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html(page("Workflow Tailnet Demo Login", f"""
               <section class="card login-shell">
                 <h1>Sign in</h1>
-                <p>Use <code>admin@tailnet</code>/<code>admin</code>, <code>readonly-admin@tailnet</code>/<code>readonly</code>, or <code>app-user@tailnet</code>/<code>user</code>.</p>
+                <p>Use <code>admin@tailnet</code>/<code>admin</code>, <code>provider-admin@tailnet</code>/<code>provider</code>, <code>readonly-admin@tailnet</code>/<code>readonly</code>, or <code>app-user@tailnet</code>/<code>user</code>.</p>
                 <form method="post" action="/login">
                   <input type="hidden" name="next" value="{escape(next_token)}" />
                   <input name="email" type="email" placeholder="Email" required />
@@ -482,6 +500,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_json(auth_admin_describe_output())
             return
+        if path in {"/api/admin/auth/providers", "/api/admin/auth/catalog"}:
+            if not self.require_scope("admin:auth.providers:read"):
+                return
+            catalog = auth_provider_catalog_output()
+            if path == "/api/admin/auth/catalog":
+                catalog = {"provider_catalog": catalog, "auth_admin": auth_admin_describe_output()}
+            self.send_json(catalog)
+            return
         if path == "/api/admin/contributions":
             if not self.require_scope("admin:dashboard:read"):
                 return
@@ -494,7 +520,7 @@ class Handler(BaseHTTPRequestHandler):
             with state_lock:
                 flag = state["flag"]
                 requests = list(state["requests"])
-            self.send_json({"app": "workflow-tailnet-admin-demo", "uptimeSeconds": round(time.time() - started_at, 1), "featureFlag": flag, "requests": requests, "admin": {"auth": auth_admin_capabilities(), "authz": provider_capabilities(), "views": ["auth", "authz", "application", "audit"], "declarations": authz_declarations()}})
+            self.send_json({"app": "workflow-tailnet-admin-demo", "uptimeSeconds": round(time.time() - started_at, 1), "featureFlag": flag, "requests": requests, "admin": {"auth": auth_admin_capabilities(), "auth_provider_catalog": auth_provider_catalog_output(), "authz": provider_capabilities(), "views": ["auth", "authz", "application", "audit"], "declarations": authz_declarations()}})
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -572,6 +598,21 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_html(page("Invalid Auth Settings", f"<h1>Invalid Auth Settings</h1><p class='error'>{escape(message)}</p><p><a href='/admin/auth'>Back to authentication</a></p>", principal), HTTPStatus.BAD_REQUEST)
                 return
             self.send_json(result, HTTPStatus.OK if result["valid"] else HTTPStatus.BAD_REQUEST)
+            return
+        if path == "/api/admin/auth/providers/config":
+            if not self.require_scope("admin:auth.providers:update"):
+                return
+            payload = self.json_payload(form)
+            result = auth_provider_config_validate(payload)
+            if not result["valid"]:
+                self.send_json(result, HTTPStatus.BAD_REQUEST)
+                return
+            with state_lock:
+                state["auth_config"].update(result["accepted_config"])
+                for field in result["secret_fields"]:
+                    state["auth_config"][field] = "configured-secret"
+                state["audit"].append({"event": "auth.provider_config.updated", "actor": principal})
+            self.send_json(result)
             return
         if path == "/admin/authz/abac/upsert":
             if not self.require_scope("admin:authz.policies:update", html=True):
@@ -865,8 +906,132 @@ def auth_admin_capabilities():
     return {
         "module": "workflow-plugin-auth",
         "provider": "workflow-plugin-auth admin-config-contract",
-        "capabilities": ["describe_config", "validate_config_patch", "secret_redaction"],
+        "capabilities": ["describe_config", "provider_catalog", "validate_config_patch", "secret_redaction"],
         "health": "ok",
+    }
+
+
+def auth_provider_catalog_output():
+    providers = auth_provider_descriptors()
+    return {
+        "contract": "workflow.plugins.auth.v1.AuthProviderCatalogOutput",
+        "provider_count": len(providers),
+        "providers": providers,
+        "source": "workflow-plugin-auth provider descriptor catalog",
+    }
+
+
+def auth_provider_descriptors():
+    return [
+        provider_descriptor(
+            "local-auth",
+            "Local authentication",
+            "workflow-plugin-auth",
+            "v0.2.11",
+            ["authentication_method"],
+            [
+                capability_descriptor("passkey", "Passkeys", "authentication_method", ["admin:auth.settings:read"], ["admin:auth.settings:update"], [
+                    provider_field("webauthn_rp_id", "Passkey relying party ID", "text", "Domain used to scope passkey credentials.", "Use the effective application host.", False, True),
+                    provider_field("webauthn_origin", "Passkey origin", "url", "Origin that WebAuthn challenges must be created for.", "HTTPS is required outside localhost development.", False, True),
+                ]),
+                capability_descriptor("password", "Password login", "authentication_method", ["admin:auth.settings:read"], ["admin:auth.settings:update"], [
+                    provider_field("password_auth_enabled", "Password login", "toggle", "Allows password sign-in outside production.", "Production policy blocks password login even when enabled.", False, False),
+                ]),
+            ],
+        ),
+        provider_descriptor("generic-oidc", "Generic OIDC", "workflow-plugin-sso", "v0.1.6", ["oauth2_oidc"], [oidc_capability("generic_oidc", "Generic OIDC", [
+            provider_field("generic_oidc_issuer_url", "Issuer URL", "url", "OIDC issuer discovery URL.", "Use the issuer from the provider metadata.", False, True),
+            provider_field("generic_oidc_client_id", "Client ID", "text", "OIDC client identifier.", "Pair with a write-only client secret.", False, True),
+            provider_field("generic_oidc_client_secret", "Client secret", "secret", "OIDC client secret.", "Write-only. Leave blank to keep a configured value.", True, True),
+            provider_field("generic_oidc_scopes", "OIDC scopes", "select", "Scopes requested during authorization.", "Choose only scopes required by the app.", False, True, [
+                {"value": "openid profile email", "label": "openid profile email"},
+                {"value": "openid profile email groups", "label": "openid profile email groups"},
+            ]),
+        ])]),
+        provider_descriptor("okta", "Okta", "workflow-plugin-okta", "v0.2.4", ["identity_management", "oauth2_oidc", "enterprise_sso", "directory_sync"], [oidc_capability("okta_oidc", "Okta OIDC", [
+            provider_field("okta_org_url", "Okta org URL", "url", "Okta organization base URL.", "Example: https://dev-123456.okta.com", False, True),
+            provider_field("okta_client_id", "Client ID", "text", "Okta OIDC client identifier.", "Use a dedicated app integration.", False, True),
+            provider_field("okta_client_secret", "Client secret", "secret", "Okta OIDC client secret.", "Write-only. Store in Workflow secrets.", True, True),
+        ])]),
+        provider_descriptor("auth0", "Auth0", "workflow-plugin-auth0", "v0.1.0", ["identity_management", "oauth2_oidc"], [oidc_capability("auth0_oidc", "Auth0 OIDC", [
+            provider_field("auth0_domain", "Auth0 domain", "text", "Auth0 tenant domain.", "Example: example.us.auth0.com", False, True),
+            provider_field("auth0_client_id", "Auth0 client ID", "text", "Auth0 application client identifier.", "Use Authorization Code with PKCE.", False, True),
+            provider_field("auth0_client_secret", "Auth0 client secret", "secret", "Auth0 application client secret.", "Write-only. Leave blank to keep a configured secret.", True, True),
+            provider_field("auth0_callback_url", "Auth0 callback URL", "url", "Callback URL registered with Auth0.", "Must exactly match the Auth0 application callback.", False, True),
+        ])]),
+        provider_descriptor("entra", "Microsoft Entra ID", "workflow-plugin-entra", "v0.1.0", ["identity_management", "oauth2_oidc", "enterprise_sso", "directory_sync"], [oidc_capability("entra_oidc", "Entra OIDC", [
+            provider_field("entra_tenant_id", "Tenant ID", "text", "Microsoft tenant ID or common endpoint.", "Use a tenant-specific ID for production.", False, True),
+            provider_field("entra_client_id", "Application client ID", "text", "Microsoft app registration client ID.", "Use a dedicated app registration.", False, True),
+            provider_field("entra_client_secret", "Application client secret", "secret", "Microsoft app client secret.", "Write-only. Prefer certificate auth where supported.", True, True),
+        ])]),
+        provider_descriptor("ory-kratos", "Ory Kratos", "workflow-plugin-ory-kratos", "v0.1.0", ["identity_management", "authentication_method"], [
+            capability_descriptor("kratos_identity", "Identity management", "identity_management", ["admin:auth.providers:read"], ["admin:auth.providers:update"], [
+                provider_field("kratos_admin_url", "Admin URL", "url", "Kratos admin API URL.", "Keep this server-side only.", False, True),
+                provider_field("kratos_session_cookie_name", "Session cookie", "text", "Kratos session cookie name.", "Used by application middleware.", False, False),
+            ]),
+        ]),
+        provider_descriptor("ory-hydra", "Ory Hydra", "workflow-plugin-ory-hydra", "v0.1.0", ["oauth2_oidc"], [oidc_capability("hydra_oauth2", "Hydra OAuth2/OIDC", [
+            provider_field("hydra_admin_url", "Hydra admin URL", "url", "Hydra admin API URL.", "Keep this server-side only.", False, True),
+            provider_field("hydra_public_issuer_url", "Issuer URL", "url", "Hydra public issuer URL.", "Used for token validation.", False, True),
+        ])]),
+        provider_descriptor("ory-polis", "Ory Polis", "workflow-plugin-ory-polis", "v0.1.0", ["enterprise_sso", "directory_sync"], [
+            capability_descriptor("polis_enterprise_sso", "Enterprise SSO", "enterprise_sso", ["admin:auth.providers:read"], ["admin:auth.providers:update"], [
+                provider_field("polis_api_url", "Polis API URL", "url", "Polis API base URL.", "Use the internal administration URL.", False, True),
+                provider_field("polis_api_token", "Polis API token", "secret", "Polis API token.", "Write-only. Store in Workflow secrets.", True, True),
+            ]),
+        ]),
+        provider_descriptor("scalekit", "Scalekit", "workflow-plugin-scalekit", "v0.1.0", ["enterprise_sso", "directory_sync"], [
+            capability_descriptor("scalekit_connections", "SSO connections", "enterprise_sso", ["admin:auth.providers:read"], ["admin:auth.providers:update"], [
+                provider_field("scalekit_environment_url", "Environment URL", "url", "Scalekit environment URL.", "Use the value from Scalekit API configuration.", False, True),
+                provider_field("scalekit_client_id", "Client ID", "text", "Scalekit environment client ID.", "Pair with the matching client secret.", False, True),
+                provider_field("scalekit_client_secret", "Client secret", "secret", "Scalekit environment client secret.", "Write-only. Store in Workflow secrets.", True, True),
+            ]),
+        ]),
+    ]
+
+
+def provider_descriptor(provider_id, label, implementation, version, categories, capabilities):
+    return {
+        "id": provider_id,
+        "label": label,
+        "description": f"{label} descriptor exposed by {implementation}.",
+        "categories": categories,
+        "implementation": implementation,
+        "version": version,
+        "docs_url": f"https://github.com/GoCodeAlone/{implementation}",
+        "support_level": "management",
+        "capabilities": capabilities,
+    }
+
+
+def oidc_capability(key, label, fields):
+    return capability_descriptor(key, label, "oauth2_oidc", ["admin:auth.providers:read"], ["admin:auth.providers:update"], fields)
+
+
+def capability_descriptor(key, label, category, read_scopes, write_scopes, fields):
+    return {
+        "key": key,
+        "label": label,
+        "category": category,
+        "description": f"{label} configuration and management contract.",
+        "supported": True,
+        "app_scopes": [],
+        "admin_read_scopes": read_scopes,
+        "admin_write_scopes": write_scopes,
+        "config_fields": fields,
+    }
+
+
+def provider_field(key, label, input_type, description, help_text, secret, required, options=None):
+    return {
+        "key": key,
+        "label": label,
+        "input_type": input_type,
+        "description": description,
+        "help_text": help_text,
+        "secret": secret,
+        "required": required,
+        "options": options or [],
     }
 
 
@@ -880,6 +1045,7 @@ def auth_admin_describe_output():
         "methods_policy": policy,
         "warnings": auth_admin_warnings(config, policy),
         "secret_fields": auth_admin_secret_fields(config),
+        "provider_catalog": auth_provider_catalog_output(),
     }
 
 
@@ -897,6 +1063,13 @@ def render_auth_admin_control(control, effective_config):
     elif control["input_type"] == "secret":
         placeholder = "Configured - leave blank to keep" if control.get("configured") else "Enter secret value"
         field = f"<input aria-label='{label}' title='{title}' type='password' name='{escape(key)}' placeholder='{escape(placeholder)}'{disabled} />"
+    elif control["input_type"] == "select":
+        selected_value = str(effective_config.get(key, "") or "")
+        options = "".join(
+            f"<option value='{escape(option['value'])}'{' selected' if option['value'] == selected_value else ''}>{escape(option.get('label') or option['value'])}</option>"
+            for option in control.get("options", [])
+        )
+        field = f"<select aria-label='{label}' title='{title}' name='{escape(key)}'{disabled}>{options}</select>"
     else:
         value = "" if control.get("secret") else str(effective_config.get(key, "") or "")
         input_type = "url" if control["input_type"] == "url" else "text"
@@ -936,6 +1109,48 @@ def auth_admin_validate_output(desired_config, require_primary_method=True):
     }
 
 
+def auth_provider_config_validate(payload):
+    if not isinstance(payload, dict):
+        return {"valid": False, "errors": [auth_admin_diagnostic("payload", "error", "provider config must be an object")], "accepted_config": {}, "secret_fields": []}
+    provider_id = str(payload.get("provider_id", "") or "").strip()
+    desired_config = payload.get("desired_config", {})
+    if not isinstance(desired_config, dict):
+        return {"valid": False, "errors": [auth_admin_diagnostic("desired_config", "error", "desired_config must be an object")], "accepted_config": {}, "secret_fields": []}
+    providers = {provider["id"]: provider for provider in auth_provider_descriptors()}
+    provider = providers.get(provider_id)
+    if not provider:
+        return {"valid": False, "errors": [auth_admin_diagnostic("provider_id", "error", "provider_id must come from the provider catalog")], "accepted_config": {}, "secret_fields": []}
+    allowed_fields = {}
+    required_fields = set()
+    secret_fields = set()
+    for capability in provider.get("capabilities", []):
+        for field in capability.get("config_fields", []):
+            allowed_fields[field["key"]] = field
+            if field.get("required"):
+                required_fields.add(field["key"])
+            if field.get("secret"):
+                secret_fields.add(field["key"])
+    errors = []
+    for key in desired_config:
+        if key not in allowed_fields:
+            errors.append(auth_admin_diagnostic(key, "error", f"{key} is not declared for provider {provider_id}"))
+    with state_lock:
+        merged = dict(state["auth_config"])
+    merged.update(desired_config)
+    for key in sorted(required_fields):
+        if not auth_admin_present(merged, key):
+            errors.append(auth_admin_diagnostic(key, "error", f"{key} is required for provider {provider_id}"))
+    accepted = auth_admin_sanitize_config({key: value for key, value in desired_config.items() if key in allowed_fields and key not in secret_fields})
+    submitted_secrets = sorted(key for key in desired_config if key in secret_fields and auth_admin_present(desired_config, key))
+    return {
+        "valid": not errors,
+        "provider_id": provider_id,
+        "accepted_config": accepted,
+        "errors": errors,
+        "secret_fields": submitted_secrets,
+    }
+
+
 def auth_admin_groups(config):
     groups = [
         {
@@ -969,8 +1184,8 @@ def auth_admin_groups(config):
         },
         {
             "key": "oauth_providers",
-            "label": "OAuth providers",
-            "description": "External identity providers available to auth routes.",
+            "label": "Provider catalog",
+            "description": "External identity and enterprise SSO providers rendered from registered plugin descriptors.",
             "controls": auth_admin_oauth_controls(config),
         },
     ]
@@ -981,15 +1196,17 @@ def auth_admin_groups(config):
 
 
 def auth_admin_oauth_controls(config):
+    descriptors = auth_provider_descriptors()
     controls = [
-        auth_admin_control(config, "auth_routes_enabled", "Auth routes", "toggle", "Enables HTTP auth routes used by OAuth callback flows.", "OAuth login requires auth routes before any provider can become login-ready."),
+        auth_admin_control(config, "auth_routes_enabled", "Auth routes", "toggle", "Enables HTTP auth routes used by OAuth callback flows.", "OAuth login requires auth routes before any OIDC provider can become login-ready."),
+        auth_admin_control_with_options(config, "active_auth_provider", "Active login provider", "select", "Provider selected from the merged descriptor catalog.", "Choices are registered by provider plugins, not embedded in the UI.", [{"value": provider["id"], "label": f"{provider['label']} ({provider['implementation']})"} for provider in descriptors]),
     ]
-    for provider, label in [("google", "Google"), ("facebook", "Facebook"), ("instagram", "Instagram"), ("x", "X")]:
-        disabled = auth_admin_provider_disabled_reason(provider)
-        controls.append(auth_admin_control(config, f"{provider}_oauth_client_id", f"{label} client ID", "text", f"OAuth client identifier issued by {label}.", "Pair with the matching client secret and redirect URL.", disabled_reason=disabled))
-        controls.append(auth_admin_control(config, f"{provider}_oauth_client_secret", f"{label} client secret", "secret", f"OAuth client secret issued by {label}.", "Write-only. Leave blank to keep an existing configured value.", disabled_reason=disabled))
-        if provider in {"google", "facebook"}:
-            controls.append(auth_admin_control(config, f"{provider}_oauth_redirect_url", f"{label} redirect URL", "url", f"Callback URL registered with {label}.", "Must be HTTPS and match the provider application settings.", disabled_reason=disabled))
+    for provider in descriptors:
+        for capability in provider.get("capabilities", []):
+            if capability.get("category") not in {"oauth2_oidc", "enterprise_sso", "directory_sync", "identity_management"}:
+                continue
+            for field in capability.get("config_fields", []):
+                controls.append(auth_admin_control_from_provider_field(config, provider, capability, field))
     return controls
 
 
@@ -1009,6 +1226,32 @@ def auth_admin_control(config, key, label, input_type, description, help_text, d
         "disabled_reason": disabled_reason,
         "options": [],
     }
+
+
+def auth_admin_control_with_options(config, key, label, input_type, description, help_text, options, disabled_reason=""):
+    control = auth_admin_control(config, key, label, input_type, description, help_text, disabled_reason)
+    control["options"] = options
+    return control
+
+
+def auth_admin_control_from_provider_field(config, provider, capability, field):
+    prefix = provider["label"]
+    control = auth_admin_control(
+        config,
+        field["key"],
+        f"{prefix} {field['label']}",
+        field["input_type"],
+        f"{field['description']} Source: {provider['implementation']} {provider['version']} capability {capability['key']}.",
+        field["help_text"],
+        disabled_reason="" if field.get("required") or field.get("secret") or field.get("options") is not None else "",
+    )
+    control["secret"] = bool(field.get("secret"))
+    control["required"] = bool(field.get("required"))
+    control["configured"] = auth_admin_present(config, field["key"])
+    control["options"] = field.get("options", [])
+    control["provider_id"] = provider["id"]
+    control["capability_key"] = capability["key"]
+    return control
 
 
 def auth_admin_methods_policy(config):
