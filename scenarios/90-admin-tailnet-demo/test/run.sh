@@ -36,6 +36,13 @@ else
   fail "Anonymous authz API expected 401, got $api_status"
 fi
 
+auth_config_status="$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/admin/auth/config")"
+if [[ "$auth_config_status" == "401" ]]; then
+  pass "Anonymous auth admin API is unauthorized"
+else
+  fail "Anonymous auth admin API expected 401, got $auth_config_status"
+fi
+
 login_status="$(curl -s -o /dev/null -w "%{http_code}" -c "$COOKIE_JAR" -d 'email=admin@tailnet&password=admin' "$BASE/login")"
 if [[ "$login_status" == "303" ]]; then
   pass "Admin login creates a session"
@@ -46,6 +53,34 @@ fi
 admin="$(curl -b "$COOKIE_JAR" -fsS "$BASE/admin")"
 contains "$admin" "Authorization roles" "Admin navigation includes authz UI"
 contains "$admin" "/admin/authz" "Admin links authz contribution"
+
+auth_config="$(curl -b "$COOKIE_JAR" -fsS "$BASE/api/admin/auth/config")"
+contains "$auth_config" '"groups"' "Auth admin config exposes control groups"
+contains "$auth_config" '"config_key": "webauthn_rp_id"' "Auth admin config maps passkey RP ID to real config key"
+contains "$auth_config" '"config_key": "password_auth_enabled"' "Auth admin config maps password toggle to real config key"
+contains "$auth_config" '"Google client secret"' "Auth admin config exposes OAuth secret control metadata"
+contains "$auth_config" '"secret_fields"' "Auth admin config declares write-only secret fields"
+if grep -q 'configured-secret' <<<"$auth_config"; then
+  fail "Auth admin config should not echo configured secret values"
+else
+  pass "Auth admin config redacts configured secret values"
+fi
+
+unsafe_auth_status="$(curl -b "$COOKIE_JAR" -s -o /tmp/workflow-auth-admin-unsafe.json -w "%{http_code}" -H 'content-type: application/json' -d '{"require_primary_method":true,"desired_config":{"environment":"production","password_auth_enabled":true}}' "$BASE/api/admin/auth/config/validate")"
+if [[ "$unsafe_auth_status" == "400" ]] && grep -q 'password_auth_enabled' /tmp/workflow-auth-admin-unsafe.json; then
+  pass "Auth admin rejects production password enablement"
+else
+  fail "Auth admin unsafe password expected 400 with diagnostic, got $unsafe_auth_status"
+fi
+
+safe_auth="$(curl -b "$COOKIE_JAR" -fsS -H 'content-type: application/json' -d '{"require_primary_method":true,"desired_config":{"environment":"development","webauthn_rp_id":"tailnet-demo.local","webauthn_origin":"http://127.0.0.1:18080","google_oauth_client_secret":"new-secret"}}' "$BASE/api/admin/auth/config/validate")"
+contains "$safe_auth" '"valid": true' "Auth admin accepts safe passkey config patch"
+contains "$safe_auth" '"webauthn_rp_id": "tailnet-demo.local"' "Auth admin returns accepted non-secret config"
+if grep -q 'new-secret' <<<"$safe_auth"; then
+  fail "Auth admin validate should not echo submitted secret values"
+else
+  pass "Auth admin validate redacts submitted secret values"
+fi
 
 authz="$(curl -b "$COOKIE_JAR" -fsS "$BASE/admin/authz")"
 contains "$authz" "Role and Scope Administration" "Authz UI page renders"
@@ -179,6 +214,13 @@ if [[ "$frontend_admin_status" == "403" ]]; then
   pass "Frontend-only user cannot access admin"
 else
   fail "Frontend-only admin access expected 403, got $frontend_admin_status"
+fi
+
+frontend_auth_config_status="$(curl -b "$FRONTEND_COOKIE" -s -o /dev/null -w "%{http_code}" "$BASE/api/admin/auth/config")"
+if [[ "$frontend_auth_config_status" == "403" ]]; then
+  pass "Frontend-only user cannot access auth admin API"
+else
+  fail "Frontend-only auth admin API expected 403, got $frontend_auth_config_status"
 fi
 
 echo ""

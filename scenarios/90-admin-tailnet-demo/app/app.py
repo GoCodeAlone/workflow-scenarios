@@ -35,6 +35,8 @@ users = {
             "frontend:requests:create",
             "admin:dashboard:read",
             "admin:app:update",
+            "admin:auth.settings:read",
+            "admin:auth.settings:update",
             "admin:authz.roles:read",
             "admin:authz.roles:update",
             "admin:authz.scopes:read",
@@ -54,6 +56,8 @@ state = {
         {"name": "frontend:requests:resolve", "context": "frontend", "resource": "app.requests", "actions": ["resolve"], "description": "Resolve application requests", "owner_plugin": "workflow-scenarios", "owner_module": "tailnet-demo", "category": "application"},
         {"name": "admin:dashboard:read", "context": "admin", "resource": "dashboard", "actions": ["read"], "description": "Open the administration portal", "owner_plugin": "workflow-plugin-admin", "owner_module": "admin", "category": "admin"},
         {"name": "admin:app:update", "context": "admin", "resource": "app", "actions": ["update"], "description": "Update application operations from admin", "owner_plugin": "workflow-plugin-admin", "owner_module": "admin", "category": "admin"},
+        {"name": "admin:auth.settings:read", "context": "admin", "resource": "auth.settings", "actions": ["read"], "description": "Inspect authentication plugin settings", "owner_plugin": "workflow-plugin-auth", "owner_module": "admin-config", "category": "security"},
+        {"name": "admin:auth.settings:update", "context": "admin", "resource": "auth.settings", "actions": ["update"], "description": "Validate and update authentication plugin settings", "owner_plugin": "workflow-plugin-auth", "owner_module": "admin-config", "category": "security"},
         {"name": "admin:authz.roles:read", "context": "admin", "resource": "authz.roles", "actions": ["read"], "description": "Inspect role assignments", "owner_plugin": "workflow-plugin-authz", "owner_module": "scope-catalog", "category": "security"},
         {"name": "admin:authz.roles:update", "context": "admin", "resource": "authz.roles", "actions": ["update"], "description": "Create and remove role assignments", "owner_plugin": "workflow-plugin-authz", "owner_module": "scope-catalog", "category": "security"},
         {"name": "admin:authz.scopes:read", "context": "admin", "resource": "authz.scopes", "actions": ["read"], "description": "Inspect declared application scopes", "owner_plugin": "workflow-plugin-authz", "owner_module": "scope-catalog", "category": "security"},
@@ -65,8 +69,22 @@ state = {
     "roles": [
         {"user": "app-user@tailnet", "role": "requester", "context": "frontend", "scopes": ["frontend:orders:read", "frontend:requests:create"]},
         {"user": "readonly-admin@tailnet", "role": "authz-viewer", "context": "admin", "scopes": ["admin:dashboard:read", "admin:authz.roles:read", "admin:authz.scopes:read"]},
-        {"user": "admin@tailnet", "role": "authz-admin", "context": "admin", "scopes": ["admin:dashboard:read", "admin:app:update", "admin:authz.roles:read", "admin:authz.roles:update", "admin:authz.scopes:read", "admin:authz.policies:read", "admin:authz.policies:update", "admin:authz.relations:read", "admin:authz.relations:update"]},
+        {"user": "admin@tailnet", "role": "authz-admin", "context": "admin", "scopes": ["admin:dashboard:read", "admin:app:update", "admin:auth.settings:read", "admin:auth.settings:update", "admin:authz.roles:read", "admin:authz.roles:update", "admin:authz.scopes:read", "admin:authz.policies:read", "admin:authz.policies:update", "admin:authz.relations:read", "admin:authz.relations:update"]},
     ],
+    "auth_config": {
+        "environment": "development",
+        "password_auth_enabled": False,
+        "webauthn_rp_id": "tailnet-demo.local",
+        "webauthn_origin": "http://127.0.0.1:18080",
+        "smtp_host": "smtp.tailnet.test",
+        "smtp_from": "login@tailnet.test",
+        "auth_routes_enabled": True,
+        "google_oauth_client_id": "google-client-demo",
+        "google_oauth_client_secret": "configured-secret",
+        "google_oauth_redirect_url": "https://tailnet-demo.local/auth/google/callback",
+        "totp_auth_enabled": True,
+        "jwt_secret": "configured-secret",
+    },
     "attribute_policies": [
         {
             "id": "support-can-read-support-requests",
@@ -400,16 +418,24 @@ class Handler(BaseHTTPRequestHandler):
             rules = [{"subject": role["user"], "object": scope, "action": "granted"} for role in roles for scope in role.get("scopes", [])]
             self.send_json(rules)
             return
+        if path == "/api/admin/auth/config":
+            if not self.require_scope("admin:auth.settings:read"):
+                return
+            self.send_json(auth_admin_describe_output())
+            return
         if path == "/api/admin/contributions":
             if not self.require_scope("admin:dashboard:read"):
                 return
-            self.send_json({"contributions": [{"id": "authz-console", "title": "Authorization", "category": "security", "path": "/admin/authz", "render_mode": "iframe", "app_context": "tailnet-demo", "permissions": [{"permission": "admin:authz.roles:read", "resource": "authz.roles", "action": "read"}, {"permission": "admin:authz.policies:read", "resource": "authz.policies", "action": "read"}, {"permission": "admin:authz.relations:read", "resource": "authz.relations", "action": "read"}]}]})
+            self.send_json({"contributions": [
+                {"id": "auth-console", "title": "Authentication", "category": "security", "path": "/admin/auth", "render_mode": "native", "app_context": "tailnet-demo", "permissions": [{"permission": "admin:auth.settings:read", "resource": "auth.settings", "action": "read"}, {"permission": "admin:auth.settings:update", "resource": "auth.settings", "action": "update"}]},
+                {"id": "authz-console", "title": "Authorization", "category": "security", "path": "/admin/authz", "render_mode": "iframe", "app_context": "tailnet-demo", "permissions": [{"permission": "admin:authz.roles:read", "resource": "authz.roles", "action": "read"}, {"permission": "admin:authz.policies:read", "resource": "authz.policies", "action": "read"}, {"permission": "admin:authz.relations:read", "resource": "authz.relations", "action": "read"}]},
+            ]})
             return
         if path == "/api/status":
             with state_lock:
                 flag = state["flag"]
                 requests = list(state["requests"])
-            self.send_json({"app": "workflow-tailnet-admin-demo", "uptimeSeconds": round(time.time() - started_at, 1), "featureFlag": flag, "requests": requests, "admin": {"auth": "workflow-plugin-auth session gate modeled", "authz": provider_capabilities(), "views": ["auth", "authz", "application", "audit"], "declarations": authz_declarations()}})
+            self.send_json({"app": "workflow-tailnet-admin-demo", "uptimeSeconds": round(time.time() - started_at, 1), "featureFlag": flag, "requests": requests, "admin": {"auth": auth_admin_capabilities(), "authz": provider_capabilities(), "views": ["auth", "authz", "application", "audit"], "declarations": authz_declarations()}})
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -463,6 +489,23 @@ class Handler(BaseHTTPRequestHandler):
                         state["audit"].append({"event": f"request.{raw_id}.resolved", "actor": principal})
                         break
             self.redirect("/admin")
+            return
+        if path == "/api/admin/auth/config/validate":
+            if not self.require_scope("admin:auth.settings:update"):
+                return
+            payload = self.json_payload(form)
+            desired = payload.get("desired_config", payload)
+            if not isinstance(desired, dict):
+                self.send_json({"error": "invalid_config", "reason": "desired_config must be an object"}, HTTPStatus.BAD_REQUEST)
+                return
+            result = auth_admin_validate_output(desired, bool(payload.get("require_primary_method", True)))
+            if result["valid"]:
+                with state_lock:
+                    state["auth_config"].update(result["accepted_config"])
+                    for field in result["secret_fields"]:
+                        state["auth_config"][field] = "configured-secret"
+                    state["audit"].append({"event": "auth.admin_config.validated", "actor": principal})
+            self.send_json(result, HTTPStatus.OK if result["valid"] else HTTPStatus.BAD_REQUEST)
             return
         if path == "/admin/authz/abac/upsert":
             if not self.require_scope("admin:authz.policies:update", html=True):
@@ -711,6 +754,250 @@ class Handler(BaseHTTPRequestHandler):
 def declared_scopes():
     with state_lock:
         return sorted((dict(scope) for scope in state["scopes"]), key=lambda s: s["name"])
+
+
+def auth_admin_capabilities():
+    return {
+        "module": "workflow-plugin-auth",
+        "provider": "workflow-plugin-auth admin-config-contract",
+        "capabilities": ["describe_config", "validate_config_patch", "secret_redaction"],
+        "health": "ok",
+    }
+
+
+def auth_admin_describe_output():
+    with state_lock:
+        config = dict(state["auth_config"])
+    policy = auth_admin_methods_policy(config)
+    return {
+        "groups": auth_admin_groups(config),
+        "effective_config": auth_admin_sanitize_config(config),
+        "methods_policy": policy,
+        "warnings": auth_admin_warnings(config, policy),
+        "secret_fields": auth_admin_secret_fields(config),
+    }
+
+
+def auth_admin_validate_output(desired_config, require_primary_method=True):
+    with state_lock:
+        merged = dict(state["auth_config"])
+    merged.update(desired_config)
+    policy = auth_admin_methods_policy(merged)
+    errors = []
+    warnings = auth_admin_warnings(merged, policy)
+
+    if auth_admin_is_production(merged.get("environment")) and auth_admin_bool(merged.get("password_auth_enabled")):
+        errors.append(auth_admin_diagnostic("password_auth_enabled", "error", "password auth cannot be enabled in production"))
+    if require_primary_method and int(policy.get("primary_method_count", 0)) == 0:
+        errors.append(auth_admin_diagnostic("primary_methods", "error", "at least one primary authentication method must be configured"))
+    errors.extend(auth_admin_validate_passkey(merged))
+    errors.extend(auth_admin_validate_oauth(merged))
+
+    return {
+        "valid": not errors,
+        "accepted_config": auth_admin_sanitize_config(desired_config),
+        "methods_policy": policy,
+        "errors": errors,
+        "warnings": warnings,
+        "secret_fields": auth_admin_secret_fields(desired_config),
+    }
+
+
+def auth_admin_groups(config):
+    groups = [
+        {
+            "key": "primary_methods",
+            "label": "Primary methods",
+            "description": "Login methods that can establish a user session.",
+            "controls": [
+                auth_admin_control(config, "webauthn_rp_id", "Passkey relying party ID", "text", "Domain used by browsers to scope passkey credentials.", "Use the effective application host."),
+                auth_admin_control(config, "webauthn_origin", "Passkey origin", "url", "Origin that WebAuthn challenges must be created for.", "Use the full application origin."),
+                auth_admin_control(config, "password_auth_enabled", "Password login", "toggle", "Allows password sign-in outside production.", "Production policy blocks password login even when enabled.", disabled_reason="password auth cannot be enabled in production" if auth_admin_is_production(config.get("environment")) else ""),
+            ],
+        },
+        {
+            "key": "second_factors",
+            "label": "Second factors",
+            "description": "Additional verification methods used after primary login.",
+            "controls": [
+                auth_admin_control(config, "totp_auth_enabled", "Authenticator app codes", "toggle", "Enables TOTP enrollment and verification.", "Use recovery codes alongside authenticator app enrollment."),
+            ],
+        },
+        {
+            "key": "delivery_methods",
+            "label": "Delivery methods",
+            "description": "Email and SMS configuration used by passwordless login challenges.",
+            "controls": [
+                auth_admin_control(config, "smtp_host", "SMTP host", "text", "SMTP server used for email codes and magic links.", "Set with SMTP sender to enable email-code login."),
+                auth_admin_control(config, "smtp_from", "SMTP sender", "text", "From address used for auth emails.", "Use a verified sender address from the configured mail provider."),
+                auth_admin_control(config, "sms_auth_enabled", "SMS login", "toggle", "Allows SMS verification challenges when Twilio is configured.", "Requires auth routes, Twilio Verify service SID, and Twilio credentials."),
+                auth_admin_control(config, "jwt_secret", "Challenge signing secret", "secret", "Secret used to sign email and challenge tokens.", "Write-only. Leave blank to keep an existing configured value."),
+            ],
+        },
+        {
+            "key": "oauth_providers",
+            "label": "OAuth providers",
+            "description": "External identity providers available to auth routes.",
+            "controls": auth_admin_oauth_controls(config),
+        },
+    ]
+    for group in groups:
+        for control in group["controls"]:
+            control["group_key"] = group["key"]
+    return groups
+
+
+def auth_admin_oauth_controls(config):
+    controls = [
+        auth_admin_control(config, "auth_routes_enabled", "Auth routes", "toggle", "Enables HTTP auth routes used by OAuth callback flows.", "OAuth login requires auth routes before any provider can become login-ready."),
+    ]
+    for provider, label in [("google", "Google"), ("facebook", "Facebook"), ("instagram", "Instagram"), ("x", "X")]:
+        disabled = auth_admin_provider_disabled_reason(provider)
+        controls.append(auth_admin_control(config, f"{provider}_oauth_client_id", f"{label} client ID", "text", f"OAuth client identifier issued by {label}.", "Pair with the matching client secret and redirect URL.", disabled_reason=disabled))
+        controls.append(auth_admin_control(config, f"{provider}_oauth_client_secret", f"{label} client secret", "secret", f"OAuth client secret issued by {label}.", "Write-only. Leave blank to keep an existing configured value.", disabled_reason=disabled))
+        if provider in {"google", "facebook"}:
+            controls.append(auth_admin_control(config, f"{provider}_oauth_redirect_url", f"{label} redirect URL", "url", f"Callback URL registered with {label}.", "Must be HTTPS and match the provider application settings.", disabled_reason=disabled))
+    return controls
+
+
+def auth_admin_control(config, key, label, input_type, description, help_text, disabled_reason=""):
+    return {
+        "key": key,
+        "group_key": "",
+        "label": label,
+        "description": description,
+        "help_text": help_text,
+        "input_type": input_type,
+        "config_key": key,
+        "secret": auth_admin_secret_key(key),
+        "configured": auth_admin_present(config, key),
+        "required": False,
+        "enabled": not disabled_reason,
+        "disabled_reason": disabled_reason,
+        "options": [],
+    }
+
+
+def auth_admin_methods_policy(config):
+    passkey = auth_admin_present(config, "webauthn_rp_id") and auth_admin_present(config, "webauthn_origin")
+    email = auth_admin_present(config, "smtp_host") and auth_admin_present(config, "smtp_from")
+    sms = auth_admin_bool(config.get("sms_auth_enabled")) and auth_admin_present(config, "twilio_verify_service_sid")
+    password = auth_admin_bool(config.get("password_auth_enabled")) and not auth_admin_is_production(config.get("environment"))
+    totp = auth_admin_bool(config.get("totp_auth_enabled"))
+    oauth = []
+    if auth_admin_bool(config.get("auth_routes_enabled")) and all(auth_admin_present(config, key) for key in ["google_oauth_client_id", "google_oauth_client_secret", "google_oauth_redirect_url"]):
+        oauth.append("google")
+    primary_count = sum(1 for item in [passkey, email, sms, password] if item) + len(oauth)
+    return {
+        "passkey_enabled": passkey,
+        "email_code_enabled": email,
+        "sms_code_enabled": sms,
+        "password_enabled": password,
+        "password_auth_enabled": password,
+        "totp_enabled": totp,
+        "oauth_providers": oauth,
+        "primary_method_count": primary_count,
+    }
+
+
+def auth_admin_warnings(config, policy):
+    warnings = []
+    if auth_admin_bool(config.get("password_auth_enabled")) and not policy.get("password_enabled"):
+        warnings.append(auth_admin_diagnostic("password_auth_enabled", "warning", "password login was requested but is not available in this environment"))
+    return warnings
+
+
+def auth_admin_validate_passkey(config):
+    rp_id = str(config.get("webauthn_rp_id", "") or "").strip()
+    origin = str(config.get("webauthn_origin", "") or "").strip()
+    if not rp_id and not origin:
+        return []
+    errors = []
+    if not rp_id:
+        errors.append(auth_admin_diagnostic("webauthn_rp_id", "error", "passkey login requires a relying party ID"))
+    if not origin:
+        errors.append(auth_admin_diagnostic("webauthn_origin", "error", "passkey login requires an origin"))
+    elif not auth_admin_secure_origin(origin):
+        errors.append(auth_admin_diagnostic("webauthn_origin", "error", "passkey origin must use https except for localhost development"))
+    return errors
+
+
+def auth_admin_validate_oauth(config):
+    errors = []
+    for provider in ["google", "facebook", "instagram", "x"]:
+        if not auth_admin_oauth_requested(config, provider):
+            continue
+        disabled = auth_admin_provider_disabled_reason(provider)
+        if disabled:
+            errors.append(auth_admin_diagnostic(f"{provider}_oauth", "error", disabled))
+            continue
+        if not auth_admin_bool(config.get("auth_routes_enabled")):
+            errors.append(auth_admin_diagnostic("auth_routes_enabled", "error", f"{provider} oauth requires auth routes to be enabled"))
+        for key in [f"{provider}_oauth_client_id", f"{provider}_oauth_client_secret", f"{provider}_oauth_redirect_url"]:
+            if not auth_admin_present(config, key):
+                errors.append(auth_admin_diagnostic(key, "error", f"{provider} oauth requires {key}"))
+    return errors
+
+
+def auth_admin_oauth_requested(config, provider):
+    if str(config.get("oauth_provider", "")).strip().lower() == provider:
+        return True
+    client_id = auth_admin_present(config, f"{provider}_oauth_client_id")
+    client_secret = auth_admin_present(config, f"{provider}_oauth_client_secret")
+    redirect = auth_admin_present(config, f"{provider}_oauth_redirect_url")
+    return client_id or (client_secret and redirect) or (client_id and client_secret)
+
+
+def auth_admin_sanitize_config(config):
+    return {key: value for key, value in config.items() if not auth_admin_secret_key(key) and key not in {"desired_config", "config", "require_primary_method"}}
+
+
+def auth_admin_secret_fields(config):
+    return sorted(key for key, value in config.items() if auth_admin_secret_key(key) and value not in {"", None})
+
+
+def auth_admin_secret_key(key):
+    key = str(key).strip().lower()
+    return "secret" in key or key in {"twilio_auth_token", "smtp_pass", "jwt_secret"}
+
+
+def auth_admin_present(config, key):
+    value = config.get(key)
+    if value is None:
+        return False
+    if isinstance(value, str):
+        value = value.strip()
+        return bool(value) and "{{" not in value
+    return value is not False
+
+
+def auth_admin_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() == "true"
+    return False
+
+
+def auth_admin_is_production(environment):
+    return str(environment or "").strip().lower() in {"prod", "production"}
+
+
+def auth_admin_provider_disabled_reason(provider):
+    if provider in {"instagram", "x"}:
+        return f"{provider} oauth provider is disabled in this release"
+    return ""
+
+
+def auth_admin_secure_origin(origin):
+    parsed = urlparse(str(origin).strip())
+    if parsed.scheme == "https" and parsed.netloc:
+        return True
+    return parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+
+
+def auth_admin_diagnostic(field, severity, message):
+    return {"field": field, "severity": severity, "message": message}
 
 
 def provider_capabilities():
