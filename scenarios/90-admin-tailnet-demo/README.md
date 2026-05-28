@@ -9,6 +9,11 @@ does not contain or run an application-specific Python/Node/Ruby web harness.
 - Admin contribution API: <http://localhost:18080/api/admin/contributions>
 - Auth provider catalog API: <http://localhost:18080/api/admin/auth/providers>
 
+The scenario creates an admin user during tests:
+
+- Email: `admin@tailnet`
+- Password: `admin-password`
+
 The image is built by `seed/seed.sh` from local checkouts:
 
 - `workflow` server binary

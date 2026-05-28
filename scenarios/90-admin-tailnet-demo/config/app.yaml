@@ -8,6 +8,15 @@ modules:
     type: http.router
     dependsOn: [http]
 
+  - name: auth
+    type: auth.jwt
+    config:
+      secret: scenario-90-admin-jwt-secret-do-not-use-in-prod
+      issuer: scenario-90-admin
+      tokenExpiry: 24h
+      allowRegistration: true
+    dependsOn: [router]
+
   - name: admin
     type: admin.dashboard
     config:
@@ -85,7 +94,16 @@ workflows:
   http:
     server: http
     router: router
-    routes: []
+    routes:
+      - method: POST
+        path: /api/admin/auth/register
+        handler: auth
+      - method: POST
+        path: /api/admin/auth/login
+        handler: auth
+      - method: GET
+        path: /api/admin/auth/profile
+        handler: auth
 
 pipelines:
   healthz:
@@ -144,6 +162,16 @@ pipelines:
         path: /api/admin/contributions
         method: GET
     steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
       - name: contribution-input
         type: step.set
         config:
@@ -188,6 +216,16 @@ pipelines:
         path: /api/admin/auth/providers
         method: GET
     steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
       - name: catalog
         type: step.auth_provider_catalog
         config: &auth_provider_catalog_config
@@ -306,6 +344,16 @@ pipelines:
         path: /api/admin/auth/config
         method: GET
     steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
       - name: catalog
         type: step.auth_provider_catalog
         config: *auth_provider_catalog_config
@@ -339,6 +387,16 @@ pipelines:
         path: /api/admin/auth/providers/auth0
         method: GET
     steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
       - name: describe
         type: step.auth0_auth_provider_describe
         config:
@@ -358,6 +416,16 @@ pipelines:
         path: /api/admin/auth/providers/entra
         method: GET
     steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
       - name: describe
         type: step.entra_auth_provider_describe
         config:
@@ -377,6 +445,16 @@ pipelines:
         path: /api/admin/auth/providers/ory-kratos
         method: GET
     steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
       - name: describe
         type: step.ory_kratos_auth_provider_describe
         config:
@@ -395,6 +473,16 @@ pipelines:
         path: /api/admin/auth/providers/ory-hydra
         method: GET
     steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
       - name: describe
         type: step.ory_hydra_auth_provider_describe
         config:
@@ -413,6 +501,16 @@ pipelines:
         path: /api/admin/auth/providers/ory-polis
         method: GET
     steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
       - name: describe
         type: step.ory_polis_auth_provider_describe
         config:
@@ -431,6 +529,16 @@ pipelines:
         path: /api/admin/auth/providers/scalekit
         method: GET
     steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
       - name: describe
         type: step.scalekit_auth_provider_describe
         config:
@@ -449,6 +557,16 @@ pipelines:
         path: /api/authz/capabilities
         method: GET
     steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
       - name: respond
         type: step.json_response
         config:
@@ -482,6 +600,16 @@ pipelines:
         path: /api/authz/scopes
         method: GET
     steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
       - name: respond
         type: step.json_response
         config:
@@ -523,6 +651,16 @@ pipelines:
         path: /api/authz/roles
         method: GET
     steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
       - name: lookup
         type: step.authz_role_lookup
         config:
@@ -549,6 +687,16 @@ pipelines:
         path: /api/authz/enforce
         method: POST
     steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
       - name: enforce
         type: step.authz_enforce
         config:

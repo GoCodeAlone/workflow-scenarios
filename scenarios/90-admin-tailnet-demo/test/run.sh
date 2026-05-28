@@ -60,6 +60,8 @@ fi
 
 admin="$(curl -fsS "$BASE/admin/")"
 contains "$admin" "<title>Workflow Admin</title>" "Admin shell is served by Workflow static.fileserver"
+contains "$admin" 'data-login-endpoint="/api/admin/auth/login"' "Admin shell advertises login endpoint"
+contains "$admin" 'id="login-form"' "Admin shell renders login form"
 if grep -E 'data-panel="(identity|authorization)-panel"|Identity provider|Authorization mode' <<<"$admin" >/dev/null; then
   fail "Admin shell must be contribution-driven, not hardcoded to auth/authz surfaces"
 else
@@ -69,18 +71,52 @@ fi
 authz_page="$(curl -fsS "$BASE/admin/authz/")"
 contains "$authz_page" "<title>Authz Policy Manager</title>" "Authz UI plugin assets are served"
 
-contribs="$(curl -fsS "$BASE/api/admin/contributions")"
+unauth_contribs_code="$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/admin/contributions" || echo "000")"
+if [ "$unauth_contribs_code" = "401" ]; then
+  pass "Anonymous admin contributions API is unauthorized"
+else
+  fail "Anonymous admin contributions API expected 401, got $unauth_contribs_code"
+fi
+
+unauth_authz_code="$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/authz/roles" || echo "000")"
+if [ "$unauth_authz_code" = "401" ]; then
+  pass "Anonymous authz roles API is unauthorized"
+else
+  fail "Anonymous authz roles API expected 401, got $unauth_authz_code"
+fi
+
+register_body="$(curl -sfS -X POST "$BASE/api/admin/auth/register" \
+  -H "content-type: application/json" \
+  -d '{"email":"admin@tailnet","password":"admin-password","name":"Scenario Admin"}' 2>/dev/null || true)"
+token="$(jq -r '.token // .access_token // empty' <<<"$register_body" 2>/dev/null || true)"
+if [ -z "$token" ]; then
+  login_body="$(curl -sfS -X POST "$BASE/api/admin/auth/login" \
+    -H "content-type: application/json" \
+    -d '{"email":"admin@tailnet","password":"admin-password"}' 2>/dev/null || true)"
+  token="$(jq -r '.token // .access_token // empty' <<<"$login_body" 2>/dev/null || true)"
+fi
+if [ -n "$token" ]; then
+  pass "Admin login returns JWT token"
+else
+  fail "Admin login did not return a JWT token"
+fi
+AUTH_HEADER="Authorization: Bearer $token"
+
+profile="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/admin/auth/profile")"
+contains "$profile" '"email":"admin@tailnet"' "Admin token validates through auth.jwt profile route"
+
+contribs="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/admin/contributions")"
 contains "$contribs" '"id":"authz-roles"' "Admin plugin registered authz contribution"
 contains "$contribs" '"render_mode":"iframe"' "Admin contribution uses pluggable iframe render mode"
 
-catalog="$(curl -fsS "$BASE/api/admin/auth/providers")"
+catalog="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/admin/auth/providers")"
 json_len_at_least "$catalog" '.providers' 9 "Auth provider catalog includes composed providers"
 contains "$catalog" '"implementation":"workflow-plugin-auth0"' "Catalog includes Auth0 plugin descriptor"
 contains "$catalog" '"implementation":"workflow-plugin-okta"' "Catalog includes Okta plugin descriptor"
 contains "$catalog" '"implementation":"workflow-plugin-ory-kratos"' "Catalog includes Ory Kratos plugin descriptor"
 contains "$catalog" '"implementation":"workflow-plugin-scalekit"' "Catalog includes Scalekit plugin descriptor"
 
-auth_config="$(curl -fsS "$BASE/api/admin/auth/config")"
+auth_config="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/admin/auth/config")"
 contains "$auth_config" '"groups"' "Auth plugin exposes admin config groups"
 contains "$auth_config" '"Passkey relying party ID"' "Auth config exposes passkey control metadata"
 contains "$auth_config" '"M2M client secret"' "Auth config includes descriptor-backed provider secret control"
@@ -91,25 +127,25 @@ else
 fi
 
 for provider in auth0 entra ory-kratos ory-hydra ory-polis scalekit; do
-  body="$(curl -fsS "$BASE/api/admin/auth/providers/$provider")"
+  body="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/admin/auth/providers/$provider")"
   contains "$body" '"providers"' "Provider $provider route is backed by provider plugin step"
   contains "$body" "\"id\":\"$provider\"" "Provider $provider descriptor has expected id"
 done
 
-scopes="$(curl -fsS "$BASE/api/authz/scopes")"
+scopes="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/authz/scopes")"
 contains "$scopes" '"frontend:orders:read"' "Authz scopes endpoint includes frontend scope"
 contains "$scopes" '"admin:authz.roles:update"' "Authz scopes endpoint includes admin scope"
 
-roles="$(curl -fsS "$BASE/api/authz/roles")"
+roles="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/authz/roles")"
 contains "$roles" '"admin@tailnet"' "Authz roles endpoint renders role assignments"
 contains "$roles" '"frontend:orders:read"' "Authz roles endpoint carries selectable scope values"
 
-caps="$(curl -fsS "$BASE/api/authz/capabilities")"
+caps="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/authz/capabilities")"
 contains "$caps" '"mode":"rbac"' "Authz capabilities report RBAC"
 contains "$caps" '"mode":"abac"' "Authz capabilities report ABAC"
 contains "$caps" '"mode":"rebac"' "Authz capabilities report ReBAC"
 
-enforce="$(curl -fsS -H 'content-type: application/json' -d '{"subject":"admin@tailnet","object":"authz.roles","action":"update"}' "$BASE/api/authz/enforce")"
+enforce="$(curl -fsS -H "$AUTH_HEADER" -H 'content-type: application/json' -d '{"subject":"admin@tailnet","object":"authz.roles","action":"update"}' "$BASE/api/authz/enforce")"
 contains "$enforce" '"allowed":true' "Authz UI plugin enforce step permits expected action"
 contains "$enforce" '"reason":"scenario fixture grants admin role"' "Authz enforce response comes from plugin step config"
 

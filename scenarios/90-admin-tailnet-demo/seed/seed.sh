@@ -24,11 +24,19 @@ admin_ui_dir_has_hardcoded_surfaces() {
   grep -R -E 'data-panel="(identity|authorization)-panel"|Identity provider|Authorization mode' "$ui_dir" >/dev/null 2>&1
 }
 
+admin_ui_dir_has_auth_gate() {
+  local ui_dir="$1"
+  grep -R 'data-login-endpoint' "$ui_dir" >/dev/null 2>&1 &&
+    grep -R 'data-token-storage-key' "$ui_dir" >/dev/null 2>&1 &&
+    grep -R 'Authorization' "$ui_dir" >/dev/null 2>&1
+}
+
 admin_repo_is_usable() {
   local repo="$1"
   [ -f "$repo/go.mod" ] &&
     [ -d "$repo/internal/ui_dist" ] &&
-    ! admin_ui_dir_has_hardcoded_surfaces "$repo/internal/ui_dist"
+    ! admin_ui_dir_has_hardcoded_surfaces "$repo/internal/ui_dist" &&
+    admin_ui_dir_has_auth_gate "$repo/internal/ui_dist"
 }
 
 find_admin_repo() {
@@ -39,7 +47,8 @@ find_admin_repo() {
 
   local root="$WORKSPACE_ROOT/workflow-plugin-admin"
   local candidate
-  for candidate in "$root" "$root/.worktrees/fix-dynamic-admin-shell"; do
+  for candidate in "$root" "$root"/.worktrees/*; do
+    [ -d "$candidate" ] || continue
     if admin_repo_is_usable "$candidate"; then
       echo "$candidate"
       return 0
@@ -56,7 +65,7 @@ find_admin_repo() {
   fi
 
   echo "ERROR: no contribution-driven workflow-plugin-admin checkout found under $root" >&2
-  echo "       Update workflow-plugin-admin to v1.1.6 or newer, or set PLUGIN_ADMIN_REPO explicitly." >&2
+  echo "       Update workflow-plugin-admin to v1.1.7 or newer, or set PLUGIN_ADMIN_REPO explicitly." >&2
   return 1
 }
 
@@ -132,7 +141,12 @@ done
 cp -R "$PLUGIN_ADMIN_REPO/internal/ui_dist/." "$BUILD_DIR/admin-ui/"
 if admin_ui_dir_has_hardcoded_surfaces "$BUILD_DIR/admin-ui"; then
   echo "ERROR: selected workflow-plugin-admin UI contains hardcoded admin surfaces" >&2
-  echo "       Use a contribution-driven workflow-plugin-admin build, such as v1.1.6 or newer." >&2
+  echo "       Use a contribution-driven workflow-plugin-admin build, such as v1.1.7 or newer." >&2
+  exit 1
+fi
+if ! admin_ui_dir_has_auth_gate "$BUILD_DIR/admin-ui"; then
+  echo "ERROR: selected workflow-plugin-admin UI does not include token-aware admin loading" >&2
+  echo "       Use workflow-plugin-admin with login-aware shell assets, or set PLUGIN_ADMIN_REPO explicitly." >&2
   exit 1
 fi
 if [ -d "$PLUGIN_AUTHZ_UI_REPO/ui/dist" ]; then
