@@ -60,6 +60,11 @@ fi
 
 admin="$(curl -fsS "$BASE/admin/")"
 contains "$admin" "<title>Workflow Admin</title>" "Admin shell is served by Workflow static.fileserver"
+if grep -E 'data-panel="(identity|authorization)-panel"|Identity provider|Authorization mode' <<<"$admin" >/dev/null; then
+  fail "Admin shell must be contribution-driven, not hardcoded to auth/authz surfaces"
+else
+  pass "Admin shell is contribution-driven"
+fi
 
 authz_page="$(curl -fsS "$BASE/admin/authz/")"
 contains "$authz_page" "<title>Authz Policy Manager</title>" "Authz UI plugin assets are served"
