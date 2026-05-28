@@ -19,8 +19,49 @@ find_workspace_root() {
 
 WORKSPACE_ROOT="${WORKSPACE_ROOT:-$(find_workspace_root)}"
 
+admin_ui_dir_has_hardcoded_surfaces() {
+  local ui_dir="$1"
+  grep -R -E 'data-panel="(identity|authorization)-panel"|Identity provider|Authorization mode' "$ui_dir" >/dev/null 2>&1
+}
+
+admin_repo_is_usable() {
+  local repo="$1"
+  [ -f "$repo/go.mod" ] &&
+    [ -d "$repo/internal/ui_dist" ] &&
+    ! admin_ui_dir_has_hardcoded_surfaces "$repo/internal/ui_dist"
+}
+
+find_admin_repo() {
+  if [ -n "${PLUGIN_ADMIN_REPO:-}" ]; then
+    echo "$PLUGIN_ADMIN_REPO"
+    return 0
+  fi
+
+  local root="$WORKSPACE_ROOT/workflow-plugin-admin"
+  local candidate
+  for candidate in "$root" "$root/.worktrees/fix-dynamic-admin-shell"; do
+    if admin_repo_is_usable "$candidate"; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  if [ -d "$root/.worktrees" ]; then
+    while IFS= read -r candidate; do
+      if admin_repo_is_usable "$candidate"; then
+        echo "$candidate"
+        return 0
+      fi
+    done < <(find "$root/.worktrees" -mindepth 1 -maxdepth 1 -type d | sort)
+  fi
+
+  echo "ERROR: no contribution-driven workflow-plugin-admin checkout found under $root" >&2
+  echo "       Update workflow-plugin-admin to v1.1.6 or newer, or set PLUGIN_ADMIN_REPO explicitly." >&2
+  return 1
+}
+
 WORKFLOW_REPO="${WORKFLOW_REPO:-$WORKSPACE_ROOT/workflow}"
-PLUGIN_ADMIN_REPO="${PLUGIN_ADMIN_REPO:-$WORKSPACE_ROOT/workflow-plugin-admin}"
+PLUGIN_ADMIN_REPO="$(find_admin_repo)"
 PLUGIN_AUTH_REPO="${PLUGIN_AUTH_REPO:-$WORKSPACE_ROOT/workflow-plugin-auth/.worktrees/auth-provider-architecture}"
 PLUGIN_AUTHZ_UI_REPO="${PLUGIN_AUTHZ_UI_REPO:-$WORKSPACE_ROOT/workflow-plugin-authz-ui}"
 IMAGE_TAG="${IMAGE_TAG:-workflow-admin:scenario-90}"
@@ -89,7 +130,7 @@ for repo_name in "${provider_repos[@]}"; do
 done
 
 cp -R "$PLUGIN_ADMIN_REPO/internal/ui_dist/." "$BUILD_DIR/admin-ui/"
-if grep -R -E 'data-panel="(identity|authorization)-panel"|Identity provider|Authorization mode' "$BUILD_DIR/admin-ui" >/dev/null; then
+if admin_ui_dir_has_hardcoded_surfaces "$BUILD_DIR/admin-ui"; then
   echo "ERROR: selected workflow-plugin-admin UI contains hardcoded admin surfaces" >&2
   echo "       Use a contribution-driven workflow-plugin-admin build, such as v1.1.6 or newer." >&2
   exit 1
