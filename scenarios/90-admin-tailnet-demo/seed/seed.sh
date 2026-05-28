@@ -89,6 +89,11 @@ for repo_name in "${provider_repos[@]}"; do
 done
 
 cp -R "$PLUGIN_ADMIN_REPO/internal/ui_dist/." "$BUILD_DIR/admin-ui/"
+if grep -R -E 'data-panel="(identity|authorization)-panel"|Identity provider|Authorization mode' "$BUILD_DIR/admin-ui" >/dev/null; then
+  echo "ERROR: selected workflow-plugin-admin UI contains hardcoded admin surfaces" >&2
+  echo "       Use a contribution-driven workflow-plugin-admin build, such as v1.1.6 or newer." >&2
+  exit 1
+fi
 if [ -d "$PLUGIN_AUTHZ_UI_REPO/ui/dist" ]; then
   cp -R "$PLUGIN_AUTHZ_UI_REPO/ui/dist/." "$BUILD_DIR/authz-ui/"
 else
