@@ -9,6 +9,7 @@ dist/
 .worktrees/
 
 # Scenario runtime artifacts
+scenarios/*/.build/
 scenarios/*/plugins/
 scenarios/*/mock/mock-*
 scenarios/*/*.db

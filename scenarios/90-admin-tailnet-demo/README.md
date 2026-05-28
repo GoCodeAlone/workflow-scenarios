@@ -1,44 +1,46 @@
-# Scenario 90: Admin Tailnet Demo
+# Scenario 90: Workflow-Native Admin Tailnet Demo
 
-This scenario runs a small app with an auth-gated administration portal, a declared-scope authz role manager, and a Tailscale sidecar.
+This scenario runs the Workflow Go server with external Go plugin binaries. It
+does not contain or run an application-specific Python/Node/Ruby web harness.
 
-- App: <http://localhost:18080/>
-- Admin: <http://localhost:18080/admin>
-- Authz admin contribution: <http://localhost:18080/admin/authz>
+- App/status API: <http://localhost:18080/api/status>
+- Admin shell: <http://localhost:18080/admin/>
+- Authz admin contribution: <http://localhost:18080/admin/authz/>
+- Admin contribution API: <http://localhost:18080/api/admin/contributions>
 - Auth provider catalog API: <http://localhost:18080/api/admin/auth/providers>
-- Status API: <http://localhost:18080/api/status>
 
-Demo users:
+The image is built by `seed/seed.sh` from local checkouts:
 
-- `admin@tailnet` / `admin`: full admin and frontend scopes.
-- `provider-admin@tailnet` / `provider`: auth provider read-only admin.
-- `readonly-admin@tailnet` / `readonly`: admin read scopes only.
-- `app-user@tailnet` / `user`: frontend scopes only.
+- `workflow` server binary
+- `workflow-plugin-admin`
+- `workflow-plugin-auth`
+- `workflow-plugin-authz-ui`
+- `workflow-plugin-auth0`
+- `workflow-plugin-entra`
+- `workflow-plugin-okta`
+- `workflow-plugin-sso`
+- `workflow-plugin-ory-kratos`
+- `workflow-plugin-ory-hydra`
+- `workflow-plugin-ory-polis`
+- `workflow-plugin-scalekit`
 
-The auth provider catalog composes descriptor-shaped records for released
-Workflow provider plugins:
-
-- `workflow-plugin-auth v0.2.11`
-- `workflow-plugin-sso v0.1.6`
-- `workflow-plugin-okta v0.2.4`
-- `workflow-plugin-auth0 v0.1.0`
-- `workflow-plugin-entra v0.1.0`
-- `workflow-plugin-ory-kratos v0.1.0`
-- `workflow-plugin-ory-hydra v0.1.0`
-- `workflow-plugin-ory-polis v0.1.0`
-- `workflow-plugin-scalekit v0.1.0`
-
-The authz contribution displays frontend and admin scopes from the declared scope catalog, including owner plugin/module metadata. The demo defaults to `AUTHZ_PROVIDER=keto`, runs a local Ory Keto container, and resolves role assignments into Keto scope relationship checks for the app/admin surfaces.
+The admin UI is served by Workflow `static.fileserver`; admin navigation is
+backed by `step.admin_register_contribution` and
+`step.admin_list_contributions`; auth configuration is backed by
+`step.auth_provider_catalog` and `step.auth_admin_config_describe`; authz proof
+endpoints use `workflow-plugin-authz-ui` steps.
 
 ## Run
 
 ```sh
-docker compose up -d --build
+./seed/seed.sh
 ```
 
-If `TS_AUTHKEY` is present, the sidecar joins the tailnet as `workflow-admin-demo` and publishes the app with `tailscale serve`.
+If `TS_AUTHKEY` is present, the sidecar joins the tailnet as
+`workflow-admin-demo` and publishes the app with `tailscale serve`.
 
-Without `TS_AUTHKEY`, the app still runs locally. On a host already connected to Tailscale:
+Without `TS_AUTHKEY`, the app still runs locally. On a host already connected to
+Tailscale:
 
 ```sh
 tailscale serve --bg --http=18080 http://127.0.0.1:18080

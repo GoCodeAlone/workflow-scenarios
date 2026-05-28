@@ -1,0 +1,569 @@
+modules:
+  - name: http
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [http]
+
+  - name: admin
+    type: admin.dashboard
+    config:
+      route_prefix: /admin
+      app_name: Scenario 90 - Workflow Admin Tailnet Demo
+      target_app: scenario-90-workflow-native
+
+  - name: admin-ui-static
+    type: static.fileserver
+    config:
+      root: /opt/workflow-admin-ui
+      prefix: /admin
+      spaFallback: true
+      router: router
+    dependsOn: [router]
+
+  - name: authn
+    type: auth.credential
+    config:
+      rp_id: 127.0.0.1
+      origin: http://127.0.0.1:18080
+      rp_display_name: Scenario 90 Workflow App
+
+  - name: authz-ui
+    type: authz.ui
+    config:
+      api_base_path: /api/authz
+      admin_base_path: /admin/authz
+      app_context: app
+      frontend_context: frontend
+      admin_context: admin
+      scopes:
+        - name: frontend:orders:read
+          context: frontend
+          resource: orders
+          actions: [read]
+          description: Read customer orders in the primary app.
+        - name: frontend:orders:update
+          context: frontend
+          resource: orders
+          actions: [update]
+          description: Update customer orders in the primary app.
+        - name: admin:authz.roles:read
+          context: admin
+          resource: authz.roles
+          actions: [read]
+          description: View role and scope assignments in admin.
+        - name: admin:authz.roles:update
+          context: admin
+          resource: authz.roles
+          actions: [update]
+          description: Manage role and scope assignments in admin.
+      admin:
+        enabled: true
+        module: admin
+        id: authz-roles
+        title: Authorization
+        category: security
+        path: /admin/authz/
+        render_mode: iframe
+        app_context: app
+        permissions:
+          - admin:authz.roles:read
+
+  - name: authz-ui-static
+    type: static.fileserver
+    config:
+      root: /opt/workflow-authz-ui
+      prefix: /admin/authz
+      spaFallback: true
+      router: router
+    dependsOn: [router]
+
+workflows:
+  http:
+    server: http
+    router: router
+    routes: []
+
+pipelines:
+  healthz:
+    trigger:
+      type: http
+      config:
+        path: /healthz
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            status: ok
+            runtime: workflow-go-server
+
+  admin-redirect:
+    trigger:
+      type: http
+      config:
+        path: /admin
+        method: GET
+    steps:
+      - name: redirect
+        type: step.raw_response
+        config:
+          status: 308
+          content_type: text/plain
+          headers:
+            Location: /admin/
+          body: ""
+
+  scenario-status:
+    trigger:
+      type: http
+      config:
+        path: /api/status
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            scenario: "90-admin-tailnet-demo"
+            runtime: "workflow-go-server"
+            harness: "workflow"
+            app_server_language: "go"
+            plugin_runtime: "external-go-binaries"
+
+  list-admin-contributions:
+    trigger:
+      type: http
+      config:
+        path: /api/admin/contributions
+        method: GET
+    steps:
+      - name: contribution-input
+        type: step.set
+        config:
+          values:
+            contribution:
+              id: authz-roles
+              title: Authorization
+              category: security
+              path: /admin/authz/
+              render_mode: iframe
+              app_context: app
+              permissions:
+                - permission: admin:authz.roles:read
+                  resource: authz.roles
+                  action: read
+                - permission: admin:authz.roles:update
+                  resource: authz.roles
+                  action: update
+            app_context: app
+            granted_permissions:
+              - admin:authz.roles:read
+              - admin:authz.roles:update
+      - name: register-authz
+        type: step.admin_register_contribution
+        config:
+          module: admin
+      - name: list
+        type: step.admin_list_contributions
+        config:
+          module: admin
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            contributions: { _from: "steps.list.contributions" }
+
+  auth-provider-catalog:
+    trigger:
+      type: http
+      config:
+        path: /api/admin/auth/providers
+        method: GET
+    steps:
+      - name: catalog
+        type: step.auth_provider_catalog
+        config: &auth_provider_catalog_config
+          providers: &auth_provider_descriptors
+            - id: local-auth
+              label: Workflow local auth
+              description: Credential, passkey, TOTP, passwordless, and password policy contracts from workflow-plugin-auth.
+              categories: [identity_management, passwordless, passkeys, mfa]
+              implementation: workflow-plugin-auth
+              version: v0.2.11
+              support_level: management
+              capabilities:
+                - key: workflow_passkeys
+                  label: Passkeys
+                  category: passkeys
+                  supported: true
+                  admin_read_scopes: [admin.auth.providers.read]
+                  admin_write_scopes: [admin.auth.providers.write]
+                  config_fields:
+                    - key: webauthn_rp_id
+                      label: Passkey relying party ID
+                      input_type: text
+                      required: true
+                    - key: webauthn_origin
+                      label: Passkey origin
+                      input_type: url
+                      required: true
+            - id: auth0
+              label: Auth0
+              description: Auth0 identity and OAuth/OIDC administration through workflow-plugin-auth0.
+              categories: [identity_management, oauth2_oidc, rbac]
+              implementation: workflow-plugin-auth0
+              version: v0.1.0
+              support_level: management
+              capabilities:
+                - key: auth0_applications
+                  label: Applications and OIDC clients
+                  category: oauth2_oidc
+                  supported: true
+                  app_scopes: ["create:clients", "read:clients", "update:clients", "delete:clients"]
+                  admin_read_scopes: [admin.auth.providers.read]
+                  admin_write_scopes: [admin.auth.providers.write]
+                  config_fields:
+                    - key: auth0_domain
+                      label: Auth0 domain
+                      input_type: text
+                      required: true
+                    - key: auth0_client_id
+                      label: M2M client ID
+                      input_type: text
+                    - key: auth0_client_secret
+                      label: M2M client secret
+                      input_type: secret
+                      secret: true
+            - id: entra
+              label: Microsoft Entra ID
+              description: Microsoft Entra OIDC and directory administration through workflow-plugin-entra.
+              categories: [identity_management, oauth2_oidc, enterprise_sso]
+              implementation: workflow-plugin-entra
+              version: v0.1.0
+              support_level: management
+            - id: okta
+              label: Okta
+              description: Okta user, group, application, authorization server, and policy administration through workflow-plugin-okta.
+              categories: [identity_management, oauth2_oidc, rbac, enterprise_sso]
+              implementation: workflow-plugin-okta
+              version: v0.2.4
+              support_level: management
+            - id: sso
+              label: Generic SSO/OIDC
+              description: Generic OIDC token validation and exchange through workflow-plugin-sso.
+              categories: [oauth2_oidc, enterprise_sso]
+              implementation: workflow-plugin-sso
+              version: v0.1.6
+              support_level: runtime
+            - id: ory-kratos
+              label: Ory Kratos
+              description: Ory Kratos identity, login, registration, recovery, verification, and session administration.
+              categories: [identity_management, passwordless, passkeys, mfa]
+              implementation: workflow-plugin-ory-kratos
+              version: v0.1.0
+              support_level: management
+            - id: ory-hydra
+              label: Ory Hydra
+              description: Ory Hydra OAuth2/OIDC client and consent administration.
+              categories: [oauth2_oidc]
+              implementation: workflow-plugin-ory-hydra
+              version: v0.1.0
+              support_level: management
+            - id: ory-polis
+              label: Ory Polis
+              description: Ory Polis enterprise SSO, SAML/OIDC, and SCIM administration.
+              categories: [enterprise_sso, scim]
+              implementation: workflow-plugin-ory-polis
+              version: v0.1.0
+              support_level: management
+            - id: scalekit
+              label: Scalekit
+              description: Scalekit enterprise SSO and directory sync administration.
+              categories: [enterprise_sso, scim]
+              implementation: workflow-plugin-scalekit
+              version: v0.1.0
+              support_level: management
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            providers: { _from: "steps.catalog.providers" }
+            warnings: { _from: "steps.catalog.warnings" }
+
+  auth-admin-config:
+    trigger:
+      type: http
+      config:
+        path: /api/admin/auth/config
+        method: GET
+    steps:
+      - name: catalog
+        type: step.auth_provider_catalog
+        config: *auth_provider_catalog_config
+      - name: describe
+        type: step.auth_admin_config_describe
+        config: {}
+        input:
+          config:
+            environment: development
+            auth_routes_enabled: true
+            password_auth_enabled: false
+            webauthn_rp_id: 127.0.0.1
+            webauthn_origin: http://127.0.0.1:18080
+            providers: *auth_provider_descriptors
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            groups: { _from: "steps.describe.groups" }
+            effective_config: { _from: "steps.describe.effective_config" }
+            methods_policy: { _from: "steps.describe.methods_policy" }
+            providers: { _from: "steps.catalog.providers" }
+            warnings: { _from: "steps.describe.warnings" }
+            secret_fields: { _from: "steps.describe.secret_fields" }
+
+  describe-auth0-provider:
+    trigger:
+      type: http
+      config:
+        path: /api/admin/auth/providers/auth0
+        method: GET
+    steps:
+      - name: describe
+        type: step.auth0_auth_provider_describe
+        config:
+          provider_id: auth0
+          domain: demo.us.auth0.com
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            providers: { _from: "steps.describe.providers" }
+
+  describe-entra-provider:
+    trigger:
+      type: http
+      config:
+        path: /api/admin/auth/providers/entra
+        method: GET
+    steps:
+      - name: describe
+        type: step.entra_auth_provider_describe
+        config:
+          provider_id: entra
+          tenant_id: common
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            providers: { _from: "steps.describe.providers" }
+
+  describe-ory-kratos-provider:
+    trigger:
+      type: http
+      config:
+        path: /api/admin/auth/providers/ory-kratos
+        method: GET
+    steps:
+      - name: describe
+        type: step.ory_kratos_auth_provider_describe
+        config:
+          provider_id: ory-kratos
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            providers: { _from: "steps.describe.providers" }
+
+  describe-ory-hydra-provider:
+    trigger:
+      type: http
+      config:
+        path: /api/admin/auth/providers/ory-hydra
+        method: GET
+    steps:
+      - name: describe
+        type: step.ory_hydra_auth_provider_describe
+        config:
+          provider_id: ory-hydra
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            providers: { _from: "steps.describe.providers" }
+
+  describe-ory-polis-provider:
+    trigger:
+      type: http
+      config:
+        path: /api/admin/auth/providers/ory-polis
+        method: GET
+    steps:
+      - name: describe
+        type: step.ory_polis_auth_provider_describe
+        config:
+          provider_id: ory-polis
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            providers: { _from: "steps.describe.providers" }
+
+  describe-scalekit-provider:
+    trigger:
+      type: http
+      config:
+        path: /api/admin/auth/providers/scalekit
+        method: GET
+    steps:
+      - name: describe
+        type: step.scalekit_auth_provider_describe
+        config:
+          provider_id: scalekit
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            providers: { _from: "steps.describe.providers" }
+
+  authz-capabilities:
+    trigger:
+      type: http
+      config:
+        path: /api/authz/capabilities
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            module: authz-ui
+            provider: scenario-fixture
+            capabilities: [rbac, abac, rebac]
+            health: ok
+            capability_descriptors:
+              - mode: rbac
+                operations: [check, manage_roles]
+                configured: true
+                source: workflow-plugin-authz-ui
+                health: ok
+              - mode: abac
+                operations: [manage_policies]
+                configured: true
+                source: workflow-plugin-authz-ui
+                health: ok
+              - mode: rebac
+                operations: [manage_relations]
+                configured: true
+                source: workflow-plugin-authz-ui
+                health: ok
+
+  authz-scopes:
+    trigger:
+      type: http
+      config:
+        path: /api/authz/scopes
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            - name: frontend:orders:read
+              context: frontend
+              resource: orders
+              actions: [read]
+              owner_plugin: workflow-scenarios
+              owner_module: orders
+              category: application
+            - name: frontend:orders:update
+              context: frontend
+              resource: orders
+              actions: [update]
+              owner_plugin: workflow-scenarios
+              owner_module: orders
+              category: application
+            - name: admin:authz.roles:read
+              context: admin
+              resource: authz.roles
+              actions: [read]
+              owner_plugin: workflow-plugin-authz-ui
+              owner_module: authz-ui
+              category: admin
+            - name: admin:authz.roles:update
+              context: admin
+              resource: authz.roles
+              actions: [update]
+              owner_plugin: workflow-plugin-authz-ui
+              owner_module: authz-ui
+              category: admin
+
+  authz-roles:
+    trigger:
+      type: http
+      config:
+        path: /api/authz/roles
+        method: GET
+    steps:
+      - name: lookup
+        type: step.authz_role_lookup
+        config:
+          subject: admin@tailnet
+          roles: [admin]
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            - user: admin@tailnet
+              role: admin
+              context: admin
+              scopes: ["admin:authz.roles:read", "admin:authz.roles:update"]
+            - user: app-user@tailnet
+              role: support
+              context: frontend
+              scopes: ["frontend:orders:read"]
+
+  authz-enforce:
+    trigger:
+      type: http
+      config:
+        path: /api/authz/enforce
+        method: POST
+    steps:
+      - name: enforce
+        type: step.authz_enforce
+        config:
+          subject: admin@tailnet
+          resource: authz.roles
+          action: update
+          permitted: true
+          reason: scenario fixture grants admin role
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            subject: { _from: "steps.enforce.subject" }
+            object: { _from: "steps.enforce.resource" }
+            action: { _from: "steps.enforce.action" }
+            allowed: { _from: "steps.enforce.permitted" }
+            reason: { _from: "steps.enforce.reason" }
