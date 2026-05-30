@@ -1,0 +1,23 @@
+name: DNS Delegation Across Providers
+id: "91-dns-delegation"
+category: C
+description: |
+  Manages a parent zone at one provider and a child zone at a second
+  provider in a single `wfctl infra apply` invocation, with NS records
+  at the parent delegating to the child provider's nameservers. After
+  apply, imports each provider's state and asserts the delegation
+  records survive the roundtrip with `.applied_config.records[]` jq
+  matchers. Validates cross-provider DNS orchestration via the same
+  stub plugin used by scenarios 89 + 90.
+components:
+  - workflow >= 0.65.0
+  - workflow-scenarios stub DNS provider plugin
+  - infra.dns
+status: draft
+tags:
+  - iac
+  - dns
+  - delegation
+  - multi-provider
+  - local-only
+runtime: local

@@ -1,0 +1,39 @@
+# Scenario 89 — DNS import-export roundtrip config.
+#
+# Single stub IaCProvider module pre-loaded from the shared example
+# fixture (alpha.test zone with A/CNAME/MX records). The infra.dns
+# resource declares the zone by name only — the test asserts that
+# importing this state and then planning against this config emits
+# zero actions ("No changes").
+#
+# Module name MUST equal the SANITIZED zone ID produced by
+# `wfctl infra import-all` — see scenarios/89-.../test/run.sh comment.
+modules:
+  # http.server is declared as an entry-point module so `wfctl validate`
+  # accepts the config (schema/validate.go's entryPointModuleTypes guard).
+  # No HTTP routes are wired — scenarios drive `wfctl infra import-all`
+  # + `wfctl infra plan` directly, never spinning up the server.
+  - name: server
+    type: http.server
+    config:
+      address: ":0"
+
+  - name: stub
+    type: iac.provider
+    config:
+      provider: stub
+      state_path: /tmp/dns-stub-89-state.json
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: filesystem
+      directory: /tmp/dns-stub-89-statestore
+
+  # Resource name must equal the sanitized zone ID emitted by
+  # import-all (sanitizeImportedZoneName replaces `.` with `-`).
+  - name: alpha-test
+    type: infra.dns
+    config:
+      provider: stub
+      domain: alpha.test

@@ -1,0 +1,25 @@
+name: DNS Import-Export Roundtrip
+id: "89-dns-import-export-roundtrip"
+category: C
+description: |
+  Drives the wfctl infra import-all path against a file-backed stub
+  IaCProvider plugin, then asserts a plan against the same config
+  reports zero actions ("No changes"). Validates that EnumerateAll +
+  Import + plan produce a coherent roundtrip for the strict-contract
+  DNS provider surface introduced by docs/plans/2026-05-26-dns-provider-contract.md.
+
+  The stub plugin lives at scenarios/lib/dns-stub-plugin/ and is shared
+  with scenarios 90 + 91. Fixture-driven; no provider credentials
+  required.
+components:
+  - workflow >= 0.65.0
+  - workflow-scenarios stub DNS provider plugin
+  - infra.dns
+status: draft
+tags:
+  - iac
+  - dns
+  - import
+  - enumerate-all
+  - local-only
+runtime: local
