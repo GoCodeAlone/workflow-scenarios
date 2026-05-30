@@ -153,10 +153,17 @@ grep -q 'plugin install' "$GEN_FILE" \
     && pass "generated YAML includes a wfctl plugin install step" \
     || fail "generated YAML missing wfctl plugin install step"
 
-# Test 8: generated YAML contains a migration step (wfctl ci run --phase migrate).
-grep -q 'phase migrate' "$GEN_FILE" \
-    && pass "generated YAML includes a migration step (--phase migrate)" \
-    || fail "generated YAML missing migration step"
+# Test 8: generated YAML contains a functional migration step (wfctl migrations up).
+# Post-PR4 the cigen renderer emits the real `wfctl migrations up --config`,
+# NOT the old broken `wfctl ci run --phase migrate` (ci run only accepts
+# build/test/deploy and fails at runtime on a "migrate" phase).
+grep -q 'wfctl migrations up' "$GEN_FILE" \
+    && pass "generated YAML includes functional migration step (wfctl migrations up)" \
+    || fail "generated YAML missing 'wfctl migrations up' step"
+
+grep -q -- '--phase migrate' "$GEN_FILE" \
+    && fail "generated YAML still contains obsolete '--phase migrate' (pre-PR4 broken form)" \
+    || pass "generated YAML does NOT contain obsolete '--phase migrate'"
 
 # Test 9: generated YAML contains a smoke-test job hitting app.example.com/healthz.
 grep -q 'app\.example\.com/healthz' "$GEN_FILE" \

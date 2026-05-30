@@ -9,8 +9,8 @@ Category **C** (config-validation / CLI-driven). No live cloud credentials requi
 - `wfctl ci generate --from-plan plan.json --platform github_actions --write` writes
   a `.github/workflows/*.yml` from the pre-computed plan
 - The generated YAML: parses as valid YAML, wires `${{ secrets.APP_JWT }}`,
-  includes a `wfctl plugin install` step, includes a migration step
-  (`wfctl ci run --phase migrate`), and includes a smoke-test job hitting
+  includes a `wfctl plugin install` step, includes a functional migration step
+  (`wfctl migrations up --config '...'`), and includes a smoke-test job hitting
   `app.example.com/healthz`
 
 ## Running
@@ -21,8 +21,3 @@ WFCTL_BIN=/path/to/wfctl bash scenarios/98-ci-generate-smart/test/run.sh
 
 The script creates a fresh `mktemp` directory per run and exports `SC98_STORE_DIR`
 and `SC98_STATE_DIR` so the env-expandable paths in `config/app.yaml` resolve correctly.
-
-## Adaptation note
-
-The generated migration step is `wfctl ci run --config '...' --phase migrate`,
-not `wfctl migrations up`. Assertions match the real binary output.
