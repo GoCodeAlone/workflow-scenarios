@@ -1,0 +1,32 @@
+name: Secrets Wizard — Non-interactive Mode
+id: "97-secrets-wizard-noninteractive"
+category: C
+description: |
+  Showcases the store-aware secrets wizard in non-interactive mode.
+  Verifies that wfctl secrets setup --non-interactive --from-env correctly
+  sets declared secrets into a file-backed store, that wfctl secrets list
+  --json reports accurate set/unset status, that --skip-existing is a true
+  no-op, and — critically — that secret values never appear in stdout or
+  the audit log (the audit JSONL records only name, store, and actor).
+
+  Drives:
+    - wfctl secrets list -json (unset baseline)
+    - wfctl secrets setup --non-interactive --from-env --only APP_TOKEN
+    - wfctl secrets list -json (set after store write)
+    - wfctl secrets setup --skip-existing (no-op verification)
+    - audit JSONL value-never-leaked assertion
+
+  Config-validation + CLI-driven; no live cloud credentials required.
+components:
+  - workflow >= 0.66.0
+  - wfctl secrets list --json
+  - wfctl secrets setup --non-interactive --from-env
+  - secrets.file provider
+status: testable
+tags:
+  - secrets
+  - non-interactive
+  - file-provider
+  - audit
+  - local-only
+runtime: local

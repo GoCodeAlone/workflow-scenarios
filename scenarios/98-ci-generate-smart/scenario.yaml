@@ -1,0 +1,35 @@
+name: CI Generate — Smart Plan-then-Generate
+id: "98-ci-generate-smart"
+category: C
+description: |
+  Showcases the two-step "plan then generate" CI workflow introduced by
+  wfctl ci plan and wfctl ci generate --from-plan.
+
+  The config declares a deployable app with an iac.container_service,
+  secret env wiring, a health check, a custom domain, and a CI migrations
+  block. The test drives:
+
+    1. wfctl validate --skip-unknown-types passes.
+    2. wfctl ci plan --out plan.json emits valid JSON with a secrets array
+       (APP_DB_URL, APP_JWT) and a non-empty warnings array.
+    3. wfctl ci generate --from-plan plan.json --platform github_actions
+       --out out --write writes a .github/workflows/*.yml file.
+    4. The generated YAML: parses as valid YAML, wires ${{ secrets.APP_JWT }},
+       includes a "wfctl plugin install" step, includes a "Run migrations"
+       step (wfctl ci run --phase migrate), and includes a smoke-test job
+       hitting app.example.com/healthz.
+
+  Config-validation + CLI-driven; no live cloud credentials required.
+components:
+  - workflow >= 0.66.0
+  - wfctl ci plan --out
+  - wfctl ci generate --from-plan
+  - infra.container_service
+status: testable
+tags:
+  - ci
+  - ci-plan
+  - ci-generate
+  - secrets
+  - local-only
+runtime: local

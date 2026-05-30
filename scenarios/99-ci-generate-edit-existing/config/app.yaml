@@ -1,0 +1,62 @@
+# Scenario 99 — CI generate drift-detection showcase.
+#
+# Identical structure to scenario 98 (http.server + iac modules +
+# container_service + secrets + ci.migrations) so wfctl ci generate
+# produces a non-trivial .github/workflows/*.yml to diff against.
+#
+# SC99_STORE_DIR and SC99_STATE_DIR are exported by run.sh.
+modules:
+  - name: http
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: provider
+    type: iac.provider
+    config:
+      provider: digitalocean
+
+  - name: state
+    type: iac.state
+    config:
+      backend: filesystem
+      directory: ${SC99_STATE_DIR}
+
+  - name: app-container
+    type: infra.container_service
+    protected: true
+    config:
+      provider: provider
+      image: registry.digitalocean.com/myorg/app:latest
+      instance_size: basic-xs
+      instance_count: 1
+      http_port: 8080
+      env_vars_secret:
+        APP_DB_URL: "${APP_DB_URL}"
+        APP_JWT: "${APP_JWT}"
+      health_check:
+        http_path: /healthz
+      domains:
+        - domain: app.example.com
+          type: PRIMARY
+
+secrets:
+  defaultStore: localfs
+  entries:
+    - name: APP_DB_URL
+      description: Database connection URL.
+    - name: APP_JWT
+      description: JWT signing secret.
+
+secretStores:
+  localfs:
+    provider: file
+    config:
+      path: ${SC99_STORE_DIR}
+
+ci:
+  migrations:
+    - name: app-db
+      source_dir: migrations/
+      database:
+        env: APP_DB_URL

@@ -1,0 +1,65 @@
+# Scenario 98 — CI generate smart plan-then-generate showcase.
+#
+# A deployable application config with:
+#   - http.server entry point (satisfies wfctl validate entryPoints guard)
+#   - iac.provider + iac.state (enables infra commands)
+#   - infra.container_service with secret env wiring, health check, domain
+#   - secrets block (APP_DB_URL, APP_JWT) backed by a file store
+#   - ci.migrations block (triggers migration step in generated CI)
+#
+# The test sets SC98_STORE_DIR at runtime so the file-store path resolves.
+modules:
+  - name: http
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: provider
+    type: iac.provider
+    config:
+      provider: digitalocean
+
+  - name: state
+    type: iac.state
+    config:
+      backend: filesystem
+      directory: ${SC98_STATE_DIR}
+
+  - name: app-container
+    type: infra.container_service
+    protected: true
+    config:
+      provider: provider
+      image: registry.digitalocean.com/myorg/app:latest
+      instance_size: basic-xs
+      instance_count: 1
+      http_port: 8080
+      env_vars_secret:
+        APP_DB_URL: "${APP_DB_URL}"
+        APP_JWT: "${APP_JWT}"
+      health_check:
+        http_path: /healthz
+      domains:
+        - domain: app.example.com
+          type: PRIMARY
+
+secrets:
+  defaultStore: localfs
+  entries:
+    - name: APP_DB_URL
+      description: Database connection URL (populated by IaC bootstrap).
+    - name: APP_JWT
+      description: JWT signing secret.
+
+secretStores:
+  localfs:
+    provider: file
+    config:
+      path: ${SC98_STORE_DIR}
+
+ci:
+  migrations:
+    - name: app-db
+      source_dir: migrations/
+      database:
+        env: APP_DB_URL

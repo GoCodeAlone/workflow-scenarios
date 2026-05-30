@@ -1150,6 +1150,42 @@
       "notes": "Config-validation scenario for the infra.dyndns module backed by multiple DNS providers in a single config (DigitalOcean + Namecheap + Hover). Demonstrates the provider-agnostic dyndns shape. No live cloud or DNS API calls. Renumbered from 72 to free slot 96.",
       "lastTested": null,
       "lastResult": null
+    },
+    "97-secrets-wizard-noninteractive": {
+      "status": "testable",
+      "namespace": "local",
+      "deployed": false,
+      "testCount": 14,
+      "passCount": 14,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Showcases wfctl secrets setup --non-interactive --from-env against a file-backed store. Asserts set/unset JSON status, --skip-existing no-op, and that the audit JSONL never contains raw secret values (value-never-leaked).",
+      "lastTested": "2026-05-30T00:00:00Z",
+      "lastResult": "pass"
+    },
+    "98-ci-generate-smart": {
+      "status": "testable",
+      "namespace": "local",
+      "deployed": false,
+      "testCount": 11,
+      "passCount": 11,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Showcases wfctl ci plan --out plan.json (platform-neutral CIPlan JSON with secrets+warnings) then wfctl ci generate --from-plan producing a .github/workflows/*.yml with secret env wiring, plugin install step, functional migration step (wfctl migrations up — post-PR4 fix; asserts no obsolete --phase migrate), and smoke-test job.",
+      "lastTested": "2026-05-30T00:00:00Z",
+      "lastResult": "pass"
+    },
+    "99-ci-generate-edit-existing": {
+      "status": "testable",
+      "namespace": "local",
+      "deployed": false,
+      "testCount": 9,
+      "passCount": 9,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Showcases wfctl ci generate --diff --exit-code drift detection: exits 1 with diff output when the on-disk file has manual edits, exits 0 after clean --write regeneration. Validates the idempotent re-generation contract used as a CI lint gate.",
+      "lastTested": "2026-05-30T00:00:00Z",
+      "lastResult": "pass"
     }
   }
 }

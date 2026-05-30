@@ -1,0 +1,30 @@
+name: CI Generate — Edit Existing / Drift Detection
+id: "99-ci-generate-edit-existing"
+category: C
+description: |
+  Showcases wfctl ci generate --diff --exit-code for drift detection
+  against an existing workflow file. The test:
+
+    1. Generates a .github/workflows/*.yml from the config (--write).
+    2. Appends a stray line to the generated file to simulate manual edits.
+    3. Re-runs generate with --diff --exit-code — asserts exit code 1
+       (drift detected) and that a diff is printed.
+    4. Regenerates clean (--write), then --diff --exit-code again — asserts
+       exit code 0 (no drift).
+
+  This validates the "idempotent re-generation" contract: generate is
+  deterministic and --diff --exit-code is a reliable CI lint gate.
+
+  Config-validation + CLI-driven; no live cloud credentials required.
+components:
+  - workflow >= 0.66.0
+  - wfctl ci generate --diff --exit-code
+  - wfctl ci generate --write
+status: testable
+tags:
+  - ci
+  - ci-generate
+  - diff
+  - drift-detection
+  - local-only
+runtime: local
