@@ -1,0 +1,24 @@
+# Scenario 97 — Secrets wizard non-interactive showcase.
+#
+# Declares two secrets (APP_TOKEN, APP_SECRET) backed by a file store
+# whose path is resolved from $SC97_STORE_DIR at runtime (set by run.sh).
+# The http.server entry-point satisfies wfctl validate's entryPoints guard.
+modules:
+  - name: http
+    type: http.server
+    config:
+      address: ":8080"
+
+secrets:
+  defaultStore: localfs
+  entries:
+    - name: APP_TOKEN
+      description: Application API token.
+    - name: APP_SECRET
+      description: Application signing secret.
+
+secretStores:
+  localfs:
+    provider: file
+    config:
+      path: ${SC97_STORE_DIR}
