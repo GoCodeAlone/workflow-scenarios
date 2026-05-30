@@ -12,7 +12,8 @@ import json, datetime
 with open('scenarios.json', 'r') as f:
     d = json.load(f)
 d['scenarios']['$SCENARIO']['deployed'] = '$VALUE' == 'true'
-d['lastUpdated'] = datetime.datetime.now(datetime.UTC).isoformat().replace('+00:00', 'Z')
+_utc = getattr(datetime, 'UTC', datetime.timezone.utc)
+d['lastUpdated'] = datetime.datetime.now(_utc).isoformat().replace('+00:00', 'Z')
 with open('scenarios.json', 'w') as f:
     json.dump(d, f, indent=2)
     f.write('\n')
@@ -28,7 +29,8 @@ import json, datetime
 with open('scenarios.json', 'r') as f:
     d = json.load(f)
 s = d['scenarios']['$SCENARIO']
-now = datetime.datetime.now(datetime.UTC).isoformat().replace('+00:00', 'Z')
+_utc = getattr(datetime, 'UTC', datetime.timezone.utc)
+now = datetime.datetime.now(_utc).isoformat().replace('+00:00', 'Z')
 s['lastTested'] = now
 s['lastResult'] = '$RESULT'
 s['testCount'] = $TOTAL

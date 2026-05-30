@@ -1,5 +1,5 @@
 name: DNS Cross-Provider Transfer
-id: "90-dns-cross-provider-transfer"
+id: "93-dns-cross-provider-transfer"
 category: C
 description: |
   Applies the same DNS record set against two stub IaCProvider

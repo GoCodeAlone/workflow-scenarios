@@ -1,5 +1,5 @@
 name: IaC Dynamic DNS Multi-Provider
-id: "72-iac-dyndns-multiprovider"
+id: "96-iac-dyndns-multiprovider"
 category: C
 description: |
   Config-validation scenario for the infra.dyndns module backed by

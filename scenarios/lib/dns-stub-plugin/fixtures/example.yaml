@@ -3,7 +3,7 @@
 # Default fixture loaded by the DNS stub plugin when DNS_STUB_FIXTURE
 # (or the stub module's config.fixture_path) points here. Used by
 # scenario 89-dns-import-export-roundtrip to pre-populate state before
-# the test invokes `wfctl infra import-all`. Scenarios 90 and 91 supply
+# the test invokes `wfctl infra import-all`. Scenarios 93 and 91 supply
 # their own per-stub fixtures so the cross-provider transfer and
 # delegation paths can route to separate state files.
 zones:

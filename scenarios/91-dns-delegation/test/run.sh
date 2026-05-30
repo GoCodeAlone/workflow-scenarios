@@ -8,7 +8,7 @@
 # workflow/interfaces/iac_state.go:37).
 #
 # Uses fixture-seed (not `wfctl infra apply`) for the same reason as
-# scenario 90 — see run.sh comment there.
+# scenario 93 — see run.sh comment there.
 set -uo pipefail
 
 SCENARIO="91-dns-delegation"

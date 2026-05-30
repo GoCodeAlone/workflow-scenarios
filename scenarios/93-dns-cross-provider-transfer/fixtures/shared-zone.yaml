@@ -1,5 +1,5 @@
 # Shared DNS record set loaded into both stub-A and stub-B for scenario
-# 90's cross-provider parity test. The two stubs read this same fixture
+# 93's cross-provider parity test. The two stubs read this same fixture
 # but persist their state to separate files (see config/source.yaml,
 # config/target.yaml). Records mirror what a typical multi-cloud DNS
 # transfer would carry; NS is omitted (apex nameservers are provider-

@@ -1,5 +1,5 @@
 name: IaC Hover DNS
-id: "71-iac-hover-dns"
+id: "95-iac-hover-dns"
 category: C
 description: |
   Config-validation scenario for a Hover-managed DNS zone via

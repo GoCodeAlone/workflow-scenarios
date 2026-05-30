@@ -8,7 +8,7 @@ description: |
   apply, imports each provider's state and asserts the delegation
   records survive the roundtrip with `.applied_config.records[]` jq
   matchers. Validates cross-provider DNS orchestration via the same
-  stub plugin used by scenarios 89 + 90.
+  stub plugin used by scenarios 89 + 93.
 components:
   - workflow >= 0.65.0
   - workflow-scenarios stub DNS provider plugin
