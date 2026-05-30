@@ -1,0 +1,30 @@
+# Scenario 90 — source config (stub-A, simulating a DigitalOcean-shape
+# DNS account). Stub-A loads its records from fixtures/shared-zone.yaml
+# via the fixture_path config key (set by the stub plugin's Initialize).
+#
+# Resource module declares the SANITIZED zone ID as its Name so
+# `wfctl infra plan` against this config (after import-all) matches the
+# imported state.
+modules:
+  - name: stub-A
+    type: iac.provider
+    config:
+      provider: stub-A
+      state_path: /tmp/dns-stub-90-source.json
+      # fixture_path absolute (relative paths don't resolve cleanly when
+      # wfctl spawns the plugin process — CWD inheritance varies). Per-
+      # stub fixture, deployed into /tmp by test/run.sh so both stubs
+      # can route to separate state files if needed.
+      fixture_path: /tmp/dns-stub-90-shared-fixture.yaml
+
+  - name: iac-state
+    type: iac.state
+    config:
+      backend: filesystem
+      directory: /tmp/dns-stub-90-source-statestore
+
+  - name: shared-test
+    type: infra.dns
+    config:
+      provider: stub-A
+      domain: shared.test

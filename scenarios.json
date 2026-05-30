@@ -1,10 +1,4 @@
 {
-  "lastUpdated": "2026-05-30T03:09:03.940730Z",
-  "componentVersions": {
-    "workflow": "v0.2.15",
-    "workflow-cloud": "v0.1.0",
-    "ratchet": ""
-  },
   "scenarios": {
     "01-idp": {
       "status": "passed",
@@ -1074,6 +1068,18 @@
       "lastTested": "2026-05-30T03:05:06.401276Z",
       "lastResult": "pass"
     },
+    "90-admin-tailnet-demo": {
+      "status": "testable",
+      "namespace": "local",
+      "deployed": false,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Docker Compose app/admin demo with auth-gated admin portal, dynamic auth provider descriptor catalog, authz RBAC/ABAC/ReBAC UI, Ory Keto enforcement, and optional Tailscale sidecar.",
+      "lastTested": null,
+      "lastResult": null
+    },
     "91-dns-delegation": {
       "status": "passed",
       "namespace": "local",
@@ -1085,6 +1091,17 @@
       "notes": "Parent zone at stub-A delegates child.example.test to stub-B via NS records; child zone served at stub-B. Single `wfctl infra apply` reconciles both providers; subsequent imports assert the delegation survives via .applied_config.records[] jq matchers.",
       "lastTested": "2026-05-30T03:09:00.515687Z",
       "lastResult": "pass"
+    },
+    "92-infra-admin-demo": {
+      "status": "pending",
+      "namespace": "wf-scenario-92",
+      "deployed": false,
+      "lastTested": "",
+      "lastResult": "",
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": []
     },
     "93-dns-cross-provider-transfer": {
       "status": "passed",
