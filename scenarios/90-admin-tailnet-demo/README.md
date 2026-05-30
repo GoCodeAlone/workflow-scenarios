@@ -3,6 +3,7 @@
 This scenario runs the Workflow Go server with external Go plugin binaries. It
 does not contain or run an application-specific Python/Node/Ruby web harness.
 
+- Primary app: <http://localhost:18080/>
 - App/status API: <http://localhost:18080/api/status>
 - Admin shell: <http://localhost:18080/admin/>
 - Authz admin contribution: <http://localhost:18080/admin/authz/>
@@ -13,6 +14,11 @@ The scenario creates an admin user during tests:
 
 - Email: `admin@tailnet`
 - Password: `admin-password`
+
+The primary app test user is:
+
+- Email: `app-user@tailnet`
+- Password: `app-password`
 
 The image is built by `seed/seed.sh` from local checkouts:
 
@@ -29,11 +35,13 @@ The image is built by `seed/seed.sh` from local checkouts:
 - `workflow-plugin-ory-polis`
 - `workflow-plugin-scalekit`
 
-The admin UI is served by Workflow `static.fileserver`; admin navigation is
-backed by `step.admin_register_contribution` and
-`step.admin_list_contributions`; auth configuration is backed by
-`step.auth_provider_catalog` and `step.auth_admin_config_describe`; authz proof
-endpoints use `workflow-plugin-authz-ui` steps.
+The root app, admin UI, and authz UI are all served by Workflow routes and
+`static.fileserver`. Admin navigation is backed by
+`step.admin_register_contribution` and `step.admin_list_contributions`; auth
+configuration is declared by `step.auth_admin_contribution_describe` and rendered
+through the admin shell's generic config-form mode; authz proof endpoints use
+`workflow-plugin-authz-ui` steps. The app demonstrates frontend scope checks for
+order read/update and admin scope checks for auth/authz management pages.
 
 ## Run
 
