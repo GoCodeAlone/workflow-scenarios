@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Scenario 72 — IaC Dynamic DNS Multi-Provider
+# Scenario 96 — IaC Dynamic DNS Multi-Provider
 set -uo pipefail
 
-SCENARIO="72-iac-dyndns-multiprovider"
+SCENARIO="96-iac-dyndns-multiprovider"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENARIO_DIR="$(dirname "$SCRIPT_DIR")"
 WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$SCENARIO_DIR/../../.." && pwd)/workflow}"

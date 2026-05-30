@@ -1,4 +1,4 @@
-# Scenario 90 — target config (stub-B). Loads from the SAME fixture as
+# Scenario 93 — target config (stub-B). Loads from the SAME fixture as
 # source.yaml so a roundtrip can assert per-record parity modulo the
 # lossiness charter exclusions.
 modules:
@@ -6,14 +6,14 @@ modules:
     type: iac.provider
     config:
       provider: stub-B
-      state_path: /tmp/dns-stub-90-target.json
-      fixture_path: /tmp/dns-stub-90-shared-fixture.yaml
+      state_path: /tmp/dns-stub-93-target.json
+      fixture_path: /tmp/dns-stub-93-shared-fixture.yaml
 
   - name: iac-state
     type: iac.state
     config:
       backend: filesystem
-      directory: /tmp/dns-stub-90-target-statestore
+      directory: /tmp/dns-stub-93-target-statestore
 
   - name: shared-test
     type: infra.dns

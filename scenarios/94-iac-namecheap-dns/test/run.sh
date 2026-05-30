@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Scenario 70 — IaC Namecheap DNS
+# Scenario 94 — IaC Namecheap DNS
 # Config-validation only — no live Namecheap API.
 set -uo pipefail
 
-SCENARIO="70-iac-namecheap-dns"
+SCENARIO="94-iac-namecheap-dns"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENARIO_DIR="$(dirname "$SCRIPT_DIR")"
 WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$SCENARIO_DIR/../../.." && pwd)/workflow}"

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Scenario 71 — IaC Hover DNS
+# Scenario 95 — IaC Hover DNS
 # Config-validation only.
 set -uo pipefail
 
-SCENARIO="71-iac-hover-dns"
+SCENARIO="95-iac-hover-dns"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENARIO_DIR="$(dirname "$SCRIPT_DIR")"
 WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$SCENARIO_DIR/../../.." && pwd)/workflow}"

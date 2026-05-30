@@ -1,5 +1,5 @@
 name: IaC Namecheap DNS
-id: "70-iac-namecheap-dns"
+id: "94-iac-namecheap-dns"
 category: C
 description: |
   Config-validation scenario for a Namecheap-managed DNS zone via

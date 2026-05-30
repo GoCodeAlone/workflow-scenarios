@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Scenario 90 — DNS cross-provider transfer.
+# Scenario 93 — DNS cross-provider transfer.
 #
 # Pre-loads the SAME record set into two stub provider instances
 # (stub-A, stub-B) via fixture seeding, imports both states, then
@@ -12,7 +12,7 @@
 # import-then-plan-NoOp roundtrip.
 set -uo pipefail
 
-SCENARIO="90-dns-cross-provider-transfer"
+SCENARIO="93-dns-cross-provider-transfer"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENARIO_DIR="$(dirname "$SCRIPT_DIR")"
 SCENARIOS_ROOT="$(dirname "$SCENARIO_DIR")"
@@ -23,13 +23,13 @@ TARGET_CFG="$SCENARIO_DIR/config/target.yaml"
 LOSSINESS="$SCENARIO_DIR/config/lossiness.yaml"
 VERIFY="$SCRIPT_DIR/verify-transfer.py"
 
-SOURCE_IMPORT="/tmp/dns-stub-90-source-import.json"
-TARGET_IMPORT="/tmp/dns-stub-90-target-import.json"
+SOURCE_IMPORT="/tmp/dns-stub-93-source-import.json"
+TARGET_IMPORT="/tmp/dns-stub-93-target-import.json"
 
-PLUGIN_ROOT="/tmp/wfctl-plugins-90"
+PLUGIN_ROOT="/tmp/wfctl-plugins-93"
 PLUGIN_A_DIR="$PLUGIN_ROOT/dns-stub-a"
 PLUGIN_B_DIR="$PLUGIN_ROOT/dns-stub-b"
-BUILD_LOG="/tmp/dns-stub-90-build.log"
+BUILD_LOG="/tmp/dns-stub-93-build.log"
 
 PASS=0
 FAIL=0
@@ -68,7 +68,7 @@ fi
 
 # Build stub once, deploy under two per-plugin subdirs (one per provider name).
 rm -rf "$PLUGIN_ROOT" && mkdir -p "$PLUGIN_A_DIR" "$PLUGIN_B_DIR"
-if (cd "$STUB_SRC" && GOWORK=off go build -o /tmp/dns-stub-90-shared .) >"$BUILD_LOG" 2>&1; then
+if (cd "$STUB_SRC" && GOWORK=off go build -o /tmp/dns-stub-93-shared .) >"$BUILD_LOG" 2>&1; then
     pass "stub plugin builds"
 else
     fail "stub plugin build failed — see $BUILD_LOG"
@@ -76,8 +76,8 @@ else
     echo "Results: $PASS passed, $FAIL failed, $SKIP skipped"
     exit 1
 fi
-cp /tmp/dns-stub-90-shared "$PLUGIN_A_DIR/dns-stub-a"
-cp /tmp/dns-stub-90-shared "$PLUGIN_B_DIR/dns-stub-b"
+cp /tmp/dns-stub-93-shared "$PLUGIN_A_DIR/dns-stub-a"
+cp /tmp/dns-stub-93-shared "$PLUGIN_B_DIR/dns-stub-b"
 cat >"$PLUGIN_A_DIR/plugin.json" <<'JSON'
 {
   "name": "dns-stub-a",
@@ -103,13 +103,13 @@ JSON
 
 # Copy per-scenario fixture to a stable /tmp path (relative paths don't
 # resolve cleanly across the wfctl→plugin process boundary; the configs
-# reference /tmp/dns-stub-90-shared-fixture.yaml).
-cp "$SCENARIO_DIR/fixtures/shared-zone.yaml" /tmp/dns-stub-90-shared-fixture.yaml
+# reference /tmp/dns-stub-93-shared-fixture.yaml).
+cp "$SCENARIO_DIR/fixtures/shared-zone.yaml" /tmp/dns-stub-93-shared-fixture.yaml
 
 # Fresh state per run so the fixture seed fires on first Initialize.
-rm -f /tmp/dns-stub-90-source.json /tmp/dns-stub-90-target.json
+rm -f /tmp/dns-stub-93-source.json /tmp/dns-stub-93-target.json
 rm -f "$SOURCE_IMPORT" "$TARGET_IMPORT"
-rm -rf /tmp/dns-stub-90-source-statestore /tmp/dns-stub-90-target-statestore
+rm -rf /tmp/dns-stub-93-source-statestore /tmp/dns-stub-93-target-statestore
 
 export WFCTL_PLUGIN_DIR="$PLUGIN_ROOT"
 unset DNS_STUB_FIXTURE # configs supply per-stub fixture_path
