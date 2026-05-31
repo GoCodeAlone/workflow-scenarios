@@ -127,7 +127,7 @@ build_plugin() {
 
 BUILD_DIR="$SCENARIO_DIR/.build"
 rm -rf "$BUILD_DIR"
-mkdir -p "$BUILD_DIR/plugins" "$BUILD_DIR/admin-ui" "$BUILD_DIR/authz-ui" "$BUILD_DIR/app-ui"
+mkdir -p "$BUILD_DIR/plugins" "$BUILD_DIR/admin-ui" "$BUILD_DIR/authz-ui" "$BUILD_DIR/app-ui" "$BUILD_DIR/data"
 cp "$SCENARIO_DIR/config/app.yaml" "$BUILD_DIR/app.yaml"
 
 require_go_module "$WORKFLOW_REPO"
@@ -199,6 +199,7 @@ cat > "$BUILD_DIR/Dockerfile" <<'DOCKERFILE'
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --chown=nonroot:nonroot server /usr/local/bin/server
 COPY --chown=nonroot:nonroot plugins/ /data/plugins/
+COPY --chown=nonroot:nonroot data/ /data/data/
 COPY --chown=nonroot:nonroot app.yaml /data/app.yaml
 COPY --chown=nonroot:nonroot admin-ui/ /opt/workflow-admin-ui/
 COPY --chown=nonroot:nonroot authz-ui/ /opt/workflow-authz-ui/
