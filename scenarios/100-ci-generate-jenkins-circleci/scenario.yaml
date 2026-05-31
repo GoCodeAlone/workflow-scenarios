@@ -1,0 +1,37 @@
+name: CI Generate Jenkins + CircleCI (config-derived)
+id: "100-ci-generate-jenkins-circleci"
+category: C
+description: |
+  Behavior proof for workflow#804: `wfctl ci generate --platform jenkins` and
+  `--platform circleci` now produce CONFIG-DERIVED CI output via the cigen
+  analyze → CIPlan → render pipeline (the same path GitHub Actions and GitLab CI
+  use), replacing the legacy non-config-derived template generators.
+
+  The scenario runs the real wfctl against a config that exercises every
+  derivation and asserts the emitted Jenkinsfile / .circleci/config.yml contain:
+    - secret env wiring (Jenkins credentials('NAME'); CircleCI project env vars)
+    - the real `wfctl migrations up` migration step (never `wfctl ci run --phase migrate`)
+    - a /healthz smoke check
+    - a plan-guard that fails (exit 1) on replace/destroy of a protected resource
+    - `wfctl infra apply`
+  and are FREE of the retired legacy stages (`go test ./...`,
+  `wfctl deploy --image`, `docker build`) per ADR 0044.
+
+  Also validates a step.ci_generate config targeting jenkins/circleci (config
+  shape). The behavior half of the plugin route is proven by the ci-generator
+  plugin's integration_test.go.
+
+  Requires wfctl built from workflow >= v0.68.0 (set WFCTL_BIN, or the harness
+  builds from the sibling workflow checkout). No live Jenkins/CircleCI execution.
+components:
+  - wfctl ci generate (cigen RenderJenkins / RenderCircleCI)
+  - cigen analyze → CIPlan → render
+  - step.ci_generate (config-shape)
+status: testable
+tags:
+  - ci
+  - jenkins
+  - circleci
+  - cigen
+  - config-derived
+  - local-only
