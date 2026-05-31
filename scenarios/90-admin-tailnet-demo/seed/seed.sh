@@ -46,8 +46,12 @@ find_admin_repo() {
   fi
 
   local root="$WORKSPACE_ROOT/workflow-plugin-admin"
+  if [ -d "$root/.worktrees/auth-portal-manager" ] && admin_repo_is_usable "$root/.worktrees/auth-portal-manager"; then
+    echo "$root/.worktrees/auth-portal-manager"
+    return 0
+  fi
   local candidate
-  for candidate in "$root" "$root"/.worktrees/*; do
+  for candidate in "$root"/.worktrees/* "$root"; do
     [ -d "$candidate" ] || continue
     if admin_repo_is_usable "$candidate"; then
       echo "$candidate"
@@ -71,8 +75,8 @@ find_admin_repo() {
 
 WORKFLOW_REPO="${WORKFLOW_REPO:-$WORKSPACE_ROOT/workflow}"
 PLUGIN_ADMIN_REPO="$(find_admin_repo)"
-PLUGIN_AUTH_REPO="${PLUGIN_AUTH_REPO:-$WORKSPACE_ROOT/workflow-plugin-auth/.worktrees/auth-provider-architecture}"
-PLUGIN_AUTHZ_UI_REPO="${PLUGIN_AUTHZ_UI_REPO:-$WORKSPACE_ROOT/workflow-plugin-authz-ui}"
+PLUGIN_AUTH_REPO="${PLUGIN_AUTH_REPO:-$WORKSPACE_ROOT/workflow-plugin-auth/.worktrees/auth-admin-contribution}"
+PLUGIN_AUTHZ_UI_REPO="${PLUGIN_AUTHZ_UI_REPO:-$WORKSPACE_ROOT/workflow-plugin-authz-ui/.worktrees/authz-ui-admin-bridge}"
 IMAGE_TAG="${IMAGE_TAG:-workflow-admin:scenario-90}"
 
 provider_repos=(
@@ -123,7 +127,7 @@ build_plugin() {
 
 BUILD_DIR="$SCENARIO_DIR/.build"
 rm -rf "$BUILD_DIR"
-mkdir -p "$BUILD_DIR/plugins" "$BUILD_DIR/admin-ui" "$BUILD_DIR/authz-ui"
+mkdir -p "$BUILD_DIR/plugins" "$BUILD_DIR/admin-ui" "$BUILD_DIR/authz-ui" "$BUILD_DIR/app-ui"
 cp "$SCENARIO_DIR/config/app.yaml" "$BUILD_DIR/app.yaml"
 
 require_go_module "$WORKFLOW_REPO"
@@ -152,8 +156,44 @@ fi
 if [ -d "$PLUGIN_AUTHZ_UI_REPO/ui/dist" ]; then
   cp -R "$PLUGIN_AUTHZ_UI_REPO/ui/dist/." "$BUILD_DIR/authz-ui/"
 else
+  if [ -f "$PLUGIN_AUTHZ_UI_REPO/ui/package.json" ]; then
+    (cd "$PLUGIN_AUTHZ_UI_REPO/ui" && npm ci && npm run build)
+  fi
+fi
+if [ -d "$PLUGIN_AUTHZ_UI_REPO/ui/dist" ]; then
+  cp -R "$PLUGIN_AUTHZ_UI_REPO/ui/dist/." "$BUILD_DIR/authz-ui/"
+else
   cp -R "$PLUGIN_AUTHZ_UI_REPO/internal/ui_dist/." "$BUILD_DIR/authz-ui/"
 fi
+cp -R "$SCENARIO_DIR/app-ui/." "$BUILD_DIR/app-ui/"
+
+cat > "$BUILD_DIR/authz-ui/runtime-config.js" <<'JS'
+window.__WORKFLOW_AUTHZ_UI__ = window.WORKFLOW_AUTHZ_UI_CONFIG = {
+  api_base_path: "/api/authz",
+  admin_base_path: "/admin/authz",
+  frontend_context: "frontend",
+  admin_context: "admin",
+  capabilities_path: "/capabilities",
+  granted_scopes: ["admin:authz.roles:read"],
+  scopes: [
+    { name: "frontend:orders:read", context: "frontend", resource: "orders", actions: ["read"], description: "Read customer orders in the primary app." },
+    { name: "frontend:orders:update", context: "frontend", resource: "orders", actions: ["update"], description: "Update customer orders in the primary app." },
+    { name: "admin:authz.roles:read", context: "admin", resource: "authz.roles", actions: ["read"], description: "View role and scope assignments in admin." },
+    { name: "admin:authz.roles:update", context: "admin", resource: "authz.roles", actions: ["update"], description: "Manage role and scope assignments in admin." }
+  ]
+};
+JS
+if ! grep -q 'runtime-config.js' "$BUILD_DIR/authz-ui/index.html"; then
+  tmp_index="$BUILD_DIR/authz-ui/index.html.tmp"
+  sed 's#</head>#<script src="/admin/authz/runtime-config.js"></script></head>#' "$BUILD_DIR/authz-ui/index.html" > "$tmp_index"
+  mv "$tmp_index" "$BUILD_DIR/authz-ui/index.html"
+fi
+mkdir -p "$BUILD_DIR/admin-ui/authz"
+cp -R "$BUILD_DIR/authz-ui/." "$BUILD_DIR/admin-ui/authz/"
+mkdir -p "$BUILD_DIR/plugins/workflow-plugin-admin/ui_dist/authz"
+cp -R "$BUILD_DIR/authz-ui/." "$BUILD_DIR/plugins/workflow-plugin-admin/ui_dist/authz/"
+mkdir -p "$BUILD_DIR/plugins/workflow-plugin-authz-ui/ui_dist"
+cp -R "$BUILD_DIR/authz-ui/." "$BUILD_DIR/plugins/workflow-plugin-authz-ui/ui_dist/"
 
 cat > "$BUILD_DIR/Dockerfile" <<'DOCKERFILE'
 FROM gcr.io/distroless/static-debian12:nonroot
@@ -162,6 +202,7 @@ COPY --chown=nonroot:nonroot plugins/ /data/plugins/
 COPY --chown=nonroot:nonroot app.yaml /data/app.yaml
 COPY --chown=nonroot:nonroot admin-ui/ /opt/workflow-admin-ui/
 COPY --chown=nonroot:nonroot authz-ui/ /opt/workflow-authz-ui/
+COPY --chown=nonroot:nonroot app-ui/ /opt/workflow-app-ui/
 USER nonroot
 WORKDIR /data
 ENV WFCTL_PLUGIN_DIR=/data/plugins

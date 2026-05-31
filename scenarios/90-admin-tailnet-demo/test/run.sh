@@ -35,10 +35,10 @@ json_len_at_least() {
   fi
 }
 
-if find "$SCENARIO_DIR" -type f -name '*.py' | grep -q .; then
-  fail "Scenario contains a Python app harness"
+if find "$SCENARIO_DIR" -type f \( -name '*.py' -o -name '*.pyc' \) | grep -q .; then
+  fail "Scenario contains a Python app harness artifact"
 else
-  pass "Scenario has no Python app harness"
+  pass "Scenario has no Python app harness artifacts"
 fi
 
 "$SCENARIO_DIR/seed/seed.sh"
@@ -50,6 +50,12 @@ contains "$entrypoint" '"/data/app.yaml"' "Container runs Workflow config"
 status="$(curl -fsS "$BASE/api/status")"
 contains "$status" '"runtime":"workflow-go-server"' "Status API reports Workflow Go runtime"
 contains "$status" '"plugin_runtime":"external-go-binaries"' "Status API reports external Go plugin runtime"
+contains "$status" '"primary_app":"/"' "Status API reports root primary app"
+
+root_page="$(curl -fsS "$BASE/")"
+contains "$root_page" "Scenario 90 Workflow App" "Root path serves the primary Workflow app"
+contains "$root_page" "/admin/" "Primary app links to admin portal"
+contains "$root_page" "/app/app.js" "Primary app loads Workflow-served SPA asset"
 
 admin_status="$(curl -s -o /dev/null -w "%{http_code}:%{redirect_url}" "$BASE/admin")"
 if [[ "$admin_status" == "308:$BASE/admin/" || "$admin_status" == "308:/admin/" ]]; then
@@ -107,6 +113,8 @@ contains "$profile" '"email":"admin@tailnet"' "Admin token validates through aut
 
 contribs="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/admin/contributions")"
 contains "$contribs" '"id":"authz-roles"' "Admin plugin registered authz contribution"
+contains "$contribs" '"id":"auth-config"' "Admin plugin registered auth contribution from auth plugin"
+contains "$contribs" '"render_mode":"config-form"' "Auth contribution uses generic config form render mode"
 contains "$contribs" '"render_mode":"iframe"' "Admin contribution uses pluggable iframe render mode"
 
 catalog="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/admin/auth/providers")"
@@ -126,6 +134,10 @@ else
   pass "Auth config does not echo provider secrets"
 fi
 
+validate_config="$(curl -fsS -H "$AUTH_HEADER" -H 'content-type: application/json' -d '{"desired_config":{"environment":"production","password_auth_enabled":true}}' "$BASE/api/admin/auth/config/validate")"
+contains "$validate_config" '"valid":false' "Auth config validation rejects unsafe production password login"
+contains "$validate_config" 'password auth cannot be enabled in production' "Auth config validation returns plugin diagnostic"
+
 for provider in auth0 entra ory-kratos ory-hydra ory-polis scalekit; do
   body="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/admin/auth/providers/$provider")"
   contains "$body" '"providers"' "Provider $provider route is backed by provider plugin step"
@@ -140,6 +152,9 @@ roles="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/authz/roles")"
 contains "$roles" '"admin@tailnet"' "Authz roles endpoint renders role assignments"
 contains "$roles" '"frontend:orders:read"' "Authz roles endpoint carries selectable scope values"
 
+add_role="$(curl -fsS -H "$AUTH_HEADER" -H 'content-type: application/json' -d '{"user":"app-user@tailnet","role":"support","context":"frontend","scopes":["frontend:orders:read"]}' "$BASE/api/authz/roles")"
+contains "$add_role" '"updated":true' "Authz role update endpoint accepts admin changes"
+
 caps="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/authz/capabilities")"
 contains "$caps" '"mode":"rbac"' "Authz capabilities report RBAC"
 contains "$caps" '"mode":"abac"' "Authz capabilities report ABAC"
@@ -148,6 +163,48 @@ contains "$caps" '"mode":"rebac"' "Authz capabilities report ReBAC"
 enforce="$(curl -fsS -H "$AUTH_HEADER" -H 'content-type: application/json' -d '{"subject":"admin@tailnet","object":"authz.roles","action":"update"}' "$BASE/api/authz/enforce")"
 contains "$enforce" '"allowed":true' "Authz UI plugin enforce step permits expected action"
 contains "$enforce" '"reason":"scenario fixture grants admin role"' "Authz enforce response comes from plugin step config"
+
+support_register="$(curl -sfS -X POST "$BASE/api/app/auth/register" \
+  -H "content-type: application/json" \
+  -d '{"email":"app-user@tailnet","password":"app-password","name":"Support User"}' 2>/dev/null || true)"
+support_token="$(jq -r '.token // .access_token // empty' <<<"$support_register" 2>/dev/null || true)"
+if [ -z "$support_token" ]; then
+  support_login="$(curl -sfS -X POST "$BASE/api/app/auth/login" \
+    -H "content-type: application/json" \
+    -d '{"email":"app-user@tailnet","password":"app-password"}' 2>/dev/null || true)"
+  support_token="$(jq -r '.token // .access_token // empty' <<<"$support_login" 2>/dev/null || true)"
+fi
+if [ -n "$support_token" ]; then
+  pass "Primary app support login returns JWT token"
+else
+  fail "Primary app support login did not return a JWT token"
+fi
+SUPPORT_AUTH_HEADER="Authorization: Bearer $support_token"
+
+support_access="$(curl -fsS -H "$SUPPORT_AUTH_HEADER" "$BASE/api/app/access")"
+contains "$support_access" '"role":"support"' "SPA access projection identifies support role"
+contains "$support_access" '"frontend:orders:read"' "SPA projection includes frontend read scope"
+if grep -q 'frontend:orders:update' <<<"$support_access"; then
+  fail "Support projection must not include frontend update scope"
+else
+  pass "Support projection omits frontend update scope"
+fi
+
+support_orders="$(curl -fsS -H "$SUPPORT_AUTH_HEADER" "$BASE/api/app/orders")"
+contains "$support_orders" '"allowed":true' "Support can read orders through authz enforcement"
+support_update_code="$(curl -s -o /tmp/scenario90-support-update.json -w "%{http_code}" -H "$SUPPORT_AUTH_HEADER" -H 'content-type: application/json' -d '{"order_id":"ORD-1002","status":"priority-review"}' "$BASE/api/app/orders/update")"
+if [ "$support_update_code" = "403" ]; then
+  pass "Support cannot update orders without frontend update scope"
+else
+  fail "Support update expected 403, got $support_update_code"
+fi
+contains "$(cat /tmp/scenario90-support-update.json)" 'missing frontend:orders:update' "Support update denial explains missing scope"
+
+admin_app_access="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/app/access")"
+contains "$admin_app_access" '"role":"admin"' "SPA access projection identifies admin role"
+contains "$admin_app_access" '"frontend:orders:update"' "Admin projection includes frontend update scope"
+admin_update="$(curl -fsS -H "$AUTH_HEADER" -H 'content-type: application/json' -d '{"order_id":"ORD-1002","status":"priority-review"}' "$BASE/api/app/orders/update")"
+contains "$admin_update" '"allowed":true' "Admin can update orders through authz enforcement"
 
 if docker compose -f "$SCENARIO_DIR/docker-compose.yml" logs app 2>&1 | grep -qi 'python'; then
   fail "App logs mention Python"

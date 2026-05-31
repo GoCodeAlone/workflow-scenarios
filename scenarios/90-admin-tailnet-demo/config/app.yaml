@@ -24,12 +24,30 @@ modules:
       app_name: Scenario 90 - Workflow Admin Tailnet Demo
       target_app: scenario-90-workflow-native
 
+  - name: authz-ui-static
+    type: static.fileserver
+    config:
+      root: /opt/workflow-authz-ui
+      prefix: /admin/authz
+      spaFallback: true
+      router: router
+    dependsOn: [router]
+
   - name: admin-ui-static
     type: static.fileserver
     config:
       root: /opt/workflow-admin-ui
       prefix: /admin
       spaFallback: true
+      router: router
+    dependsOn: [router]
+
+  - name: app-ui-static
+    type: static.fileserver
+    config:
+      root: /opt/workflow-app-ui
+      prefix: /app
+      spaFallback: false
       router: router
     dependsOn: [router]
 
@@ -77,18 +95,9 @@ modules:
         category: security
         path: /admin/authz/
         render_mode: iframe
-        app_context: app
+        app_context: admin
         permissions:
           - admin:authz.roles:read
-
-  - name: authz-ui-static
-    type: static.fileserver
-    config:
-      root: /opt/workflow-authz-ui
-      prefix: /admin/authz
-      spaFallback: true
-      router: router
-    dependsOn: [router]
 
 workflows:
   http:
@@ -104,8 +113,78 @@ workflows:
       - method: GET
         path: /api/admin/auth/profile
         handler: auth
+      - method: POST
+        path: /api/app/auth/register
+        handler: auth
+      - method: POST
+        path: /api/app/auth/login
+        handler: auth
+      - method: GET
+        path: /api/app/auth/profile
+        handler: auth
 
 pipelines:
+  app-root:
+    trigger:
+      type: http
+      config:
+        path: /
+        method: GET
+    steps:
+      - name: respond
+        type: step.raw_response
+        config:
+          status: 200
+          content_type: text/html; charset=utf-8
+          body: |
+            <!doctype html>
+            <html lang="en">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>Scenario 90 Workflow App</title>
+              <link rel="stylesheet" href="/app/styles.css">
+            </head>
+            <body>
+              <main>
+                <header>
+                  <div>
+                    <h1>Scenario 90 Workflow App</h1>
+                    <p>Primary app served by Workflow at the root. Admin is available at /admin/.</p>
+                  </div>
+                  <a class="button primary" href="/admin/">Open admin</a>
+                </header>
+                <div class="layout">
+                  <section class="panel">
+                    <h2>Sign in</h2>
+                    <div class="form">
+                      <label>Email <input id="email" type="email" value="app-user@tailnet"></label>
+                      <label>Password <input id="password" type="password" value="app-password"></label>
+                      <div class="buttons">
+                        <button id="register" class="primary" type="button">Register</button>
+                        <button id="login" type="button">Sign in</button>
+                        <button id="logout" type="button">Sign out</button>
+                      </div>
+                      <div id="status" class="status">Not signed in</div>
+                    </div>
+                  </section>
+                  <div class="stack">
+                    <section class="panel">
+                      <h2>SPA access projection</h2>
+                      <pre id="access">Loading...</pre>
+                    </section>
+                    <section class="panel">
+                      <h2>Orders API</h2>
+                      <div class="buttons"><button id="update" class="primary" type="button">Update order</button></div>
+                      <pre id="orders">Loading...</pre>
+                    </section>
+                  </div>
+                </div>
+              </main>
+              <script src="/app/app.js"></script>
+            </body>
+            </html>
+
   healthz:
     trigger:
       type: http
@@ -154,6 +233,207 @@ pipelines:
             harness: "workflow"
             app_server_language: "go"
             plugin_runtime: "external-go-binaries"
+            primary_app: "/"
+            admin_app: "/admin/"
+
+  app-access:
+    trigger:
+      type: http
+      config:
+        path: /api/app/access
+        method: GET
+    steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
+      - name: route-by-user
+        type: step.conditional
+        config:
+          field: steps.authenticate.email
+          routes:
+            admin@tailnet: admin-access
+            app-user@tailnet: support-access
+          default: viewer-access
+      - name: admin-access
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            email: { _from: "steps.authenticate.email" }
+            role: admin
+            frontend_scopes: ["frontend:orders:read", "frontend:orders:update"]
+            admin_scopes: ["admin:auth.config:read", "admin:auth.config:update", "admin:authz.roles:read", "admin:authz.roles:update"]
+            visible_panels: ["orders", "order-update", "admin-auth", "admin-authz"]
+      - name: support-access
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            email: { _from: "steps.authenticate.email" }
+            role: support
+            frontend_scopes: ["frontend:orders:read"]
+            admin_scopes: ["admin:authz.roles:read"]
+            visible_panels: ["orders", "admin-authz-readonly"]
+      - name: viewer-access
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            email: { _from: "steps.authenticate.email" }
+            role: viewer
+            frontend_scopes: []
+            admin_scopes: []
+            visible_panels: []
+
+  app-orders-read:
+    trigger:
+      type: http
+      config:
+        path: /api/app/orders
+        method: GET
+    steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
+      - name: route-by-user
+        type: step.conditional
+        config:
+          field: steps.authenticate.email
+          routes:
+            admin@tailnet: admin-read-enforce
+            app-user@tailnet: support-read-enforce
+          default: deny-read-enforce
+      - name: admin-read-enforce
+        type: step.authz_enforce
+        config:
+          subject: admin@tailnet
+          resource: orders
+          action: read
+          permitted: true
+          reason: frontend:orders:read granted by admin role
+      - name: admin-read-response
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            allowed: { _from: "steps.admin-read-enforce.permitted" }
+            reason: { _from: "steps.admin-read-enforce.reason" }
+            orders:
+              - id: ORD-1001
+                customer: Northwind
+                status: ready
+              - id: ORD-1002
+                customer: Contoso
+                status: review
+      - name: support-read-enforce
+        type: step.authz_enforce
+        config:
+          subject: app-user@tailnet
+          resource: orders
+          action: read
+          permitted: true
+          reason: frontend:orders:read granted by support role
+      - name: support-read-response
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            allowed: { _from: "steps.support-read-enforce.permitted" }
+            reason: { _from: "steps.support-read-enforce.reason" }
+            orders:
+              - id: ORD-1001
+                customer: Northwind
+                status: ready
+              - id: ORD-1002
+                customer: Contoso
+                status: review
+      - name: deny-read-enforce
+        type: step.authz_enforce
+        config:
+          subject: viewer
+          resource: orders
+          action: read
+          permitted: false
+          reason: missing frontend:orders:read
+      - name: deny-read-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            allowed: false
+            reason: { _from: "steps.deny-read-enforce.reason" }
+
+  app-orders-update:
+    trigger:
+      type: http
+      config:
+        path: /api/app/orders/update
+        method: POST
+    steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
+      - name: route-by-user
+        type: step.conditional
+        config:
+          field: steps.authenticate.email
+          routes:
+            admin@tailnet: admin-update-enforce
+          default: deny-update-enforce
+      - name: admin-update-enforce
+        type: step.authz_enforce
+        config:
+          subject: admin@tailnet
+          resource: orders
+          action: update
+          permitted: true
+          reason: frontend:orders:update granted by admin role
+      - name: admin-update-response
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            allowed: { _from: "steps.admin-update-enforce.permitted" }
+            reason: { _from: "steps.admin-update-enforce.reason" }
+            updated_order:
+              id: ORD-1002
+              status: priority-review
+      - name: deny-update-enforce
+        type: step.authz_enforce
+        config:
+          subject: non-admin
+          resource: orders
+          action: update
+          permitted: false
+          reason: missing frontend:orders:update
+      - name: deny-update-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            allowed: false
+            reason: { _from: "steps.deny-update-enforce.reason" }
 
   list-admin-contributions:
     trigger:
@@ -172,7 +452,34 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
-      - name: contribution-input
+      - name: route-by-user
+        type: step.conditional
+        config:
+          field: steps.authenticate.email
+          routes:
+            admin@tailnet: admin-grants
+            app-user@tailnet: support-grants
+          default: viewer-grants
+      - name: admin-grants
+        type: step.set
+        config:
+          values:
+            app_context: admin
+            granted_permissions:
+              - admin:auth.config:read
+              - admin:auth.config:update
+              - admin:authz.roles:read
+              - admin:authz.roles:update
+      - name: describe-auth-contribution
+        type: step.auth_admin_contribution_describe
+        config: {}
+      - name: register-auth
+        type: step.admin_register_contribution
+        config:
+          module: admin
+        input:
+          contribution: { _from: "steps.describe-auth-contribution.contribution" }
+      - name: admin-authz-contribution
         type: step.set
         config:
           values:
@@ -182,7 +489,7 @@ pipelines:
               category: security
               path: /admin/authz/
               render_mode: iframe
-              app_context: app
+              app_context: admin
               permissions:
                 - permission: admin:authz.roles:read
                   resource: authz.roles
@@ -190,24 +497,85 @@ pipelines:
                 - permission: admin:authz.roles:update
                   resource: authz.roles
                   action: update
-            app_context: app
-            granted_permissions:
-              - admin:authz.roles:read
-              - admin:authz.roles:update
       - name: register-authz
         type: step.admin_register_contribution
         config:
           module: admin
+        input:
+          contribution: { _from: "steps.admin-authz-contribution.contribution" }
       - name: list
         type: step.admin_list_contributions
         config:
           module: admin
+        input:
+          app_context: { _from: "steps.admin-grants.app_context" }
+          granted_permissions: { _from: "steps.admin-grants.granted_permissions" }
       - name: respond
         type: step.json_response
         config:
           status: 200
           body:
             contributions: { _from: "steps.list.contributions" }
+      - name: support-grants
+        type: step.set
+        config:
+          values:
+            app_context: admin
+            granted_permissions:
+              - admin:authz.roles:read
+      - name: support-authz-contribution
+        type: step.set
+        config:
+          values:
+            contribution:
+              id: authz-roles
+              title: Authorization
+              category: security
+              path: /admin/authz/
+              render_mode: iframe
+              app_context: admin
+              permissions:
+                - permission: admin:authz.roles:read
+                  resource: authz.roles
+                  action: read
+      - name: support-register-authz
+        type: step.admin_register_contribution
+        config:
+          module: admin
+        input:
+          contribution: { _from: "steps.support-authz-contribution.contribution" }
+      - name: support-list
+        type: step.admin_list_contributions
+        config:
+          module: admin
+        input:
+          app_context: { _from: "steps.support-grants.app_context" }
+          granted_permissions: { _from: "steps.support-grants.granted_permissions" }
+      - name: support-respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            contributions: { _from: "steps.support-list.contributions" }
+      - name: viewer-grants
+        type: step.set
+        config:
+          values:
+            app_context: admin
+            granted_permissions: []
+      - name: viewer-list
+        type: step.admin_list_contributions
+        config:
+          module: admin
+        input:
+          app_context: { _from: "steps.viewer-grants.app_context" }
+          granted_permissions: { _from: "steps.viewer-grants.granted_permissions" }
+      - name: viewer-respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            contributions: { _from: "steps.viewer-list.contributions" }
 
   auth-provider-catalog:
     trigger:
@@ -379,6 +747,43 @@ pipelines:
             providers: { _from: "steps.catalog.providers" }
             warnings: { _from: "steps.describe.warnings" }
             secret_fields: { _from: "steps.describe.secret_fields" }
+
+  auth-admin-config-validate:
+    trigger:
+      type: http
+      config:
+        path: /api/admin/auth/config/validate
+        method: POST
+    steps:
+      - name: parse_request
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+          parse_body: true
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_request.headers.Authorization
+          subject_field: subject
+      - name: validate
+        type: step.auth_admin_config_validate
+        config:
+          require_primary_method: true
+        input:
+          desired_config: { _from: "steps.parse_request.body.desired_config" }
+          providers: *auth_provider_descriptors
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            valid: { _from: "steps.validate.valid" }
+            accepted_config: { _from: "steps.validate.accepted_config" }
+            methods_policy: { _from: "steps.validate.methods_policy" }
+            errors: { _from: "steps.validate.errors" }
+            warnings: { _from: "steps.validate.warnings" }
+            secret_fields: { _from: "steps.validate.secret_fields" }
 
   describe-auth0-provider:
     trigger:
@@ -679,6 +1084,120 @@ pipelines:
               role: support
               context: frontend
               scopes: ["frontend:orders:read"]
+
+  authz-roles-add:
+    trigger:
+      type: http
+      config:
+        path: /api/authz/roles
+        method: POST
+    steps:
+      - name: parse_request
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+          parse_body: true
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_request.headers.Authorization
+          subject_field: subject
+      - name: route-by-user
+        type: step.conditional
+        config:
+          field: steps.authenticate.email
+          routes:
+            admin@tailnet: allow-update
+          default: deny-update
+      - name: allow-update
+        type: step.authz_enforce
+        config:
+          subject: admin@tailnet
+          resource: authz.roles
+          action: update
+          permitted: true
+          reason: admin:authz.roles:update granted
+      - name: allow-response
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            updated: true
+            assignment: { _from: "steps.parse_request.body" }
+            reason: { _from: "steps.allow-update.reason" }
+      - name: deny-update
+        type: step.authz_enforce
+        config:
+          subject: non-admin
+          resource: authz.roles
+          action: update
+          permitted: false
+          reason: missing admin:authz.roles:update
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            updated: false
+            reason: { _from: "steps.deny-update.reason" }
+
+  authz-roles-delete:
+    trigger:
+      type: http
+      config:
+        path: /api/authz/roles
+        method: DELETE
+    steps:
+      - name: parse_request
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+          parse_body: true
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_request.headers.Authorization
+          subject_field: subject
+      - name: route-by-user
+        type: step.conditional
+        config:
+          field: steps.authenticate.email
+          routes:
+            admin@tailnet: allow-delete
+          default: deny-delete
+      - name: allow-delete
+        type: step.authz_enforce
+        config:
+          subject: admin@tailnet
+          resource: authz.roles
+          action: update
+          permitted: true
+          reason: admin:authz.roles:update granted
+      - name: allow-response
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            deleted: true
+            assignment: { _from: "steps.parse_request.body" }
+            reason: { _from: "steps.allow-delete.reason" }
+      - name: deny-delete
+        type: step.authz_enforce
+        config:
+          subject: non-admin
+          resource: authz.roles
+          action: update
+          permitted: false
+          reason: missing admin:authz.roles:update
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            deleted: false
+            reason: { _from: "steps.deny-delete.reason" }
 
   authz-enforce:
     trigger:
