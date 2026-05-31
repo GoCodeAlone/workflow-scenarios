@@ -1,0 +1,35 @@
+# Config-shape check for workflow#804: a step.ci_generate pipeline targeting the
+# jenkins and circleci platforms. The behavior half of acceptance #2 (the plugin
+# routing jenkins/circleci through cigen) is proven by the ci-generator plugin's
+# integration_test.go; this file proves the surrounding config parses and the
+# platform values are accepted in a step.ci_generate config.
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+pipelines:
+  generate-ci:
+    steps:
+      - name: gen-jenkins
+        type: step.ci_generate
+        config:
+          platform: jenkins
+          infra_config: app.yaml
+          output_dir: /tmp/ci-out/jenkins
+      - name: gen-circleci
+        type: step.ci_generate
+        config:
+          platform: circleci
+          infra_config: app.yaml
+          output_dir: /tmp/ci-out/circleci
+
+workflows:
+  http:
+    router: router
+    server: server
+    routes: []
