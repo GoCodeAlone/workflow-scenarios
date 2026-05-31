@@ -33,7 +33,7 @@
 | 3 | Auth plugin admin contribution descriptor | Task 3 | `feat/auth-admin-contribution` in `workflow-plugin-auth` |
 | 4 | Scenario 90 primary app and access proof | Task 4, Task 5 | `feat/scenario90-real-app-access` in `workflow-scenarios` |
 
-**Status:** Locked 2026-05-30 after design/plan alignment pass.
+**Status:** Complete 2026-05-31T00:21:58Z
 
 ### Task 1: Admin Shell Tools Bridge and UX Language
 
