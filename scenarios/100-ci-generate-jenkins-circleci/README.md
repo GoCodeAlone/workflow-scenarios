@@ -8,7 +8,7 @@ non-config-derived template generators.
 
 ## What it proves
 
-The harness runs the **real** `wfctl ci generate` against `config/app.yaml` (a
+The harness runs the **real** `wfctl ci generate` against `config/deploy.yaml` (a
 config that exercises every cigen derivation) and asserts the emitted artifacts
 are config-derived, not static templates:
 

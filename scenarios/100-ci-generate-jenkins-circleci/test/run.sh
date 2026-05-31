@@ -13,7 +13,7 @@ SCENARIO="100-ci-generate-jenkins-circleci"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENARIO_DIR="$(dirname "$SCRIPT_DIR")"
 WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$SCENARIO_DIR/../../.." && pwd)/workflow}"
-CONFIG="$SCENARIO_DIR/config/app.yaml"
+CONFIG="$SCENARIO_DIR/config/deploy.yaml"
 
 PASS=0
 FAIL=0
@@ -47,7 +47,7 @@ if [ -z "$WFCTL" ]; then
 fi
 echo "Using wfctl: $WFCTL"
 
-[ -f "$CONFIG" ] && pass "config/app.yaml exists" || { fail "config/app.yaml missing"; echo "Results: $PASS passed, $FAIL failed, $SKIP skipped"; exit 1; }
+[ -f "$CONFIG" ] && pass "config/deploy.yaml exists" || { fail "config/deploy.yaml missing"; echo "Results: $PASS passed, $FAIL failed, $SKIP skipped"; exit 1; }
 
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
