@@ -34,20 +34,14 @@ function base64Url(buf: Buffer | string): string {
     .replace(/\//g, '_');
 }
 
-// mintHS256JWT issues a self-signed JWT matching auth.jwt's HS256
-// verification path. Long expiry so a slow Playwright run never
-// rolls past it; sub identifies the e2e suite for any audit-log
-// breadcrumb that surfaces.
-function mintHS256JWT(): string {
+// mintJWT issues a self-signed HS256 JWT with a custom sub claim.
+// T18: reads JWT_SECRET from env (exported by run.sh from app.yaml) with
+// literal fallback so the spec also works standalone.
+function mintJWT(sub: string): string {
   const header = base64Url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   const now = Math.floor(Date.now() / 1000);
   const payload = base64Url(
-    JSON.stringify({
-      iss: JWT_ISSUER,
-      sub: 'playwright-scenario-92',
-      iat: now,
-      exp: now + 3600,
-    }),
+    JSON.stringify({ iss: JWT_ISSUER, sub, iat: now, exp: now + 3600 }),
   );
   const unsigned = `${header}.${payload}`;
   const signature = base64Url(
@@ -56,7 +50,8 @@ function mintHS256JWT(): string {
   return `${unsigned}.${signature}`;
 }
 
-const BEARER_TOKEN = mintHS256JWT();
+// Default token for beforeEach (matches v1 "playwright-scenario-92" sub).
+const BEARER_TOKEN = mintJWT('playwright-scenario-92');
 const AUTH_HEADER = { Authorization: `Bearer ${BEARER_TOKEN}` };
 
 async function adminFetch(page: Page, path: string, body: unknown) {
@@ -344,88 +339,43 @@ test.describe('Scenario 92: Infra Admin (Dynamic, Proto-Driven)', () => {
 
   // --- T17: v1.1 mutation flow + auth/CSRF E2E ----------------------------
 
-  // Helper to mint a JWT with the given subject (uses the same HS256 secret
-  // as the existing mintHS256JWT but allows a custom sub).
-  function mintJWT(sub: string): string {
-    const header = base64Url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-    const now = Math.floor(Date.now() / 1000);
-    const payload = base64Url(
-      JSON.stringify({ iss: JWT_ISSUER, sub, iat: now, exp: now + 3600 }),
-    );
-    const unsigned = `${header}.${payload}`;
-    const signature = base64Url(
-      createHmac('sha256', JWT_SECRET).update(unsigned).digest(),
-    );
-    return `${unsigned}.${signature}`;
-  }
-
-  test('@scenario-92 v1.1 plan returns 64-char hex desired_hash (M-3)', async ({ page }) => {
-    await page.goto(BASE_URL);
+  test('@scenario-92 v1.1 plan returns 64-char hex desired_hash (M-3)', async ({ request }) => {
     const opToken = mintJWT('operator');
-    const result = await page.evaluate(
-      async ([url, tok]) => {
-        const resp = await fetch(`${url}/api/infra-admin/plan`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-          body: JSON.stringify({
-            app_context: '',
-            resource_filter: '',
-            evidence: { authz_checked: true, authz_allowed: true },
-          }),
-        });
-        const body = await resp.json();
-        return { status: resp.status, desiredHash: body.desired_hash ?? '', planId: body.plan_id ?? '' };
-      },
-      [BASE_URL, opToken] as const,
-    );
-    expect(result.status).toBe(200);
-    expect(result.desiredHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(result.planId).toBeTruthy();
+    const resp = await request.post(`${BASE_URL}/api/infra-admin/plan`, {
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${opToken}` },
+      data: { app_context: '', resource_filter: '', evidence: { authz_checked: true, authz_allowed: true } },
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { desired_hash?: string; plan_id?: string };
+    expect(body.desired_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(body.plan_id).toBeTruthy();
   });
 
-  test('@scenario-92 v1.1 apply with operator JWT succeeds (200, no error)', async ({ page }) => {
-    await page.goto(BASE_URL);
+  test('@scenario-92 v1.1 apply with operator JWT succeeds (200, no error)', async ({ request }) => {
+    // Use request fixture (no page navigation) for a clean, fast two-step plan→apply.
     const opToken = mintJWT('operator');
-    // First plan to get plan_id + desired_hash.
-    const plan = await page.evaluate(
-      async ([url, tok]) => {
-        const resp = await fetch(`${url}/api/infra-admin/plan`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-          body: JSON.stringify({
-            app_context: '',
-            resource_filter: '',
-            evidence: { authz_checked: true, authz_allowed: true },
-          }),
-        });
-        return resp.json() as Promise<{ plan_id?: string; desired_hash?: string }>;
-      },
-      [BASE_URL, opToken] as const,
-    );
+    const planResp = await request.post(`${BASE_URL}/api/infra-admin/plan`, {
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${opToken}` },
+      data: { app_context: '', resource_filter: '', evidence: { authz_checked: true, authz_allowed: true } },
+    });
+    expect(planResp.status()).toBe(200);
+    const plan = await planResp.json() as { plan_id?: string; desired_hash?: string };
     expect(plan.plan_id).toBeTruthy();
     expect(plan.desired_hash).toBeTruthy();
 
-    // Apply.
-    const applyResult = await page.evaluate(
-      async ([url, tok, planId, desiredHash]) => {
-        const resp = await fetch(`${url}/api/infra-admin/apply`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-          body: JSON.stringify({
-            plan_id: planId,
-            desired_hash: desiredHash,
-            allow_replace: [],
-            app_context: '',
-            evidence: { authz_checked: true, authz_allowed: true },
-          }),
-        });
-        const body = await resp.json();
-        return { status: resp.status, error: (body as { error?: string }).error ?? '' };
+    const applyResp = await request.post(`${BASE_URL}/api/infra-admin/apply`, {
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${opToken}` },
+      data: {
+        plan_id: plan.plan_id,
+        desired_hash: plan.desired_hash,
+        allow_replace: [],
+        app_context: '',
+        evidence: { authz_checked: true, authz_allowed: true },
       },
-      [BASE_URL, opToken, plan.plan_id!, plan.desired_hash!] as const,
-    );
-    expect(applyResult.status).toBe(200);
-    expect(applyResult.error).toBe('');
+    });
+    expect(applyResp.status()).toBe(200);
+    const applyBody = await applyResp.json() as { error?: string };
+    expect(applyBody.error ?? '').toBe('');
   });
 
   test('@scenario-92 v1.1 unauthenticated mutation endpoints → 401', async ({ request }) => {
@@ -442,9 +392,10 @@ test.describe('Scenario 92: Infra Admin (Dynamic, Proto-Driven)', () => {
   });
 
   test('@scenario-92 v1.1 mutation without Bearer scheme → 401 (CSRF gate)', async ({ request }) => {
-    // Non-Bearer Authorization scheme should be rejected by requireBearer middleware.
+    // Non-Bearer Authorization scheme rejected by requireBearer middleware (all 4 endpoints).
     const opToken = mintJWT('operator');
-    for (const endpoint of ['/api/infra-admin/plan', '/api/infra-admin/apply']) {
+    for (const endpoint of ['/api/infra-admin/plan', '/api/infra-admin/apply',
+                             '/api/infra-admin/destroy', '/api/infra-admin/drift']) {
       const resp = await request.post(`${BASE_URL}${endpoint}`, {
         headers: {
           'Content-Type': 'application/json',
@@ -456,8 +407,32 @@ test.describe('Scenario 92: Infra Admin (Dynamic, Proto-Driven)', () => {
     }
   });
 
+  test('@scenario-92 v1.1 viewer JWT on apply → 403 (server-side RBAC)', async ({ request }) => {
+    // authz.local: viewer has infra:read only. Apply requires infra:apply → denied.
+    // Proves RBAC is server-authoritative (not client-body evidence).
+    const viewerToken = mintJWT('viewer');
+    const resp = await request.post(`${BASE_URL}/api/infra-admin/apply`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${viewerToken}`,
+      },
+      data: {
+        plan_id: 'irrelevant',
+        desired_hash: '0'.repeat(64),
+        allow_replace: [],
+        app_context: '',
+        evidence: { authz_checked: true, authz_allowed: true },
+      },
+    });
+    expect(resp.status()).toBe(403);
+    const body = await resp.json() as { error?: string };
+    expect(body.error).toContain('denied');
+  });
+
   test('@scenario-92 v1.1 audit-viewer actions.html serves and loads', async ({ page }) => {
-    await page.goto(`${BASE_URL}/admin/infra-admin/actions.html`);
+    // Spec says assert HTTP 200 (T17 IMPORTANT fix).
+    const resp = await page.goto(`${BASE_URL}/admin/infra-admin/actions.html`);
+    expect(resp?.status()).toBe(200);
     const html = await page.content();
     expect(html).toContain('Audit Log');
     expect(html).toMatch(/<script[^>]*src="\/admin\/infra-admin\/actions\.js"/);

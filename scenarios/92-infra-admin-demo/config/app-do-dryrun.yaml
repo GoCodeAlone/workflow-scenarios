@@ -16,26 +16,22 @@ modules:
       issuer: "scenario-92"
       secret: "scenario-92-jwt-secret-do-not-use-in-prod"
 
+  # authz.local — same as app.yaml. Bare [sub,obj,act] sequences.
   - name: authz
-    type: authz.casbin
+    type: authz.local
     config:
-      # Inline PERM model + policies (T15 fix — same as app.yaml).
-      model: |
-        [request_definition]
-        r = sub, obj, act
-        [policy_definition]
-        p = sub, obj, act
-        [role_definition]
-        g = _, _
-        [policy_effect]
-        e = some(where (p.eft == allow))
-        [matchers]
-        m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
       policies:
-        - values: ["operator", "infra:read", "allow"]
-        - values: ["operator", "infra:apply", "allow"]
-        - values: ["operator", "infra:destroy", "allow"]
-        - values: ["viewer", "infra:read", "allow"]
+        - ["operator", "infra:read",    "allow"]
+        - ["operator", "infra:apply",   "allow"]
+        - ["operator", "infra:destroy", "allow"]
+        - ["viewer",   "infra:read",    "allow"]
+
+  # auth-mw wraps auth.jwt as HTTPMiddleware (IMPORTANT-1 fix: was auth.jwt
+  # directly, which is not an HTTPMiddleware).
+  - name: auth-mw
+    type: http.middleware.auth
+    config:
+      authType: Bearer
 
   - name: security-headers
     type: http.middleware.securityheaders
@@ -49,6 +45,12 @@ modules:
     type: http.server
     config:
       address: ":8080"
+
+  - name: health
+    type: health.checker
+    config:
+      healthPath: /healthz
+      autoDiscover: true
 
   - name: http-router
     type: http.router
@@ -85,15 +87,14 @@ modules:
     config:
       route_prefix:            /api/infra-admin
       asset_prefix:            /admin/infra-admin
-      state_module:            iac-state
+      # state_module omitted: same as app.yaml — module.IaCStateStore ≠
+      # interfaces.IaCStateStore; handlers nil-safe (IMPORTANT-3 fix).
       http_module:             http-router
-      # auth_module wires T15's route-level auth gate (PR-1 47341ff6f).
-      # See config/app.yaml for the rationale comment.
-      auth_module:             auth
+      auth_module:             auth-mw
       authz_module:            authz
       security_headers_module: security-headers
       provider_modules:        [stub-provider, do-provider]
-      access_log_path:         /var/log/infra-admin-audit.jsonl
+      access_log_path:         /tmp/infra-admin-audit.jsonl
 
 workflows:
   http:
@@ -117,6 +118,14 @@ pipelines:
         config: { module: admin }
 
   register-infra-admin-new-resource:
+    trigger: { type: manual }
+    steps:
+      - name: register
+        type: step.admin_register_contribution
+        config: { module: admin }
+
+  # T12: audit-viewer contribution (IMPORTANT-2 fix: was missing from dryrun).
+  register-infra-admin-actions:
     trigger: { type: manual }
     steps:
       - name: register

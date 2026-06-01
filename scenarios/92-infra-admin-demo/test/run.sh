@@ -208,6 +208,19 @@ else
     fail "POST /api/infra-admin/apply (operator) returned error: $APPLY_ERROR"
 fi
 
+# Apply with viewer token → 403 (server-side RBAC, even though authenticated).
+# authz.local enforcer: viewer has infra:read but NOT infra:apply → denied.
+# This proves RBAC is server-authoritative (not client-body evidence).
+viewer_apply=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/infra-admin/apply" \
+    -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $VIEWER_TOKEN" \
+    -d "{\"plan_id\":\"$PLAN_ID\",\"desired_hash\":\"$DESIRED_HASH\",\"allow_replace\":[],\"app_context\":\"\",\"evidence\":{\"authz_checked\":true,\"authz_allowed\":true}}")
+if [ "$viewer_apply" = "403" ]; then
+    pass "POST /api/infra-admin/apply (viewer) → 403 (server-side RBAC)"
+else
+    fail "POST /api/infra-admin/apply (viewer) returned $viewer_apply (want 403)"
+fi
+
 # Unauthenticated mutation → 401 (auth middleware gate).
 unauth_mut=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/infra-admin/plan" \
     -H 'Content-Type: application/json' \
