@@ -18,8 +18,11 @@ import { createHmac } from 'crypto';
 
 const BASE_URL = process.env.SCENARIO_URL || 'http://127.0.0.1:18092';
 
-// Must match config/app.yaml::modules[name=auth].config.secret.
-const JWT_SECRET = 'scenario-92-jwt-secret-do-not-use-in-prod';
+// T18: Single source of truth — read from JWT_SECRET env var when available.
+// run.sh exports JWT_SECRET by extracting it from config/app.yaml; standalone
+// runs fall back to the known literal so the spec works without run.sh.
+// The value MUST match config/app.yaml::modules[name=auth].config.secret.
+const JWT_SECRET = process.env['JWT_SECRET'] ?? 'scenario-92-jwt-secret-do-not-use-in-prod';
 const JWT_ISSUER = 'scenario-92';
 
 function base64Url(buf: Buffer | string): string {
