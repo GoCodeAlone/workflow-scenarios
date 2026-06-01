@@ -42,21 +42,19 @@ echo ""
 BUILD_DIR="$SCENARIO_DIR/.build"
 mkdir -p "$BUILD_DIR/plugins/workflow-plugin-admin"
 
-if [ ! -f "$WORKFLOW_REPO/go.mod" ]; then
-    echo "ERROR: WORKFLOW_REPO=$WORKFLOW_REPO is not a Go module checkout" >&2
-    exit 1
-fi
 if [ ! -f "$PLUGIN_ADMIN_REPO/go.mod" ]; then
     echo "ERROR: PLUGIN_ADMIN_REPO=$PLUGIN_ADMIN_REPO is not a Go module checkout" >&2
     exit 1
 fi
 
-# Build server with -tags scenario_stub so BOTH iac.provider stub AND
-# authz.local in-process enforcer are included in the binary.
-# workflow-plugin-authz external plugin is NOT needed — authz.local is built-in.
-echo "Building workflow server binary (with -tags scenario_stub)..."
-(cd "$WORKFLOW_REPO" && GOWORK=off GOOS=linux GOARCH=amd64 \
-    go build -tags scenario_stub -o "$BUILD_DIR/server" ./cmd/server)
+# Build the SCENARIO-OWNED server (scenarios/92-infra-admin-demo/cmd/server).
+# It imports the workflow engine via go.mod (pinned to the merged v1.1 commit)
+# and registers the scenario-local fixtures (stub iac.provider + authz.local
+# in-process RBAC) via NewEngineBuilder().WithPlugin(...). Test fixtures live in
+# the scenario repo, NOT the workflow engine (workflow#818). No build tags.
+echo "Building scenario-92-owned server binary..."
+(cd "$SCENARIOS_ROOT" && GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -o "$BUILD_DIR/server" ./scenarios/92-infra-admin-demo/cmd/server)
 
 echo "Building workflow-plugin-admin binary..."
 mkdir -p "$BUILD_DIR/plugins/workflow-plugin-admin"
