@@ -3,14 +3,15 @@
 #
 # Full app YAML mirroring docs/plans/2026-05-27-infra-admin-dynamic-design.md
 # §App Integration. Boots:
-#   - auth.jwt + authz.casbin
-#   - http.middleware.securityheaders (permissive frame-ancestors 'self')
+#   - auth.jwt + authz.local (in-process RBAC, registered by the scenario-owned cmd/server)
+#   - http.middleware.auth + http.middleware.securityheaders
+#   - health.checker (/healthz)
 #   - http.server + http.router
 #   - admin.dashboard (workflow-plugin-admin)
 #   - iac.state (memory) + stub iac.provider
-#   - infra.admin (host-side module) — fires 3 registration pipelines on Start
+#   - infra.admin (host-side module) — fires 4 registration pipelines on Start
 #
-# Three single-step pipelines register the iframe contributions via the
+# Four single-step pipelines register the iframe contributions via the
 # STRICT_PROTO step.admin_register_contribution. The list-admin-contributions
 # pipeline backs admin shell's GET /api/admin/contributions.
 # ============================================================
@@ -22,10 +23,25 @@ modules:
       issuer: "scenario-92"
       secret: "scenario-92-jwt-secret-do-not-use-in-prod"
 
+  # authz.local is an in-process RBAC enforcer registered by the localauthz
+  # fixture registered by the scenario-owned cmd/server (no build tags). JWT `sub` claim = casbin subject.
+  # Policies: [subject, object, action] triples — bare YAML sequence.
   - name: authz
-    type: authz.casbin
+    type: authz.local
     config:
-      policy_path: /etc/scenario-92/policy.csv
+      policies:
+        - ["operator", "infra:read",    "allow"]
+        - ["operator", "infra:apply",   "allow"]
+        - ["operator", "infra:destroy", "allow"]
+        - ["viewer",   "infra:read",    "allow"]
+
+  # auth-mw wraps auth.jwt as an HTTPMiddleware so infra.admin can resolve
+  # it via auth_module. The engine wires AuthProvider (auth.jwt) to
+  # AuthMiddleware (auth-mw) automatically.
+  - name: auth-mw
+    type: http.middleware.auth
+    config:
+      authType: Bearer
 
   - name: security-headers
     type: http.middleware.securityheaders
@@ -39,6 +55,14 @@ modules:
     type: http.server
     config:
       address: ":8080"
+
+  # health.checker registers /healthz so docker-compose healthcheck and
+  # seed.sh precondition work. autoDiscover:true wires to the http.router.
+  - name: health
+    type: health.checker
+    config:
+      healthPath: /healthz
+      autoDiscover: true
 
   - name: http-router
     type: http.router
@@ -67,16 +91,17 @@ modules:
     config:
       route_prefix:            /api/infra-admin
       asset_prefix:            /admin/infra-admin
-      state_module:            iac-state
-      http_module:             http
-      # auth_module wires T15's route-level auth gate (PR-1 47341ff6f):
-      # every /api/infra-admin/* and /admin/infra-admin/* request must
-      # carry a valid JWT bearer token issued by the named auth module.
-      # Mirrors admin.dashboard's auth_module convention above.
-      auth_module:             auth
+      # state_module omitted: module.IaCStateStore (old API) ≠ interfaces.IaCStateStore
+      # (new API); all handlers nil-safe so the stack boots and mutations work.
+      http_module:             http-router
+      auth_module:             auth-mw
+      # authz_module wires server-side RBAC via the in-process authz.local
+      # enforcer (scenario-owned cmd/server fixture). operator→apply/destroy allowed;
+      # viewer→apply/destroy denied (403).
+      authz_module:            authz
       security_headers_module: security-headers
       provider_modules:        [stub-provider]
-      access_log_path:         /var/log/infra-admin-audit.jsonl
+      access_log_path:         /tmp/infra-admin-audit.jsonl
 
 workflows:
   http:
@@ -85,7 +110,7 @@ workflows:
     routes: []   # routes mounted by infra.admin module + list-admin-contributions pipeline
 
 pipelines:
-  # Three single-step pipelines fired by infra.admin.Start() via
+  # Four single-step pipelines fired by infra.admin.Start() via
   # engine.TriggerWorkflow. Each merges its `data` payload into
   # PipelineContext.Current; the typed step reads TypedInput from
   # Current per the STRICT_PROTO RegisterContributionInput shape.
@@ -110,12 +135,15 @@ pipelines:
         type: step.admin_register_contribution
         config: { module: admin }
 
+  # T12: audit-viewer contribution registered by infra.admin.Start().
+  register-infra-admin-actions:
+    trigger: { type: manual }
+    steps:
+      - name: register
+        type: step.admin_register_contribution
+        config: { module: admin }
+
   # HTTP-triggered pipeline the admin shell GETs to enumerate contributions.
-  # Terminating step.json_response with `_from` reference sets the response
-  # body explicitly — step.http_trigger otherwise returns the generic 202
-  # envelope (design cycle-6 Critical #2). Admin shell at
-  # workflow-plugin-admin/internal/ui_dist/index.html:328 reads
-  # `payload.contributions`.
   list-admin-contributions:
     trigger:
       type: http

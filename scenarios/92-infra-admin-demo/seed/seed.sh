@@ -2,9 +2,9 @@
 # Scenario 92 — Infra Admin demo seed
 #
 # Builds the workflow-admin:scenario-92 docker image (if not present) and
-# brings up the docker-compose stack. infra.admin.Start() fires three
+# brings up the docker-compose stack. infra.admin.Start() fires four
 # registration pipelines automatically via engine.TriggerWorkflow when
-# the host boots — no third curl needed.
+# the host boots — no manual curl needed.
 #
 # Variants:
 #   ./seed.sh                       # config/app.yaml (stub)
@@ -15,14 +15,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENARIO_DIR="$(dirname "$SCRIPT_DIR")"
 SCENARIOS_ROOT="$(cd "$SCENARIO_DIR/../.." && pwd)"
-WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$SCENARIOS_ROOT/.." && pwd)/workflow}"
+# The scenario-owned server (cmd/server) is built from THIS module, which pins
+# the workflow engine via go.mod (released v0.69.0) — no workflow checkout
+# needed. Only the external admin plugin is built from a local checkout.
 PLUGIN_ADMIN_REPO="${PLUGIN_ADMIN_REPO:-$(cd "$SCENARIOS_ROOT/.." && pwd)/workflow-plugin-admin}"
 IMAGE_TAG="${IMAGE_TAG:-workflow-admin:scenario-92}"
 VARIANT="${VARIANT:-}"   # "" → app.yaml; "do-dryrun" → app-do-dryrun.yaml
 
 echo ""
 echo "=== Scenario 92 seed ==="
-echo "  WORKFLOW_REPO=$WORKFLOW_REPO"
 echo "  PLUGIN_ADMIN_REPO=$PLUGIN_ADMIN_REPO"
 echo "  IMAGE_TAG=$IMAGE_TAG"
 echo "  VARIANT=${VARIANT:-stub}"
@@ -36,20 +37,22 @@ echo ""
 BUILD_DIR="$SCENARIO_DIR/.build"
 mkdir -p "$BUILD_DIR/plugins/workflow-plugin-admin"
 
-if [ ! -f "$WORKFLOW_REPO/go.mod" ]; then
-    echo "ERROR: WORKFLOW_REPO=$WORKFLOW_REPO is not a Go module checkout" >&2
-    exit 1
-fi
 if [ ! -f "$PLUGIN_ADMIN_REPO/go.mod" ]; then
     echo "ERROR: PLUGIN_ADMIN_REPO=$PLUGIN_ADMIN_REPO is not a Go module checkout" >&2
     exit 1
 fi
 
-echo "Building workflow server binary..."
-(cd "$WORKFLOW_REPO" && GOWORK=off GOOS=linux GOARCH=amd64 \
-    go build -o "$BUILD_DIR/server" ./cmd/server)
+# Build the SCENARIO-OWNED server (scenarios/92-infra-admin-demo/cmd/server).
+# It imports the workflow engine via go.mod (pinned to the merged v1.1 commit)
+# and registers the scenario-local fixtures (stub iac.provider + authz.local
+# in-process RBAC) via NewEngineBuilder().WithPlugin(...). Test fixtures live in
+# the scenario repo, NOT the workflow engine (workflow#818). No build tags.
+echo "Building scenario-92-owned server binary..."
+(cd "$SCENARIOS_ROOT" && GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -o "$BUILD_DIR/server" ./scenarios/92-infra-admin-demo/cmd/server)
 
 echo "Building workflow-plugin-admin binary..."
+mkdir -p "$BUILD_DIR/plugins/workflow-plugin-admin"
 (cd "$PLUGIN_ADMIN_REPO" && GOWORK=off GOOS=linux GOARCH=amd64 \
     go build -o "$BUILD_DIR/plugins/workflow-plugin-admin/workflow-plugin-admin" \
     ./cmd/workflow-plugin-admin)
@@ -60,9 +63,11 @@ cp "$PLUGIN_ADMIN_REPO/plugin.json" "$BUILD_DIR/plugins/workflow-plugin-admin/pl
 cat > "$BUILD_DIR/Dockerfile" <<'EOF'
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY server /usr/local/bin/server
-COPY plugins/ /data/plugins/
+# /home/nonroot is writable by UID 65532 (nonroot) in distroless.
+# Plugins go here so data-dir /home/nonroot resolves plugins/ correctly
+# AND the server can create workflow.db in the same dir (no permission error).
+COPY plugins/ /home/nonroot/plugins/
 USER nonroot
-ENV WFCTL_PLUGIN_DIR=/data/plugins
 ENTRYPOINT ["/usr/local/bin/server"]
 EOF
 
