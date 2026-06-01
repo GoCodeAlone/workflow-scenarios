@@ -236,6 +236,131 @@ pipelines:
             primary_app: "/"
             admin_app: "/admin/"
 
+  scenario90-role-bootstrap:
+    trigger:
+      type: http
+      config:
+        path: /api/scenario90/seed/roles
+        method: POST
+    steps:
+      - name: parse_seed
+        type: step.request_parse
+        config:
+          parse_headers: [X-Scenario90-Seed-Token]
+      - name: route-seed-token
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT 1 AS allowed
+            WHERE ? != '' AND ? = ?
+          params:
+            - '{{ index .steps "parse_seed" "headers" "X-Scenario90-Seed-Token" }}'
+            - '{{ index .steps "parse_seed" "headers" "X-Scenario90-Seed-Token" }}'
+            - '${SCENARIO90_SEED_TOKEN}'
+          mode: single
+      - name: route-seed-grant
+        type: step.conditional
+        config:
+          field: steps.route-seed-token.found
+          routes:
+            'true': create-role-table
+          default: deny-seed
+      - &scenario90_create_role_table_step
+        name: create-role-table
+        type: step.db_exec
+        config:
+          database: admin-db
+          query: |
+            CREATE TABLE IF NOT EXISTS scenario90_role_assignments (
+              user TEXT NOT NULL,
+              role TEXT NOT NULL,
+              context TEXT NOT NULL,
+              scopes_json TEXT NOT NULL,
+              updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+              PRIMARY KEY (user, role, context)
+            )
+          ignore_error: true
+      - &scenario90_seed_admin_scopes_step
+        name: seed-admin-scopes
+        type: step.db_exec
+        config:
+          database: admin-db
+          query: |
+            INSERT OR IGNORE INTO scenario90_role_assignments (user, role, context, scopes_json)
+            VALUES (?, ?, ?, ?)
+          params:
+            - admin@tailnet
+            - admin
+            - admin
+            - '["admin:auth.config:read","admin:auth.config:update","admin:auth.providers.read","admin:authz.roles:read","admin:authz.roles:update"]'
+      - &scenario90_seed_support_admin_authz_read_step
+        name: seed-support-admin-authz-read
+        type: step.db_exec
+        config:
+          database: admin-db
+          query: |
+            INSERT OR IGNORE INTO scenario90_role_assignments (user, role, context, scopes_json)
+            VALUES (?, ?, ?, ?)
+          params:
+            - app-user@tailnet
+            - support-admin-read
+            - admin
+            - '["admin:authz.roles:read"]'
+      - &scenario90_seed_delegate_auth_admin_step
+        name: seed-delegate-auth-admin
+        type: step.db_exec
+        config:
+          database: admin-db
+          query: |
+            INSERT OR IGNORE INTO scenario90_role_assignments (user, role, context, scopes_json)
+            VALUES (?, ?, ?, ?)
+          params:
+            - delegated-admin@tailnet
+            - identity-admin
+            - admin
+            - '["admin:auth.config:read","admin:auth.providers.read"]'
+      - &scenario90_seed_admin_frontend_step
+        name: seed-admin-frontend
+        type: step.db_exec
+        config:
+          database: admin-db
+          query: |
+            INSERT OR IGNORE INTO scenario90_role_assignments (user, role, context, scopes_json)
+            VALUES (?, ?, ?, ?)
+          params:
+            - admin@tailnet
+            - admin
+            - frontend
+            - '["frontend:orders:read","frontend:orders:update"]'
+      - &scenario90_seed_support_frontend_step
+        name: seed-support-frontend
+        type: step.db_exec
+        config:
+          database: admin-db
+          query: |
+            INSERT OR IGNORE INTO scenario90_role_assignments (user, role, context, scopes_json)
+            VALUES (?, ?, ?, ?)
+          params:
+            - app-user@tailnet
+            - support
+            - frontend
+            - '["frontend:orders:read"]'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            seeded: true
+            roles: ["admin", "support", "delegated-admin"]
+      - name: deny-seed
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            seeded: false
+            reason: missing scenario seed token
+
   app-access:
     trigger:
       type: http
@@ -253,14 +378,28 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
-      - name: route-by-user
+      - *scenario90_create_role_table_step
+      - name: find-admin-profile
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND role = ? AND context = ?
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin
+          mode: single
+      - name: route-by-admin-profile
         type: step.conditional
         config:
-          field: steps.authenticate.email
+          field: steps.find-admin-profile.found
           routes:
-            admin@tailnet: admin-access
-            app-user@tailnet: support-access
-          default: viewer-access
+            'true': admin-access
+          default: find-support-profile
       - name: admin-access
         type: step.json_response
         config:
@@ -271,6 +410,27 @@ pipelines:
             frontend_scopes: ["frontend:orders:read", "frontend:orders:update"]
             admin_scopes: ["admin:auth.config:read", "admin:auth.config:update", "admin:authz.roles:read", "admin:authz.roles:update"]
             visible_panels: ["orders", "order-update", "admin-auth", "admin-authz"]
+      - name: find-support-profile
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND role = ? AND context = ?
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - support
+            - frontend
+          mode: single
+      - name: route-by-support-profile
+        type: step.conditional
+        config:
+          field: steps.find-support-profile.found
+          routes:
+            'true': support-access
+          default: viewer-access
       - name: support-access
         type: step.json_response
         config:
@@ -309,51 +469,49 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
-      - name: route-by-user
+      - *scenario90_create_role_table_step
+      - name: find-orders-read
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ?
+              AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - frontend
+            - frontend:orders:read
+          mode: single
+      - name: route-by-orders-read
         type: step.conditional
         config:
-          field: steps.authenticate.email
+          field: steps.find-orders-read.found
           routes:
-            admin@tailnet: admin-read-enforce
-            app-user@tailnet: support-read-enforce
+            'true': allow-read-enforce
           default: deny-read-enforce
-      - name: admin-read-enforce
+      - name: allow-read-enforce
         type: step.authz_enforce
         config:
-          subject: admin@tailnet
+          subject: '{{ index .steps "authenticate" "email" }}'
           resource: orders
           action: read
           permitted: true
-          reason: frontend:orders:read granted by admin role
-      - name: admin-read-response
+          reason: frontend:orders:read granted by role assignment
+      - name: allow-read-response
         type: step.json_response
         config:
           status: 200
           body:
-            allowed: { _from: "steps.admin-read-enforce.permitted" }
-            reason: { _from: "steps.admin-read-enforce.reason" }
-            orders:
-              - id: ORD-1001
-                customer: Northwind
-                status: ready
-              - id: ORD-1002
-                customer: Contoso
-                status: review
-      - name: support-read-enforce
-        type: step.authz_enforce
-        config:
-          subject: app-user@tailnet
-          resource: orders
-          action: read
-          permitted: true
-          reason: frontend:orders:read granted by support role
-      - name: support-read-response
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            allowed: { _from: "steps.support-read-enforce.permitted" }
-            reason: { _from: "steps.support-read-enforce.reason" }
+            allowed: { _from: "steps.allow-read-enforce.permitted" }
+            reason: { _from: "steps.allow-read-enforce.reason" }
             orders:
               - id: ORD-1001
                 customer: Northwind
@@ -364,7 +522,7 @@ pipelines:
       - name: deny-read-enforce
         type: step.authz_enforce
         config:
-          subject: viewer
+          subject: '{{ index .steps "authenticate" "email" }}'
           resource: orders
           action: read
           permitted: false
@@ -394,35 +552,56 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
-      - name: route-by-user
+      - *scenario90_create_role_table_step
+      - name: find-orders-update
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ?
+              AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - frontend
+            - frontend:orders:update
+          mode: single
+      - name: route-by-orders-update
         type: step.conditional
         config:
-          field: steps.authenticate.email
+          field: steps.find-orders-update.found
           routes:
-            admin@tailnet: admin-update-enforce
+            'true': allow-update-enforce
           default: deny-update-enforce
-      - name: admin-update-enforce
+      - name: allow-update-enforce
         type: step.authz_enforce
         config:
-          subject: admin@tailnet
+          subject: '{{ index .steps "authenticate" "email" }}'
           resource: orders
           action: update
           permitted: true
-          reason: frontend:orders:update granted by admin role
-      - name: admin-update-response
+          reason: frontend:orders:update granted by role assignment
+      - name: allow-update-response
         type: step.json_response
         config:
           status: 200
           body:
-            allowed: { _from: "steps.admin-update-enforce.permitted" }
-            reason: { _from: "steps.admin-update-enforce.reason" }
+            allowed: { _from: "steps.allow-update-enforce.permitted" }
+            reason: { _from: "steps.allow-update-enforce.reason" }
             updated_order:
               id: ORD-1002
               status: priority-review
       - name: deny-update-enforce
         type: step.authz_enforce
         config:
-          subject: non-admin
+          subject: '{{ index .steps "authenticate" "email" }}'
           resource: orders
           action: update
           permitted: false
@@ -452,24 +631,64 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
-      - name: route-by-user
-        type: step.conditional
+      - *scenario90_create_role_table_step
+      - name: find-auth-nav-grant
+        type: step.db_query
         config:
-          field: steps.authenticate.email
-          routes:
-            admin@tailnet: admin-grants
-            app-user@tailnet: support-grants
-          default: viewer-grants
-      - name: admin-grants
-        type: step.set
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:auth.config:read
+          mode: single
+      - name: find-authz-nav-grant
+        type: step.db_query
         config:
-          values:
-            app_context: admin
-            granted_permissions:
-              - admin:auth.config:read
-              - admin:auth.config:update
-              - admin:authz.roles:read
-              - admin:authz.roles:update
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:authz.roles:read
+          mode: single
+      - name: find-authz-update-grant
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:authz.roles:update
+          mode: single
       - name: describe-auth-contribution
         type: step.auth_admin_contribution_describe
         config: {}
@@ -480,102 +699,151 @@ pipelines:
         input:
           contribution: { _from: "steps.describe-auth-contribution.contribution" }
       - name: admin-authz-contribution
-        type: step.set
+        type: step.authz_admin_contribution
         config:
-          values:
-            contribution:
-              id: authz-roles
-              title: Authorization
-              category: security
-              path: /admin/authz/
-              render_mode: iframe
-              app_context: admin
-              permissions:
-                - permission: admin:authz.roles:read
-                  resource: authz.roles
-                  action: read
-                - permission: admin:authz.roles:update
-                  resource: authz.roles
-                  action: update
+          admin_base_path: /admin/authz/
+          app_context: admin
+          admin:
+            id: authz-roles
+            title: Authorization
+            category: security
+            path: /admin/authz/
+            render_mode: iframe
+            app_context: admin
+            permissions:
+              - admin:authz.roles:read
+              - admin:authz.roles:update
       - name: register-authz
         type: step.admin_register_contribution
         config:
           module: admin
         input:
           contribution: { _from: "steps.admin-authz-contribution.contribution" }
-      - name: list
+      - name: route-nav-grants
+        type: step.conditional
+        config:
+          field: '{{ index .steps "find-auth-nav-grant" "found" }}|{{ index .steps "find-authz-nav-grant" "found" }}|{{ index .steps "find-authz-update-grant" "found" }}'
+          routes:
+            'true|true|true': list-both-admin
+            'true|true|false': list-both-readonly
+            'true|false|false': list-auth-only
+            'false|true|true': list-authz-admin
+            'false|true|false': list-authz-only
+          default: viewer-respond
+      - name: list-both-admin
         type: step.admin_list_contributions
         config:
           module: admin
+          contribution_steps: [register-auth, register-authz]
+          app_context: admin
+          granted_permissions: [admin:auth.config:read, admin:authz.roles:read, admin:authz.roles:update]
         input:
-          app_context: { _from: "steps.admin-grants.app_context" }
-          granted_permissions: { _from: "steps.admin-grants.granted_permissions" }
-      - name: respond
+          auth_contribution: { _from: "steps.register-auth.contribution" }
+          authz_contribution: { _from: "steps.register-authz.contribution" }
+          app_context: admin
+          granted_permissions: [admin:auth.config:read, admin:authz.roles:read, admin:authz.roles:update]
+      - name: respond-both-admin
         type: step.json_response
         config:
           status: 200
           body:
-            contributions: { _from: "steps.list.contributions" }
-      - name: support-grants
-        type: step.set
-        config:
-          values:
-            app_context: admin
-            granted_permissions:
-              - admin:authz.roles:read
-      - name: support-authz-contribution
-        type: step.set
-        config:
-          values:
-            contribution:
-              id: authz-roles
-              title: Authorization
-              category: security
-              path: /admin/authz/
-              render_mode: iframe
-              app_context: admin
-              permissions:
-                - permission: admin:authz.roles:read
-                  resource: authz.roles
-                  action: read
-      - name: support-register-authz
-        type: step.admin_register_contribution
-        config:
-          module: admin
-        input:
-          contribution: { _from: "steps.support-authz-contribution.contribution" }
-      - name: support-list
+            contributions: { _from: "steps.list-both-admin.contributions" }
+            granted_permissions: [admin:auth.config:read, admin:authz.roles:read, admin:authz.roles:update]
+      - name: list-both-readonly
         type: step.admin_list_contributions
         config:
           module: admin
+          contribution_steps: [register-auth, register-authz]
+          app_context: admin
+          granted_permissions: [admin:auth.config:read, admin:authz.roles:read]
         input:
-          app_context: { _from: "steps.support-grants.app_context" }
-          granted_permissions: { _from: "steps.support-grants.granted_permissions" }
-      - name: support-respond
+          auth_contribution: { _from: "steps.register-auth.contribution" }
+          authz_contribution: { _from: "steps.register-authz.contribution" }
+          app_context: admin
+          granted_permissions: [admin:auth.config:read, admin:authz.roles:read]
+      - name: respond-both-readonly
         type: step.json_response
         config:
           status: 200
           body:
-            contributions: { _from: "steps.support-list.contributions" }
-      - name: viewer-grants
-        type: step.set
+            contributions: { _from: "steps.list-both-readonly.contributions" }
+            granted_permissions: [admin:auth.config:read, admin:authz.roles:read]
+      - name: list-auth-only
+        type: step.admin_list_contributions
         config:
-          values:
-            app_context: admin
-            granted_permissions: []
+          module: admin
+          contribution_steps: [register-auth, register-authz]
+          app_context: admin
+          granted_permissions: [admin:auth.config:read]
+        input:
+          auth_contribution: { _from: "steps.register-auth.contribution" }
+          authz_contribution: { _from: "steps.register-authz.contribution" }
+          app_context: admin
+          granted_permissions: [admin:auth.config:read]
+      - name: respond-auth-only
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            contributions: { _from: "steps.list-auth-only.contributions" }
+            granted_permissions: [admin:auth.config:read]
+      - name: list-authz-admin
+        type: step.admin_list_contributions
+        config:
+          module: admin
+          contribution_steps: [register-auth, register-authz]
+          app_context: admin
+          granted_permissions: [admin:authz.roles:read, admin:authz.roles:update]
+        input:
+          auth_contribution: { _from: "steps.register-auth.contribution" }
+          authz_contribution: { _from: "steps.register-authz.contribution" }
+          app_context: admin
+          granted_permissions: [admin:authz.roles:read, admin:authz.roles:update]
+      - name: respond-authz-admin
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            contributions: { _from: "steps.list-authz-admin.contributions" }
+            granted_permissions: [admin:authz.roles:read, admin:authz.roles:update]
+      - name: list-authz-only
+        type: step.admin_list_contributions
+        config:
+          module: admin
+          contribution_steps: [register-auth, register-authz]
+          app_context: admin
+          granted_permissions: [admin:authz.roles:read]
+        input:
+          auth_contribution: { _from: "steps.register-auth.contribution" }
+          authz_contribution: { _from: "steps.register-authz.contribution" }
+          app_context: admin
+          granted_permissions: [admin:authz.roles:read]
+      - name: respond-authz-only
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            contributions: { _from: "steps.list-authz-only.contributions" }
+            granted_permissions: [admin:authz.roles:read]
       - name: viewer-list
         type: step.admin_list_contributions
         config:
           module: admin
+          contribution_steps: [register-auth, register-authz]
+          app_context: admin
+          granted_permissions: []
         input:
-          app_context: { _from: "steps.viewer-grants.app_context" }
-          granted_permissions: { _from: "steps.viewer-grants.granted_permissions" }
+          auth_contribution: { _from: "steps.register-auth.contribution" }
+          authz_contribution: { _from: "steps.register-authz.contribution" }
+          app_context: admin
+          granted_permissions: []
       - name: viewer-respond
         type: step.json_response
         config:
           status: 200
           body:
             contributions: { _from: "steps.viewer-list.contributions" }
+            granted_permissions: []
 
   auth-provider-catalog:
     trigger:
@@ -594,6 +862,33 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
+      - *scenario90_create_role_table_step
+      - name: find-auth-provider-read
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:auth.providers.read
+          mode: single
+      - name: route-by-auth-provider-read
+        type: step.conditional
+        config:
+          field: steps.find-auth-provider-read.found
+          routes:
+            'true': catalog
+          default: deny-response
       - name: catalog
         type: step.auth_provider_catalog
         config: &auth_provider_catalog_config
@@ -704,6 +999,13 @@ pipelines:
           body:
             providers: { _from: "steps.catalog.providers" }
             warnings: { _from: "steps.catalog.warnings" }
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            allowed: false
+            reason: missing admin:auth.providers.read
 
   auth-admin-config:
     trigger:
@@ -722,6 +1024,33 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
+      - *scenario90_create_role_table_step
+      - name: find-auth-config-read
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:auth.config:read
+          mode: single
+      - name: route-by-auth-config-read
+        type: step.conditional
+        config:
+          field: steps.find-auth-config-read.found
+          routes:
+            'true': catalog
+          default: deny-response
       - name: catalog
         type: step.auth_provider_catalog
         config: *auth_provider_catalog_config
@@ -747,6 +1076,13 @@ pipelines:
             providers: { _from: "steps.catalog.providers" }
             warnings: { _from: "steps.describe.warnings" }
             secret_fields: { _from: "steps.describe.secret_fields" }
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            allowed: false
+            reason: missing admin:auth.config:read
 
   auth-admin-config-validate:
     trigger:
@@ -766,6 +1102,33 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_request.headers.Authorization
           subject_field: subject
+      - *scenario90_create_role_table_step
+      - name: find-auth-config-update
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:auth.config:update
+          mode: single
+      - name: route-by-auth-config-update
+        type: step.conditional
+        config:
+          field: steps.find-auth-config-update.found
+          routes:
+            'true': validate
+          default: deny-response
       - name: validate
         type: step.auth_admin_config_validate
         config:
@@ -784,6 +1147,13 @@ pipelines:
             errors: { _from: "steps.validate.errors" }
             warnings: { _from: "steps.validate.warnings" }
             secret_fields: { _from: "steps.validate.secret_fields" }
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            allowed: false
+            reason: missing admin:auth.config:update
 
   describe-auth0-provider:
     trigger:
@@ -802,6 +1172,33 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
+      - *scenario90_create_role_table_step
+      - name: find-auth-provider-read
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:auth.providers.read
+          mode: single
+      - name: route-by-auth-provider-read
+        type: step.conditional
+        config:
+          field: steps.find-auth-provider-read.found
+          routes:
+            'true': describe
+          default: deny-response
       - name: describe
         type: step.auth0_auth_provider_describe
         config:
@@ -813,6 +1210,13 @@ pipelines:
           status: 200
           body:
             providers: { _from: "steps.describe.providers" }
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            allowed: false
+            reason: missing admin:auth.providers.read
 
   describe-entra-provider:
     trigger:
@@ -831,6 +1235,33 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
+      - *scenario90_create_role_table_step
+      - name: find-auth-provider-read
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:auth.providers.read
+          mode: single
+      - name: route-by-auth-provider-read
+        type: step.conditional
+        config:
+          field: steps.find-auth-provider-read.found
+          routes:
+            'true': describe
+          default: deny-response
       - name: describe
         type: step.entra_auth_provider_describe
         config:
@@ -842,6 +1273,13 @@ pipelines:
           status: 200
           body:
             providers: { _from: "steps.describe.providers" }
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            allowed: false
+            reason: missing admin:auth.providers.read
 
   describe-ory-kratos-provider:
     trigger:
@@ -860,6 +1298,33 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
+      - *scenario90_create_role_table_step
+      - name: find-auth-provider-read
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:auth.providers.read
+          mode: single
+      - name: route-by-auth-provider-read
+        type: step.conditional
+        config:
+          field: steps.find-auth-provider-read.found
+          routes:
+            'true': describe
+          default: deny-response
       - name: describe
         type: step.ory_kratos_auth_provider_describe
         config:
@@ -870,6 +1335,13 @@ pipelines:
           status: 200
           body:
             providers: { _from: "steps.describe.providers" }
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            allowed: false
+            reason: missing admin:auth.providers.read
 
   describe-ory-hydra-provider:
     trigger:
@@ -888,6 +1360,33 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
+      - *scenario90_create_role_table_step
+      - name: find-auth-provider-read
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:auth.providers.read
+          mode: single
+      - name: route-by-auth-provider-read
+        type: step.conditional
+        config:
+          field: steps.find-auth-provider-read.found
+          routes:
+            'true': describe
+          default: deny-response
       - name: describe
         type: step.ory_hydra_auth_provider_describe
         config:
@@ -898,6 +1397,13 @@ pipelines:
           status: 200
           body:
             providers: { _from: "steps.describe.providers" }
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            allowed: false
+            reason: missing admin:auth.providers.read
 
   describe-ory-polis-provider:
     trigger:
@@ -916,6 +1422,33 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
+      - *scenario90_create_role_table_step
+      - name: find-auth-provider-read
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:auth.providers.read
+          mode: single
+      - name: route-by-auth-provider-read
+        type: step.conditional
+        config:
+          field: steps.find-auth-provider-read.found
+          routes:
+            'true': describe
+          default: deny-response
       - name: describe
         type: step.ory_polis_auth_provider_describe
         config:
@@ -926,6 +1459,13 @@ pipelines:
           status: 200
           body:
             providers: { _from: "steps.describe.providers" }
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            allowed: false
+            reason: missing admin:auth.providers.read
 
   describe-scalekit-provider:
     trigger:
@@ -944,6 +1484,33 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
+      - *scenario90_create_role_table_step
+      - name: find-auth-provider-read
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:auth.providers.read
+          mode: single
+      - name: route-by-auth-provider-read
+        type: step.conditional
+        config:
+          field: steps.find-auth-provider-read.found
+          routes:
+            'true': describe
+          default: deny-response
       - name: describe
         type: step.scalekit_auth_provider_describe
         config:
@@ -954,6 +1521,13 @@ pipelines:
           status: 200
           body:
             providers: { _from: "steps.describe.providers" }
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            allowed: false
+            reason: missing admin:auth.providers.read
 
   authz-capabilities:
     trigger:
@@ -972,14 +1546,36 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
+      - *scenario90_create_role_table_step
+      - name: find-authz-read-grant
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT 1 AS found
+            FROM scenario90_role_assignments, json_each(scenario90_role_assignments.scopes_json)
+            WHERE user = ? AND context = ? AND json_each.value = ?
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:authz.roles:read
+          mode: single
+      - name: route-by-authz-read
+        type: step.conditional
+        config:
+          field: steps.find-authz-read-grant.found
+          routes:
+            'true': respond
+          default: deny-response
       - name: respond
         type: step.json_response
         config:
           status: 200
           body:
             module: authz-ui
-            provider: scenario-fixture
-            capabilities: [rbac, abac, rebac]
+            provider: workflow-scenario-policy
+            capabilities: [rbac]
             health: ok
             capability_descriptors:
               - mode: rbac
@@ -988,15 +1584,24 @@ pipelines:
                 source: workflow-plugin-authz-ui
                 health: ok
               - mode: abac
-                operations: [manage_policies]
-                configured: true
+                operations: []
+                configured: false
                 source: workflow-plugin-authz-ui
-                health: ok
+                health: unavailable
+                unsupported_reason: scenario 90 does not expose ABAC policy routes
               - mode: rebac
-                operations: [manage_relations]
-                configured: true
+                operations: []
+                configured: false
                 source: workflow-plugin-authz-ui
-                health: ok
+                health: unavailable
+                unsupported_reason: scenario 90 does not expose ReBAC relation routes
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            allowed: false
+            reason: missing admin:authz.roles:read
 
   authz-scopes:
     trigger:
@@ -1015,6 +1620,28 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
+      - *scenario90_create_role_table_step
+      - name: find-authz-read-grant
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT 1 AS found
+            FROM scenario90_role_assignments, json_each(scenario90_role_assignments.scopes_json)
+            WHERE user = ? AND context = ? AND json_each.value = ?
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:authz.roles:read
+          mode: single
+      - name: route-by-authz-read
+        type: step.conditional
+        config:
+          field: steps.find-authz-read-grant.found
+          routes:
+            'true': respond
+          default: deny-response
       - name: respond
         type: step.json_response
         config:
@@ -1048,6 +1675,13 @@ pipelines:
               owner_plugin: workflow-plugin-authz-ui
               owner_module: authz-ui
               category: admin
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            allowed: false
+            reason: missing admin:authz.roles:read
 
   authz-roles:
     trigger:
@@ -1066,24 +1700,61 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
-      - name: lookup
-        type: step.authz_role_lookup
+      - *scenario90_create_role_table_step
+      - name: find-authz-roles-read
+        type: step.db_query
         config:
-          subject: admin@tailnet
-          roles: [admin]
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:authz.roles:read
+          mode: single
+      - name: route-by-authz-roles-read
+        type: step.conditional
+        config:
+          field: steps.find-authz-roles-read.found
+          routes:
+            'true': fetch-roles
+          default: deny-read
+      - name: fetch-roles
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context, CAST(scopes_json AS BLOB) AS scopes
+            FROM scenario90_role_assignments
+            ORDER BY user, role, context
       - name: respond
         type: step.json_response
         config:
           status: 200
+          body_from: steps.fetch-roles.rows
+      - name: deny-read
+        type: step.authz_enforce
+        config:
+          subject: '{{ index .steps "authenticate" "email" }}'
+          resource: authz.roles
+          action: read
+          permitted: false
+          reason: missing admin:authz.roles:read
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 403
           body:
-            - user: admin@tailnet
-              role: admin
-              context: admin
-              scopes: ["admin:authz.roles:read", "admin:authz.roles:update"]
-            - user: app-user@tailnet
-              role: support
-              context: frontend
-              scopes: ["frontend:orders:read"]
+            allowed: false
+            reason: { _from: "steps.deny-read.reason" }
 
   authz-roles-add:
     trigger:
@@ -1103,33 +1774,81 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_request.headers.Authorization
           subject_field: subject
-      - name: route-by-user
+      - *scenario90_create_role_table_step
+      - name: find-authz-roles-update
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:authz.roles:update
+          mode: single
+      - name: route-by-authz-roles-update
         type: step.conditional
         config:
-          field: steps.authenticate.email
+          field: steps.find-authz-roles-update.found
           routes:
-            admin@tailnet: allow-update
+            'true': allow-update
           default: deny-update
       - name: allow-update
         type: step.authz_enforce
         config:
-          subject: admin@tailnet
+          subject: '{{ index .steps "authenticate" "email" }}'
           resource: authz.roles
           action: update
           permitted: true
           reason: admin:authz.roles:update granted
+      - name: upsert-role
+        type: step.db_exec
+        config:
+          database: admin-db
+          query: |
+            INSERT INTO scenario90_role_assignments (user, role, context, scopes_json, updated_at)
+            VALUES (?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(user, role, context) DO UPDATE SET
+              scopes_json = excluded.scopes_json,
+              updated_at = datetime('now')
+          params:
+            - '{{ index .steps "parse_request" "body" "user" }}'
+            - '{{ index .steps "parse_request" "body" "role" }}'
+            - '{{ index .steps "parse_request" "body" "context" }}'
+            - '{{ json (index .steps "parse_request" "body" "scopes") }}'
+      - name: fetch-role
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context, CAST(scopes_json AS BLOB) AS scopes
+            FROM scenario90_role_assignments
+            WHERE user = ? AND role = ? AND context = ?
+          params:
+            - '{{ index .steps "parse_request" "body" "user" }}'
+            - '{{ index .steps "parse_request" "body" "role" }}'
+            - '{{ index .steps "parse_request" "body" "context" }}'
+          mode: single
       - name: allow-response
         type: step.json_response
         config:
           status: 200
           body:
             updated: true
-            assignment: { _from: "steps.parse_request.body" }
+            assignment: { _from: "steps.fetch-role.row" }
             reason: { _from: "steps.allow-update.reason" }
       - name: deny-update
         type: step.authz_enforce
         config:
-          subject: non-admin
+          subject: '{{ index .steps "authenticate" "email" }}'
           resource: authz.roles
           action: update
           permitted: false
@@ -1160,21 +1879,50 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_request.headers.Authorization
           subject_field: subject
-      - name: route-by-user
+      - *scenario90_create_role_table_step
+      - name: find-authz-roles-update
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:authz.roles:update
+          mode: single
+      - name: route-by-authz-roles-update
         type: step.conditional
         config:
-          field: steps.authenticate.email
+          field: steps.find-authz-roles-update.found
           routes:
-            admin@tailnet: allow-delete
+            'true': allow-delete
           default: deny-delete
       - name: allow-delete
         type: step.authz_enforce
         config:
-          subject: admin@tailnet
+          subject: '{{ index .steps "authenticate" "email" }}'
           resource: authz.roles
           action: update
           permitted: true
           reason: admin:authz.roles:update granted
+      - name: delete-role
+        type: step.db_exec
+        config:
+          database: admin-db
+          query: "DELETE FROM scenario90_role_assignments WHERE user = ? AND role = ? AND context = ?"
+          params:
+            - '{{ index .steps "parse_request" "body" "user" }}'
+            - '{{ index .steps "parse_request" "body" "role" }}'
+            - '{{ index .steps "parse_request" "body" "context" }}'
       - name: allow-response
         type: step.json_response
         config:
@@ -1186,7 +1934,7 @@ pipelines:
       - name: deny-delete
         type: step.authz_enforce
         config:
-          subject: non-admin
+          subject: '{{ index .steps "authenticate" "email" }}'
           resource: authz.roles
           action: update
           permitted: false
@@ -1206,31 +1954,120 @@ pipelines:
         path: /api/authz/enforce
         method: POST
     steps:
-      - name: parse_auth
+      - name: parse_request
         type: step.request_parse
         config:
           parse_headers: [Authorization]
+          parse_body: true
       - name: authenticate
         type: step.auth_validate
         config:
           auth_module: auth
-          token_source: steps.parse_auth.headers.Authorization
+          token_source: steps.parse_request.headers.Authorization
           subject_field: subject
-      - name: enforce
+      - *scenario90_create_role_table_step
+      - name: find-subject-match
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT 1 AS matched
+            WHERE ? = ?
+            LIMIT 1
+          params:
+            - '{{ index .steps "parse_request" "body" "subject" }}'
+            - '{{ index .steps "authenticate" "email" }}'
+          mode: single
+      - name: route-subject-match
+        type: step.conditional
+        config:
+          field: steps.find-subject-match.found
+          routes:
+            'true': find-matching-assignment
+          default: deny-spoof
+      - name: find-matching-assignment
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = CASE
+                  WHEN ? = 'orders' THEN 'frontend:orders:' || ?
+                  WHEN ? = 'authz.roles' THEN 'admin:authz.roles:' || ?
+                  ELSE '__scenario90_missing_scope__'
+                END
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "parse_request" "body" "subject" }}'
+            - '{{ index .steps "parse_request" "body" "object" }}'
+            - '{{ index .steps "parse_request" "body" "action" }}'
+            - '{{ index .steps "parse_request" "body" "object" }}'
+            - '{{ index .steps "parse_request" "body" "action" }}'
+          mode: single
+      - name: route-decision
+        type: step.conditional
+        config:
+          field: steps.find-matching-assignment.found
+          routes:
+            'true': allow
+          default: deny
+      - name: allow
         type: step.authz_enforce
         config:
-          subject: admin@tailnet
-          resource: authz.roles
-          action: update
+          subject: '{{ index .steps "parse_request" "body" "subject" }}'
+          resource: '{{ index .steps "parse_request" "body" "object" }}'
+          action: '{{ index .steps "parse_request" "body" "action" }}'
           permitted: true
-          reason: scenario fixture grants admin role
+          reason: persisted role assignment grants request
       - name: respond
         type: step.json_response
         config:
           status: 200
           body:
-            subject: { _from: "steps.enforce.subject" }
-            object: { _from: "steps.enforce.resource" }
-            action: { _from: "steps.enforce.action" }
-            allowed: { _from: "steps.enforce.permitted" }
-            reason: { _from: "steps.enforce.reason" }
+            subject: { _from: "steps.parse_request.body.subject" }
+            object: { _from: "steps.parse_request.body.object" }
+            action: { _from: "steps.parse_request.body.action" }
+            allowed: true
+            reason: { _from: "steps.allow.reason" }
+      - name: deny
+        type: step.authz_enforce
+        config:
+          subject: '{{ index .steps "parse_request" "body" "subject" }}'
+          resource: '{{ index .steps "parse_request" "body" "object" }}'
+          action: '{{ index .steps "parse_request" "body" "action" }}'
+          permitted: false
+          reason: missing matching assignment
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            subject: { _from: "steps.parse_request.body.subject" }
+            object: { _from: "steps.parse_request.body.object" }
+            action: { _from: "steps.parse_request.body.action" }
+            allowed: false
+            reason: { _from: "steps.deny.reason" }
+      - name: deny-spoof
+        type: step.authz_enforce
+        config:
+          subject: '{{ index .steps "authenticate" "email" }}'
+          resource: '{{ index .steps "parse_request" "body" "object" }}'
+          action: '{{ index .steps "parse_request" "body" "action" }}'
+          permitted: false
+          reason: subject does not match authenticated user
+      - name: deny-spoof-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            subject: { _from: "steps.parse_request.body.subject" }
+            object: { _from: "steps.parse_request.body.object" }
+            action: { _from: "steps.parse_request.body.action" }
+            allowed: false
+            reason: { _from: "steps.deny-spoof.reason" }

@@ -6,6 +6,7 @@ services:
     environment:
       WFCTL_PLUGIN_DIR: /data/plugins
       JWT_SECRET: scenario-90-local-demo-secret-32-bytes-minimum
+      SCENARIO90_SEED_TOKEN: ${SCENARIO90_SEED_TOKEN:?SCENARIO90_SEED_TOKEN required}
     ports:
       - "127.0.0.1:18080:8080"
 

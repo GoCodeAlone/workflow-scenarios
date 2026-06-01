@@ -40,6 +40,11 @@ if find "$SCENARIO_DIR" -type f \( -name '*.py' -o -name '*.pyc' \) | grep -q .;
 else
   pass "Scenario has no Python app harness artifacts"
 fi
+if grep -A28 'name: admin-authz-contribution' "$SCENARIO_DIR/config/app.yaml" | grep -q 'type: step.authz_admin_contribution'; then
+  pass "Authz admin contribution comes from authz UI plugin step"
+else
+  fail "Authz admin contribution must come from authz UI plugin step"
+fi
 
 "$SCENARIO_DIR/seed/seed.sh"
 
@@ -91,6 +96,19 @@ else
   fail "Anonymous authz roles API expected 401, got $unauth_authz_code"
 fi
 
+unauth_seed_code="$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/scenario90/seed/roles" || echo "000")"
+if [ "$unauth_seed_code" = "403" ]; then
+  pass "Anonymous role seed endpoint is forbidden"
+else
+  fail "Anonymous role seed endpoint expected 403, got $unauth_seed_code"
+fi
+committed_seed_code="$(curl -s -o /dev/null -w "%{http_code}" -X POST -H 'X-Scenario90-Seed-Token: scenario90-local-seed' "$BASE/api/scenario90/seed/roles" || echo "000")"
+if [ "$committed_seed_code" = "403" ]; then
+  pass "Committed sample seed token is not accepted"
+else
+  fail "Committed sample seed token expected 403, got $committed_seed_code"
+fi
+
 register_body="$(curl -sfS -X POST "$BASE/api/admin/auth/register" \
   -H "content-type: application/json" \
   -d '{"email":"admin@tailnet","password":"admin-password","name":"Scenario Admin"}' 2>/dev/null || true)"
@@ -116,6 +134,7 @@ contains "$contribs" '"id":"authz-roles"' "Admin plugin registered authz contrib
 contains "$contribs" '"id":"auth-config"' "Admin plugin registered auth contribution from auth plugin"
 contains "$contribs" '"render_mode":"config-form"' "Auth contribution uses generic config form render mode"
 contains "$contribs" '"render_mode":"iframe"' "Admin contribution uses pluggable iframe render mode"
+contains "$contribs" '"admin:authz.roles:update"' "Admin contribution grant bridge includes authz update scope"
 
 catalog="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/admin/auth/providers")"
 json_len_at_least "$catalog" '.providers' 9 "Auth provider catalog includes composed providers"
@@ -134,9 +153,46 @@ else
   pass "Auth config does not echo provider secrets"
 fi
 
+delegated_register="$(curl -sfS -X POST "$BASE/api/admin/auth/register" \
+  -H "content-type: application/json" \
+  -d '{"email":"delegated-admin@tailnet","password":"delegated-password","name":"Delegated Admin"}' 2>/dev/null || true)"
+delegated_token="$(jq -r '.token // .access_token // empty' <<<"$delegated_register" 2>/dev/null || true)"
+if [ -z "$delegated_token" ]; then
+  delegated_login="$(curl -sfS -X POST "$BASE/api/admin/auth/login" \
+    -H "content-type: application/json" \
+    -d '{"email":"delegated-admin@tailnet","password":"delegated-password"}' 2>/dev/null || true)"
+  delegated_token="$(jq -r '.token // .access_token // empty' <<<"$delegated_login" 2>/dev/null || true)"
+fi
+if [ -n "$delegated_token" ]; then
+  pass "Delegated admin login returns JWT token"
+else
+  fail "Delegated admin login did not return a JWT token"
+fi
+DELEGATED_AUTH_HEADER="Authorization: Bearer $delegated_token"
+delegated_auth_config="$(curl -fsS -H "$DELEGATED_AUTH_HEADER" "$BASE/api/admin/auth/config")"
+contains "$delegated_auth_config" '"groups"' "Auth config read is authorized by admin scope, not hardcoded identity"
+
 validate_config="$(curl -fsS -H "$AUTH_HEADER" -H 'content-type: application/json' -d '{"desired_config":{"environment":"production","password_auth_enabled":true}}' "$BASE/api/admin/auth/config/validate")"
 contains "$validate_config" '"valid":false' "Auth config validation rejects unsafe production password login"
 contains "$validate_config" 'password auth cannot be enabled in production' "Auth config validation returns plugin diagnostic"
+delegated_validate_code="$(curl -s -o /tmp/scenario90-delegated-validate.json -w "%{http_code}" -H "$DELEGATED_AUTH_HEADER" -H 'content-type: application/json' -d '{"desired_config":{"environment":"development"}}' "$BASE/api/admin/auth/config/validate")"
+if [ "$delegated_validate_code" = "403" ]; then
+  pass "Delegated read-only auth admin cannot validate config without update scope"
+else
+  fail "Delegated auth config validate expected 403, got $delegated_validate_code"
+fi
+delegated_scopes_code="$(curl -s -o /tmp/scenario90-delegated-authz-scopes.json -w "%{http_code}" -H "$DELEGATED_AUTH_HEADER" "$BASE/api/authz/scopes")"
+if [ "$delegated_scopes_code" = "403" ]; then
+  pass "Delegated auth admin cannot read authz metadata without authz read scope"
+else
+  fail "Delegated authz scopes expected 403, got $delegated_scopes_code"
+fi
+delegated_caps_code="$(curl -s -o /tmp/scenario90-delegated-authz-caps.json -w "%{http_code}" -H "$DELEGATED_AUTH_HEADER" "$BASE/api/authz/capabilities")"
+if [ "$delegated_caps_code" = "403" ]; then
+  pass "Delegated auth admin cannot read authz capabilities without authz read scope"
+else
+  fail "Delegated authz capabilities expected 403, got $delegated_caps_code"
+fi
 
 for provider in auth0 entra ory-kratos ory-hydra ory-polis scalekit; do
   body="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/admin/auth/providers/$provider")"
@@ -157,12 +213,14 @@ contains "$add_role" '"updated":true' "Authz role update endpoint accepts admin 
 
 caps="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/authz/capabilities")"
 contains "$caps" '"mode":"rbac"' "Authz capabilities report RBAC"
-contains "$caps" '"mode":"abac"' "Authz capabilities report ABAC"
-contains "$caps" '"mode":"rebac"' "Authz capabilities report ReBAC"
+contains "$caps" '"mode":"abac"' "Authz capabilities disclose ABAC availability"
+contains "$caps" '"configured":false' "Authz capabilities mark unsupported modes unconfigured"
+contains "$caps" 'does not expose ABAC policy routes' "Authz capabilities explain unsupported ABAC routes"
+contains "$caps" 'does not expose ReBAC relation routes' "Authz capabilities explain unsupported ReBAC routes"
 
 enforce="$(curl -fsS -H "$AUTH_HEADER" -H 'content-type: application/json' -d '{"subject":"admin@tailnet","object":"authz.roles","action":"update"}' "$BASE/api/authz/enforce")"
 contains "$enforce" '"allowed":true' "Authz UI plugin enforce step permits expected action"
-contains "$enforce" '"reason":"scenario fixture grants admin role"' "Authz enforce response comes from plugin step config"
+contains "$enforce" '"reason":"persisted role assignment grants request"' "Authz enforce response comes from persisted role assignment"
 
 support_register="$(curl -sfS -X POST "$BASE/api/app/auth/register" \
   -H "content-type: application/json" \
@@ -180,6 +238,23 @@ else
   fail "Primary app support login did not return a JWT token"
 fi
 SUPPORT_AUTH_HEADER="Authorization: Bearer $support_token"
+
+viewer_register="$(curl -sfS -X POST "$BASE/api/app/auth/register" \
+  -H "content-type: application/json" \
+  -d '{"email":"viewer@tailnet","password":"viewer-password","name":"Viewer User"}' 2>/dev/null || true)"
+viewer_token="$(jq -r '.token // .access_token // empty' <<<"$viewer_register" 2>/dev/null || true)"
+if [ -z "$viewer_token" ]; then
+  viewer_login="$(curl -sfS -X POST "$BASE/api/app/auth/login" \
+    -H "content-type: application/json" \
+    -d '{"email":"viewer@tailnet","password":"viewer-password"}' 2>/dev/null || true)"
+  viewer_token="$(jq -r '.token // .access_token // empty' <<<"$viewer_login" 2>/dev/null || true)"
+fi
+if [ -n "$viewer_token" ]; then
+  pass "Primary app viewer login returns JWT token"
+else
+  fail "Primary app viewer login did not return a JWT token"
+fi
+VIEWER_AUTH_HEADER="Authorization: Bearer $viewer_token"
 
 support_access="$(curl -fsS -H "$SUPPORT_AUTH_HEADER" "$BASE/api/app/access")"
 contains "$support_access" '"role":"support"' "SPA access projection identifies support role"
@@ -199,6 +274,77 @@ else
   fail "Support update expected 403, got $support_update_code"
 fi
 contains "$(cat /tmp/scenario90-support-update.json)" 'missing frontend:orders:update' "Support update denial explains missing scope"
+
+support_auth_config_code="$(curl -s -o /tmp/scenario90-support-auth-config.json -w "%{http_code}" -H "$SUPPORT_AUTH_HEADER" "$BASE/api/admin/auth/config")"
+if [ "$support_auth_config_code" = "403" ]; then
+  pass "Support cannot read admin auth config without admin auth scope"
+else
+  fail "Support auth config expected 403, got $support_auth_config_code"
+fi
+support_auth_catalog_code="$(curl -s -o /tmp/scenario90-support-auth-catalog.json -w "%{http_code}" -H "$SUPPORT_AUTH_HEADER" "$BASE/api/admin/auth/providers")"
+if [ "$support_auth_catalog_code" = "403" ]; then
+  pass "Support cannot read admin auth provider catalog without admin auth scope"
+else
+  fail "Support auth provider catalog expected 403, got $support_auth_catalog_code"
+fi
+support_validate_code="$(curl -s -o /tmp/scenario90-support-auth-validate.json -w "%{http_code}" -H "$SUPPORT_AUTH_HEADER" -H 'content-type: application/json' -d '{"desired_config":{"environment":"development"}}' "$BASE/api/admin/auth/config/validate")"
+if [ "$support_validate_code" = "403" ]; then
+  pass "Support cannot validate admin auth config without admin auth update scope"
+else
+  fail "Support auth config validate expected 403, got $support_validate_code"
+fi
+viewer_roles_code="$(curl -s -o /tmp/scenario90-viewer-roles.json -w "%{http_code}" -H "$VIEWER_AUTH_HEADER" "$BASE/api/authz/roles")"
+if [ "$viewer_roles_code" = "403" ]; then
+  pass "Viewer cannot read authz role assignments without admin authz read scope"
+else
+  fail "Viewer authz roles expected 403, got $viewer_roles_code"
+fi
+
+arbitrary_enforce="$(curl -fsS -H "$VIEWER_AUTH_HEADER" -H 'content-type: application/json' -d '{"subject":"viewer@tailnet","object":"orders","action":"delete"}' "$BASE/api/authz/enforce")"
+contains "$arbitrary_enforce" '"subject":"viewer@tailnet"' "Authz enforce echoes requested subject"
+contains "$arbitrary_enforce" '"object":"orders"' "Authz enforce echoes requested object"
+contains "$arbitrary_enforce" '"action":"delete"' "Authz enforce echoes requested action"
+contains "$arbitrary_enforce" '"allowed":false' "Authz enforce denies ungranted arbitrary action"
+spoof_enforce_code="$(curl -s -o /tmp/scenario90-spoof-enforce.json -w "%{http_code}" -H "$SUPPORT_AUTH_HEADER" -H 'content-type: application/json' -d '{"subject":"admin@tailnet","object":"authz.roles","action":"update"}' "$BASE/api/authz/enforce")"
+if [ "$spoof_enforce_code" = "403" ]; then
+  pass "Authz enforce rejects spoofed subject simulation"
+else
+  fail "Authz enforce spoof expected 403, got $spoof_enforce_code"
+fi
+contains "$(cat /tmp/scenario90-spoof-enforce.json)" 'subject does not match authenticated user' "Spoofed enforce denial explains subject mismatch"
+
+new_role="$(curl -fsS -H "$AUTH_HEADER" -H 'content-type: application/json' -d '{"user":"new@tailnet","role":"auditor","context":"frontend","scopes":["frontend:orders:read"]}' "$BASE/api/authz/roles")"
+contains "$new_role" '"updated":true' "Authz role update accepts new persisted assignment"
+roles_after_add="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/authz/roles")"
+contains "$roles_after_add" '"new@tailnet"' "Authz roles endpoint reflects newly added assignment"
+new_register="$(curl -sfS -X POST "$BASE/api/app/auth/register" \
+  -H "content-type: application/json" \
+  -d '{"email":"new@tailnet","password":"new-password","name":"New Auditor"}' 2>/dev/null || true)"
+new_token="$(jq -r '.token // .access_token // empty' <<<"$new_register" 2>/dev/null || true)"
+if [ -z "$new_token" ]; then
+  new_login="$(curl -sfS -X POST "$BASE/api/app/auth/login" \
+    -H "content-type: application/json" \
+    -d '{"email":"new@tailnet","password":"new-password"}' 2>/dev/null || true)"
+  new_token="$(jq -r '.token // .access_token // empty' <<<"$new_login" 2>/dev/null || true)"
+fi
+if [ -n "$new_token" ]; then
+  pass "New persisted-role user login returns JWT token"
+else
+  fail "New persisted-role user login did not return a JWT token"
+fi
+NEW_AUTH_HEADER="Authorization: Bearer $new_token"
+new_enforce="$(curl -fsS -H "$NEW_AUTH_HEADER" -H 'content-type: application/json' -d '{"subject":"new@tailnet","object":"orders","action":"read"}' "$BASE/api/authz/enforce")"
+contains "$new_enforce" '"allowed":true' "Authz enforce honors newly added persisted assignment"
+delete_role="$(curl -fsS -X DELETE -H "$AUTH_HEADER" -H 'content-type: application/json' -d '{"user":"new@tailnet","role":"auditor","context":"frontend"}' "$BASE/api/authz/roles")"
+contains "$delete_role" '"deleted":true' "Authz role delete accepts persisted assignment"
+roles_after_delete="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/authz/roles")"
+if grep -q '"new@tailnet"' <<<"$roles_after_delete"; then
+  fail "Authz roles endpoint still includes deleted assignment"
+else
+  pass "Authz roles endpoint removes deleted assignment"
+fi
+new_enforce_after_delete="$(curl -fsS -H "$NEW_AUTH_HEADER" -H 'content-type: application/json' -d '{"subject":"new@tailnet","object":"orders","action":"read"}' "$BASE/api/authz/enforce")"
+contains "$new_enforce_after_delete" '"allowed":false' "Authz enforce reflects deleted persisted assignment"
 
 admin_app_access="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/app/access")"
 contains "$admin_app_access" '"role":"admin"' "SPA access projection identifies admin role"
