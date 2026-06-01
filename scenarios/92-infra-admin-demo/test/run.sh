@@ -86,9 +86,10 @@ JWT_SECRET=$(python3 -c "
 import re, sys
 try:
     data = open('${CFG_LOCAL}').read()
-    m = re.search(r'type:\s*auth\.jwt.*?secret:\s*[\"']([^\"']+)[\"']', data, re.DOTALL)
+    # Accepts quoted ('...' or \"...\") or bare YAML string values.
+    m = re.search(r'type:\s*auth\.jwt.*?secret:\s*[\"\'\"']?([^\"\'\"'\n]+?)[\"\'\"']?\s*$', data, re.DOTALL | re.MULTILINE)
     if m:
-        print(m.group(1))
+        print(m.group(1).strip())
     else:
         sys.exit(1)
 except Exception:

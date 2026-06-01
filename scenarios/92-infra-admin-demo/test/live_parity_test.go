@@ -39,7 +39,6 @@ package test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -90,7 +89,10 @@ func (c *liveParityClient) post(t *testing.T, path string, body any) map[string]
 		t.Fatalf("POST %s: %v", path, err)
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("POST %s: read body: %v", path, err)
+	}
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("POST %s: HTTP %d: %s", path, resp.StatusCode, raw)
 	}
@@ -239,7 +241,9 @@ func detectAvailableProviders(t *testing.T) []string {
 	if os.Getenv("DIGITALOCEAN_TOKEN") != "" {
 		providers = append(providers, "digitalocean")
 	}
-	t.Logf("detectAvailableProviders: found %v", providers)
+	if len(providers) > 0 {
+		t.Logf("detectAvailableProviders: %d provider(s) available: %v", len(providers), providers)
+	}
 	return providers
 }
 
@@ -258,5 +262,5 @@ func TestLiveParity_SkipsByDefault(t *testing.T) {
 	})
 	// The sub-test was skipped, not failed — that's the correct behavior.
 	// This outer test body itself passes (no t.Fail() call).
-	fmt.Fprintf(os.Stdout, "LiveParity_SkipsByDefault: sub-test correctly skipped\n") //nolint:forbidigo
+	t.Log("LiveParity_SkipsByDefault: sub-test correctly skipped")
 }
