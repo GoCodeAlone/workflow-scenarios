@@ -31,12 +31,20 @@ admin_ui_dir_has_auth_gate() {
     grep -R 'Authorization' "$ui_dir" >/dev/null 2>&1
 }
 
+admin_ui_dir_has_contribution_renderers() {
+  local ui_dir="$1"
+  grep -R 'renderConfigForm' "$ui_dir" >/dev/null 2>&1 &&
+    grep -R 'workflow.admin.auth.request' "$ui_dir" >/dev/null 2>&1 &&
+    grep -R 'workflow.admin.auth.response' "$ui_dir" >/dev/null 2>&1
+}
+
 admin_repo_is_usable() {
   local repo="$1"
   [ -f "$repo/go.mod" ] &&
     [ -d "$repo/internal/ui_dist" ] &&
     ! admin_ui_dir_has_hardcoded_surfaces "$repo/internal/ui_dist" &&
-    admin_ui_dir_has_auth_gate "$repo/internal/ui_dist"
+    admin_ui_dir_has_auth_gate "$repo/internal/ui_dist" &&
+    admin_ui_dir_has_contribution_renderers "$repo/internal/ui_dist"
 }
 
 find_admin_repo() {
@@ -128,7 +136,21 @@ build_plugin() {
 BUILD_DIR="$SCENARIO_DIR/.build"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR/plugins" "$BUILD_DIR/admin-ui" "$BUILD_DIR/authz-ui" "$BUILD_DIR/app-ui" "$BUILD_DIR/data"
+if [ -z "${SCENARIO90_SEED_TOKEN:-}" ]; then
+  if command -v openssl >/dev/null 2>&1; then
+    SCENARIO90_SEED_TOKEN="$(openssl rand -hex 32)"
+  elif command -v uuidgen >/dev/null 2>&1; then
+    SCENARIO90_SEED_TOKEN="$(uuidgen | tr '[:upper:]' '[:lower:]')-$(date +%s)"
+  elif command -v od >/dev/null 2>&1; then
+    SCENARIO90_SEED_TOKEN="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+  else
+    SCENARIO90_SEED_TOKEN="scenario90-$(date +%s)-$$"
+  fi
+fi
+export SCENARIO90_SEED_TOKEN
 cp "$SCENARIO_DIR/config/app.yaml" "$BUILD_DIR/app.yaml"
+awk -v token="$SCENARIO90_SEED_TOKEN" '{ gsub(/\$\{SCENARIO90_SEED_TOKEN\}/, token); print }' "$BUILD_DIR/app.yaml" > "$BUILD_DIR/app.yaml.tmp"
+mv "$BUILD_DIR/app.yaml.tmp" "$BUILD_DIR/app.yaml"
 
 require_go_module "$WORKFLOW_REPO"
 echo "Building workflow server..."
@@ -151,6 +173,11 @@ fi
 if ! admin_ui_dir_has_auth_gate "$BUILD_DIR/admin-ui"; then
   echo "ERROR: selected workflow-plugin-admin UI does not include token-aware admin loading" >&2
   echo "       Use workflow-plugin-admin with login-aware shell assets, or set PLUGIN_ADMIN_REPO explicitly." >&2
+  exit 1
+fi
+if ! admin_ui_dir_has_contribution_renderers "$BUILD_DIR/admin-ui"; then
+  echo "ERROR: selected workflow-plugin-admin UI does not render config-form surfaces or iframe auth bridge requests" >&2
+  echo "       Use workflow-plugin-admin with contribution renderer assets, or set PLUGIN_ADMIN_REPO explicitly." >&2
   exit 1
 fi
 if [ -d "$PLUGIN_AUTHZ_UI_REPO/ui/dist" ]; then
@@ -220,6 +247,8 @@ docker compose up -d
 echo "Waiting for Workflow /healthz ..."
 for i in $(seq 1 90); do
   if curl -fs http://127.0.0.1:18080/healthz >/dev/null 2>&1; then
+    curl -fsS -X POST -H "X-Scenario90-Seed-Token: $SCENARIO90_SEED_TOKEN" http://127.0.0.1:18080/api/scenario90/seed/roles >/dev/null
+    echo "Seeded baseline role assignments"
     echo "Stack ready at http://127.0.0.1:18080 (took ${i}s)"
     echo "Admin UI: http://127.0.0.1:18080/admin/"
     echo "Authz UI: http://127.0.0.1:18080/admin/authz/"
