@@ -87,7 +87,7 @@ import re, sys
 try:
     data = open('${CFG_LOCAL}').read()
     # Accepts quoted ('...' or \"...\") or bare YAML string values.
-    m = re.search(r'type:\s*auth\.jwt.*?secret:\s*[\"\'\"']?([^\"\'\"'\n]+?)[\"\'\"']?\s*$', data, re.DOTALL | re.MULTILINE)
+    m = re.search(r'type:\s*auth\.jwt.*?secret:\s*[\"\x27]?([^\"\x27\n]+?)[\"\x27]?\s*$', data, re.DOTALL | re.MULTILINE)
     if m:
         print(m.group(1).strip())
     else:
@@ -112,9 +112,9 @@ AUTH_HEADER="Authorization: Bearer $BEARER"
 # T16: Mint operator and viewer JWTs (sub = casbin subject).
 # operator: allowed infra:read + infra:apply + infra:destroy (per policy)
 # viewer: allowed infra:read only
-# Note: authz_module is omitted from scenario config (external plugin not
-# bridgeable as in-process Enforcer) so server falls back to authn-only mode.
-# Authn gates (401) are tested; RBAC gates (403) require in-process authz.
+# authz.local (in-process Enforcer fixture) is configured as authz_module in
+# app.yaml, so the server enforces server-side write-tier RBAC. Below we test
+# authn gates (401), CSRF (401 without Bearer), and RBAC (403 viewer-denied).
 PAYLOAD_OP=$(printf '{"iss":"scenario-92","sub":"operator","iat":%d,"exp":%d}' "$NOW" "$EXP" | b64url)
 UNSIGNED_OP="${HEADER}.${PAYLOAD_OP}"
 SIG_OP=$(printf '%s' "$UNSIGNED_OP" | openssl dgst -sha256 -hmac "$JWT_SECRET" -binary | b64url)

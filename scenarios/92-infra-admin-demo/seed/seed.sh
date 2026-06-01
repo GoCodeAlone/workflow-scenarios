@@ -15,20 +15,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENARIO_DIR="$(dirname "$SCRIPT_DIR")"
 SCENARIOS_ROOT="$(cd "$SCENARIO_DIR/../.." && pwd)"
-# Default to the infra-admin-authz-inproc worktree which includes:
-#   - plugins/stubprovider (iac.provider stub, scenario_stub tag)
-#   - plugins/localauthz  (authz.local in-process RBAC, scenario_stub tag)
-# PR-1b merged the localauthz plugin into this worktree (workflow#815).
-WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$SCENARIOS_ROOT/.." && pwd)/.config/autodev/worktrees/workflow/infra-admin-authz-inproc}"
-# Fallback: if the authz-inproc worktree doesn't exist, try plain workflow repo.
-[ -f "$WORKFLOW_REPO/go.mod" ] || WORKFLOW_REPO="$(cd "$SCENARIOS_ROOT/.." && pwd)/workflow"
+# The scenario-owned server (cmd/server) is built from THIS module, which pins
+# the workflow engine via go.mod (released v0.69.0) — no workflow checkout
+# needed. Only the external admin plugin is built from a local checkout.
 PLUGIN_ADMIN_REPO="${PLUGIN_ADMIN_REPO:-$(cd "$SCENARIOS_ROOT/.." && pwd)/workflow-plugin-admin}"
 IMAGE_TAG="${IMAGE_TAG:-workflow-admin:scenario-92}"
 VARIANT="${VARIANT:-}"   # "" → app.yaml; "do-dryrun" → app-do-dryrun.yaml
 
 echo ""
 echo "=== Scenario 92 seed ==="
-echo "  WORKFLOW_REPO=$WORKFLOW_REPO"
 echo "  PLUGIN_ADMIN_REPO=$PLUGIN_ADMIN_REPO"
 echo "  IMAGE_TAG=$IMAGE_TAG"
 echo "  VARIANT=${VARIANT:-stub}"

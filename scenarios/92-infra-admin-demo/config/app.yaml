@@ -3,7 +3,7 @@
 #
 # Full app YAML mirroring docs/plans/2026-05-27-infra-admin-dynamic-design.md
 # §App Integration. Boots:
-#   - auth.jwt + authz.local (in-process RBAC, scenario_stub build tag)
+#   - auth.jwt + authz.local (in-process RBAC, registered by the scenario-owned cmd/server)
 #   - http.middleware.auth + http.middleware.securityheaders
 #   - health.checker (/healthz)
 #   - http.server + http.router
@@ -24,7 +24,7 @@ modules:
       secret: "scenario-92-jwt-secret-do-not-use-in-prod"
 
   # authz.local is an in-process RBAC enforcer registered by the localauthz
-  # plugin under the scenario_stub build tag. JWT `sub` claim = casbin subject.
+  # fixture registered by the scenario-owned cmd/server (no build tags). JWT `sub` claim = casbin subject.
   # Policies: [subject, object, action] triples — bare YAML sequence.
   - name: authz
     type: authz.local
@@ -96,7 +96,7 @@ modules:
       http_module:             http-router
       auth_module:             auth-mw
       # authz_module wires server-side RBAC via the in-process authz.local
-      # enforcer (scenario_stub tag). operator→apply/destroy allowed;
+      # enforcer (scenario-owned cmd/server fixture). operator→apply/destroy allowed;
       # viewer→apply/destroy denied (403).
       authz_module:            authz
       security_headers_module: security-headers
