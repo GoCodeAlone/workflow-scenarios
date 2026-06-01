@@ -57,7 +57,11 @@ test('Scenario 90 admin surfaces are usable and protected', async ({ page, conte
   await frame.locator('label.scope-option').filter({ hasText: 'admin:authz.roles:read' }).locator('input').check();
   await frame.getByRole('button', { name: 'Add Role' }).click();
   await expect(frame.locator('body')).toContainText('admin:authz.roles:read');
-  const adminToken = await page.evaluate(() => window.localStorage.getItem('workflow.admin.token'));
+  const adminToken = await page.evaluate(() => {
+    const shell = document.querySelector('[data-token-storage-key]');
+    const storageKey = shell?.dataset?.tokenStorageKey || 'workflow.admin.token';
+    return window.localStorage.getItem(storageKey);
+  });
   const rolesAfterWrite = await request.get('/api/authz/roles', {
     headers: { Authorization: `Bearer ${adminToken}` },
   });

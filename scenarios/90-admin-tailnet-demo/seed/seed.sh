@@ -139,8 +139,12 @@ mkdir -p "$BUILD_DIR/plugins" "$BUILD_DIR/admin-ui" "$BUILD_DIR/authz-ui" "$BUIL
 if [ -z "${SCENARIO90_SEED_TOKEN:-}" ]; then
   if command -v openssl >/dev/null 2>&1; then
     SCENARIO90_SEED_TOKEN="$(openssl rand -hex 32)"
-  else
+  elif command -v uuidgen >/dev/null 2>&1; then
     SCENARIO90_SEED_TOKEN="$(uuidgen | tr '[:upper:]' '[:lower:]')-$(date +%s)"
+  elif command -v od >/dev/null 2>&1; then
+    SCENARIO90_SEED_TOKEN="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+  else
+    SCENARIO90_SEED_TOKEN="scenario90-$(date +%s)-$$"
   fi
 fi
 export SCENARIO90_SEED_TOKEN

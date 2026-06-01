@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLAYWRIGHT_PREFIX="${PLAYWRIGHT_PREFIX:-/tmp/scenario90-playwright-cli}"
 
+mkdir -p "$PLAYWRIGHT_PREFIX"
+
 if [ ! -x "$PLAYWRIGHT_PREFIX/node_modules/.bin/playwright" ]; then
   npm --prefix "$PLAYWRIGHT_PREFIX" install --silent @playwright/test
 fi
