@@ -19,7 +19,23 @@ modules:
   - name: authz
     type: authz.casbin
     config:
-      policy_path: /etc/scenario-92/policy.csv
+      # Inline PERM model + policies (T15 fix — same as app.yaml).
+      model: |
+        [request_definition]
+        r = sub, obj, act
+        [policy_definition]
+        p = sub, obj, act
+        [role_definition]
+        g = _, _
+        [policy_effect]
+        e = some(where (p.eft == allow))
+        [matchers]
+        m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
+      policies:
+        - values: ["operator", "infra:read", "allow"]
+        - values: ["operator", "infra:apply", "allow"]
+        - values: ["operator", "infra:destroy", "allow"]
+        - values: ["viewer", "infra:read", "allow"]
 
   - name: security-headers
     type: http.middleware.securityheaders
@@ -70,10 +86,11 @@ modules:
       route_prefix:            /api/infra-admin
       asset_prefix:            /admin/infra-admin
       state_module:            iac-state
-      http_module:             http
+      http_module:             http-router
       # auth_module wires T15's route-level auth gate (PR-1 47341ff6f).
       # See config/app.yaml for the rationale comment.
       auth_module:             auth
+      authz_module:            authz
       security_headers_module: security-headers
       provider_modules:        [stub-provider, do-provider]
       access_log_path:         /var/log/infra-admin-audit.jsonl

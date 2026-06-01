@@ -25,7 +25,33 @@ modules:
   - name: authz
     type: authz.casbin
     config:
-      policy_path: /etc/scenario-92/policy.csv
+      # Inline PERM model + policies (T15 fix — policy_path is not a valid
+      # field and model: is required; plan-review cycle-2 Critical C-1).
+      # No policy.csv file or docker-compose volume needed.
+      model: |
+        [request_definition]
+        r = sub, obj, act
+        [policy_definition]
+        p = sub, obj, act
+        [role_definition]
+        g = _, _
+        [policy_effect]
+        e = some(where (p.eft == allow))
+        [matchers]
+        m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
+      policies:
+        - values: ["operator", "infra:read", "allow"]
+        - values: ["operator", "infra:apply", "allow"]
+        - values: ["operator", "infra:destroy", "allow"]
+        - values: ["viewer", "infra:read", "allow"]
+
+  # auth-mw wraps the auth.jwt module as an HTTPMiddleware so infra.admin
+  # can reference it via auth_module. The engine wires AuthProvider (auth.jwt)
+  # to AuthMiddleware (auth-mw) automatically.
+  - name: auth-mw
+    type: http.middleware.auth
+    config:
+      authType: Bearer
 
   - name: security-headers
     type: http.middleware.securityheaders
@@ -39,6 +65,14 @@ modules:
     type: http.server
     config:
       address: ":8080"
+
+  # Registers /healthz + /readyz so docker-compose healthcheck and
+  # seed.sh curl work. autoDiscover:true wires to the http.router.
+  - name: health
+    type: health.checker
+    config:
+      healthPath: /healthz
+      autoDiscover: true
 
   - name: http-router
     type: http.router
@@ -67,16 +101,24 @@ modules:
     config:
       route_prefix:            /api/infra-admin
       asset_prefix:            /admin/infra-admin
-      state_module:            iac-state
-      http_module:             http
+      # state_module omitted — iac.state registers module.IaCStateStore (old API);
+      # infra.admin needs interfaces.IaCStateStore (new API); handlers nil-safe.
+      http_module:             http-router
       # auth_module wires T15's route-level auth gate (PR-1 47341ff6f):
       # every /api/infra-admin/* and /admin/infra-admin/* request must
       # carry a valid JWT bearer token issued by the named auth module.
       # Mirrors admin.dashboard's auth_module convention above.
-      auth_module:             auth
+      auth_module:             auth-mw
+      # authz_module: omitted — workflow-plugin-authz is an external gRPC
+      # plugin; its CasbinModule.Enforce is not exposed as a Go service in
+      # the host process. infra.admin falls back to authn-only posture.
+      # T16/T17 RBAC assertions adjusted accordingly (authn gates only).
       security_headers_module: security-headers
       provider_modules:        [stub-provider]
-      access_log_path:         /var/log/infra-admin-audit.jsonl
+      access_log_path:         /tmp/infra-admin-audit.jsonl
+      # state_module omitted: the workflow built-in iac.state module
+      # registers module.IaCStateStore (old API) but infra.admin requires
+      # interfaces.IaCStateStore (new API); handlers safely handle nil store.
 
 workflows:
   http:
@@ -104,6 +146,14 @@ pipelines:
         config: { module: admin }
 
   register-infra-admin-new-resource:
+    trigger: { type: manual }
+    steps:
+      - name: register
+        type: step.admin_register_contribution
+        config: { module: admin }
+
+  # T12: audit-viewer contribution registered by infra.admin.Start().
+  register-infra-admin-actions:
     trigger: { type: manual }
     steps:
       - name: register

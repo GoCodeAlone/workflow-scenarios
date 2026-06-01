@@ -17,6 +17,7 @@ SCENARIO_DIR="$(dirname "$SCRIPT_DIR")"
 SCENARIOS_ROOT="$(cd "$SCENARIO_DIR/../.." && pwd)"
 WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$SCENARIOS_ROOT/.." && pwd)/workflow}"
 PLUGIN_ADMIN_REPO="${PLUGIN_ADMIN_REPO:-$(cd "$SCENARIOS_ROOT/.." && pwd)/workflow-plugin-admin}"
+PLUGIN_AUTHZ_REPO="${PLUGIN_AUTHZ_REPO:-$(cd "$SCENARIOS_ROOT/.." && pwd)/workflow-plugin-authz}"
 IMAGE_TAG="${IMAGE_TAG:-workflow-admin:scenario-92}"
 VARIANT="${VARIANT:-}"   # "" → app.yaml; "do-dryrun" → app-do-dryrun.yaml
 
@@ -24,6 +25,7 @@ echo ""
 echo "=== Scenario 92 seed ==="
 echo "  WORKFLOW_REPO=$WORKFLOW_REPO"
 echo "  PLUGIN_ADMIN_REPO=$PLUGIN_ADMIN_REPO"
+echo "  PLUGIN_AUTHZ_REPO=$PLUGIN_AUTHZ_REPO"
 echo "  IMAGE_TAG=$IMAGE_TAG"
 echo "  VARIANT=${VARIANT:-stub}"
 echo ""
@@ -44,25 +46,39 @@ if [ ! -f "$PLUGIN_ADMIN_REPO/go.mod" ]; then
     echo "ERROR: PLUGIN_ADMIN_REPO=$PLUGIN_ADMIN_REPO is not a Go module checkout" >&2
     exit 1
 fi
+if [ ! -f "$PLUGIN_AUTHZ_REPO/go.mod" ]; then
+    echo "ERROR: PLUGIN_AUTHZ_REPO=$PLUGIN_AUTHZ_REPO is not a Go module checkout" >&2
+    exit 1
+fi
 
-echo "Building workflow server binary..."
+echo "Building workflow server binary (with -tags scenario_stub for iac.provider stub)..."
 (cd "$WORKFLOW_REPO" && GOWORK=off GOOS=linux GOARCH=amd64 \
-    go build -o "$BUILD_DIR/server" ./cmd/server)
+    go build -tags scenario_stub -o "$BUILD_DIR/server" ./cmd/server)
 
 echo "Building workflow-plugin-admin binary..."
+mkdir -p "$BUILD_DIR/plugins/workflow-plugin-admin"
 (cd "$PLUGIN_ADMIN_REPO" && GOWORK=off GOOS=linux GOARCH=amd64 \
     go build -o "$BUILD_DIR/plugins/workflow-plugin-admin/workflow-plugin-admin" \
     ./cmd/workflow-plugin-admin)
 cp "$PLUGIN_ADMIN_REPO/plugin.json" "$BUILD_DIR/plugins/workflow-plugin-admin/plugin.json"
+
+echo "Building workflow-plugin-authz binary..."
+mkdir -p "$BUILD_DIR/plugins/workflow-plugin-authz"
+(cd "$PLUGIN_AUTHZ_REPO" && GOWORK=off GOOS=linux GOARCH=amd64 \
+    go build -o "$BUILD_DIR/plugins/workflow-plugin-authz/workflow-plugin-authz" \
+    ./cmd/workflow-plugin-authz)
+cp "$PLUGIN_AUTHZ_REPO/plugin.json" "$BUILD_DIR/plugins/workflow-plugin-authz/plugin.json"
 
 # --- Build the scenario image -------------------------------------------------
 
 cat > "$BUILD_DIR/Dockerfile" <<'EOF'
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY server /usr/local/bin/server
-COPY plugins/ /data/plugins/
+# /home/nonroot is writable by UID 65532 (nonroot) in distroless.
+# Plugins go here so data-dir /home/nonroot resolves plugins/ correctly
+# AND the server can create workflow.db in the same dir (no permission error).
+COPY plugins/ /home/nonroot/plugins/
 USER nonroot
-ENV WFCTL_PLUGIN_DIR=/data/plugins
 ENTRYPOINT ["/usr/local/bin/server"]
 EOF
 

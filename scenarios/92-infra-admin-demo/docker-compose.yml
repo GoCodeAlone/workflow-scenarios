@@ -31,9 +31,10 @@ services:
       - ./config:/etc/scenario-92:ro
       - audit-log:/var/log
     command:
-      - server
       - "-config"
       - "/etc/scenario-92/app${VARIANT:+-${VARIANT}}.yaml"
+      - "-data-dir"
+      - "/home/nonroot"
     healthcheck:
       test:
         - CMD
