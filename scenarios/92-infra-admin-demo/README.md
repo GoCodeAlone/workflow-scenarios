@@ -1,54 +1,69 @@
-# Scenario 92 — Infra Admin GitOps Demo (v1.1)
+# Scenario 92 — Infra Admin (Dynamic, Proto-Driven)
 
-Demonstrates the **infra-admin GitOps workflow**: plan → commit desired-state
-YAML to a bare-git-repo fixture → apply → drift detection, all via a single-page
-admin UI registered as an `admin.dashboard` contribution.
+Demonstrates the host-side `infra.admin` workflow module + dynamic
+proto-driven admin UI surface introduced in workflow PR #791
+(`feat/infra-admin-host-module-2026-05-27T1534`).
 
 ## What this exercises
 
-- **`infra.admin` host module** (read RPCs + catalog proxy at `/api/infra-admin/*`)
-- **Infra SPA** at `/admin/infra/` (static.fileserver + admin contribution registration)
-- **Pipeline-based API routes** at `/api/infra/*`:
-  - `GET  /api/infra/providers/stub/catalog` — stub regions + types
-  - `GET  /api/infra/resources` — proxy to infra.admin resources RPC
-  - `POST /api/infra/plan` — stub plan (1 "create" per spec, desired_hash)
-  - `POST /api/infra/apply` — stub apply
-  - `POST /api/infra/commit` — `step.sandbox_exec` git clone/commit/push to bare repo
-  - `GET  /api/infra/drift` — stub drift detection (no drift, supported:true)
-  - `GET  /api/infra/secrets` — secrets metadata (names only, values never returned)
-  - `POST /api/infra/secrets` — declare a secret name (write-only demo)
-- **AuthZ**: Bearer-required on all mutation routes (401 unauthenticated, CSRF defence)
-- **Bare git repo fixture** at `.build/gitrepo.git` (bind-mounted into sandbox)
+- **infra.admin host module** mounts:
+  - `/api/infra-admin/{resources,resources/{name},types,providers,generate-config,audit}` RPC endpoints
+  - `/admin/infra-admin/{resources,resource,new,styles}.{html,js,css}` static asset pages
+- **admin.dashboard plugin** picks up three iframe contributions via the
+  per-pipeline `engine.TriggerWorkflow` registration flow.
+- **wfctl infra admin** CLI mirrors the same surface (parity-tested in
+  PR-1 at `cmd/wfctl/infra_admin_parity_test.go`).
 
-## Stub provider deterministic data
+## Two variants
 
-| Operation | Result |
-|---|---|
-| Catalog regions | `stub-east`, `stub-west` |
-| Catalog types | `stub.database`, `stub.bucket` |
-| Plan | 1 "create" action per spec |
-| desired_hash | `sha256-stub-deterministic-e3b0c44298fc1c149afb` |
-| Status | refs echoed as `running` |
-| Destroy | refs echoed as destroyed |
-| DetectDrift | Drifted:false for every ref, supported:true |
+| Variant | iac.provider modules | Notes |
+|---|---|---|
+| `config/app.yaml` | stub-provider only | Always-pass; deterministic Playwright behavior |
+| `config/app-do-dryrun.yaml` | stub-provider + do-provider (no token) | DO provider fails any live API call; ListProviders + ListTypes still succeed against empty state |
 
 ## Auth
 
-JWT secret (test-only, hardcoded for demo): `scenario-92-jwt-secret-do-not-use-in-prod`
+PR-1 T15 (commit 47341ff6f) added a route-level auth middleware that gates
+`/api/infra-admin/*` + `/admin/infra-admin/*` + `/api/admin/contributions`.
+The scenario wires it via `auth_module: auth` under `infra-admin.config`
+(mirroring `admin.dashboard.config.auth_module`).
 
-Roles:
-- `operator@infra` — read + plan + apply + commit + destroy
-- `viewer@infra` — read only
+The scenario uses an HS256 baked-in JWT secret for demo simplicity:
+
+```
+secret: "scenario-92-jwt-secret-do-not-use-in-prod"
+```
+
+**This is test-only.** Both `test/run.sh` and the Playwright spec mint a
+short-lived Bearer token from this secret inline (no external dependency)
+and pass it as `Authorization: Bearer …`. Don't reuse this secret outside
+the scenario.
+
+The new Playwright test `unauthenticated /api/infra-admin/* returns 401`
+is the e2e regression gate that mirrors implementer-1's unit test
+`TestInfraAdmin_ClientCannotSpoofAuthzEvidence`.
 
 ## Running
 
 ```bash
-./seed/seed.sh     # builds 5 plugins + bare git repo + docker compose up
-./test/run.sh      # PASS/FAIL + Playwright ≥18 checks
+# Stub variant
+./seed/seed.sh                           # docker compose up + wait for /healthz
+./test/run.sh                            # PASS/FAIL prefixed test summary + Playwright
+
+# DO dry-run variant
+VARIANT=do-dryrun ./seed/seed.sh
+VARIANT=do-dryrun ./test/run.sh
 ```
 
-## Source
+## Exploratory QA
 
-- Design: `docs/plans/2026-05-31-infra-admin-v1.1-design.md`
-- ADR-0007: discrete typed mutation RPCs
-- ADR-0008: two-phase plan→confirm→apply
+`test/EXPLORATORY.md` is the template for the post-PR-2 exploratory pass via
+the `playwright-cli` skill. Different from the regression Playwright spec —
+that's the `@playwright/test` spec at
+`workflow-scenarios/e2e/tests/scenario-92-infra-admin.spec.ts`.
+
+## Source plan
+
+- Design: `/Users/jon/workspace/docs/plans/2026-05-27-infra-admin-dynamic-design.md`
+- Plan:   `/Users/jon/workspace/docs/plans/2026-05-27-infra-admin-dynamic.md` §Task 21-25 + §Task 27
+- ADR:    `/Users/jon/workspace/decisions/0002-infra-admin-host-module.md`

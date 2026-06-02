@@ -1,19 +1,12 @@
 # ============================================================
-# Scenario 92 — Infra Admin (stub variant)
+# Scenario 92 — Infra Admin (DigitalOcean dry-run variant)
 #
-# Full app YAML mirroring docs/plans/2026-05-27-infra-admin-dynamic-design.md
-# §App Integration. Boots:
-#   - auth.jwt + authz.local (in-process RBAC, registered by the scenario-owned cmd/server)
-#   - http.middleware.auth + http.middleware.securityheaders
-#   - health.checker (/healthz)
-#   - http.server + http.router
-#   - admin.dashboard (workflow-plugin-admin)
-#   - iac.state (memory) + stub iac.provider
-#   - infra.admin (host-side module) — fires 4 registration pipelines on Start
-#
-# Four single-step pipelines register the iframe contributions via the
-# STRICT_PROTO step.admin_register_contribution. The list-admin-contributions
-# pipeline backs admin shell's GET /api/admin/contributions.
+# Identical to config/app.yaml except adds an iac.provider type=digitalocean
+# alongside the stub provider. No DIGITALOCEAN_TOKEN env var is set, so any
+# live API call would fail — but the admin RPC surface (ListProviders,
+# ListResourceTypes, ListResources against empty state) succeeds without
+# touching the API. Verifies the catalog's region/engine matrix for DO is
+# wired correctly.
 # ============================================================
 
 modules:
@@ -23,9 +16,7 @@ modules:
       issuer: "scenario-92"
       secret: "scenario-92-jwt-secret-do-not-use-in-prod"
 
-  # authz.local is an in-process RBAC enforcer registered by the localauthz
-  # fixture registered by the scenario-owned cmd/server (no build tags). JWT `sub` claim = casbin subject.
-  # Policies: [subject, object, action] triples — bare YAML sequence.
+  # authz.local — same as app.yaml. Bare [sub,obj,act] sequences.
   - name: authz
     type: authz.local
     config:
@@ -35,9 +26,8 @@ modules:
         - ["operator", "infra:destroy", "allow"]
         - ["viewer",   "infra:read",    "allow"]
 
-  # auth-mw wraps auth.jwt as an HTTPMiddleware so infra.admin can resolve
-  # it via auth_module. The engine wires AuthProvider (auth.jwt) to
-  # AuthMiddleware (auth-mw) automatically.
+  # auth-mw wraps auth.jwt as HTTPMiddleware (IMPORTANT-1 fix: was auth.jwt
+  # directly, which is not an HTTPMiddleware).
   - name: auth-mw
     type: http.middleware.auth
     config:
@@ -56,8 +46,6 @@ modules:
     config:
       address: ":8080"
 
-  # health.checker registers /healthz so docker-compose healthcheck and
-  # seed.sh precondition work. autoDiscover:true wires to the http.router.
   - name: health
     type: health.checker
     config:
@@ -72,7 +60,7 @@ modules:
     type: admin.dashboard
     config:
       route_prefix: /admin
-      app_name: Scenario 92 — Infra Admin Demo
+      app_name: Scenario 92 — Infra Admin (DO dry-run)
       auth_module: auth
       authz_module: authz
 
@@ -86,34 +74,35 @@ modules:
     config:
       provider: stub
 
+  # No DIGITALOCEAN_TOKEN set — any live API call fails, but admin RPCs
+  # against empty state succeed. Tests the DO branch of the region +
+  # engine catalogs.
+  - name: do-provider
+    type: iac.provider
+    config:
+      provider: digitalocean
+
   - name: infra-admin
     type: infra.admin
     config:
       route_prefix:            /api/infra-admin
       asset_prefix:            /admin/infra-admin
-      # state_module omitted: module.IaCStateStore (old API) ≠ interfaces.IaCStateStore
-      # (new API); all handlers nil-safe so the stack boots and mutations work.
+      # state_module omitted: same as app.yaml — module.IaCStateStore ≠
+      # interfaces.IaCStateStore; handlers nil-safe (IMPORTANT-3 fix).
       http_module:             http-router
       auth_module:             auth-mw
-      # authz_module wires server-side RBAC via the in-process authz.local
-      # enforcer (scenario-owned cmd/server fixture). operator→apply/destroy allowed;
-      # viewer→apply/destroy denied (403).
       authz_module:            authz
       security_headers_module: security-headers
-      provider_modules:        [stub-provider]
+      provider_modules:        [stub-provider, do-provider]
       access_log_path:         /tmp/infra-admin-audit.jsonl
 
 workflows:
   http:
     server: http
     router: http-router
-    routes: []   # routes mounted by infra.admin module + list-admin-contributions pipeline
+    routes: []
 
 pipelines:
-  # Four single-step pipelines fired by infra.admin.Start() via
-  # engine.TriggerWorkflow. Each merges its `data` payload into
-  # PipelineContext.Current; the typed step reads TypedInput from
-  # Current per the STRICT_PROTO RegisterContributionInput shape.
   register-infra-admin-resources:
     trigger: { type: manual }
     steps:
@@ -135,7 +124,7 @@ pipelines:
         type: step.admin_register_contribution
         config: { module: admin }
 
-  # T12: audit-viewer contribution registered by infra.admin.Start().
+  # T12: audit-viewer contribution (IMPORTANT-2 fix: was missing from dryrun).
   register-infra-admin-actions:
     trigger: { type: manual }
     steps:
@@ -143,7 +132,6 @@ pipelines:
         type: step.admin_register_contribution
         config: { module: admin }
 
-  # HTTP-triggered pipeline the admin shell GETs to enumerate contributions.
   list-admin-contributions:
     trigger:
       type: http
