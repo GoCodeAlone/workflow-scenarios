@@ -1,0 +1,54 @@
+# ============================================================
+# Scenario 101 — Auth Admin Bootstrap docker-compose
+#
+# postgres + a single workflow-server container with the
+# workflow-plugin-auth plugin baked in (auth-admin:scenario-101
+# image, built by seed/seed.sh — image-bake pattern, mirrors
+# scenario 92). Port 18101 (convention 180<scenario-id>).
+# ============================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: workflow-scenario-101-pg
+    environment:
+      POSTGRES_USER: scenario101
+      POSTGRES_PASSWORD: scenario101
+      POSTGRES_DB: scenario101
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scenario101 -d scenario101"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  app:
+    image: auth-admin:scenario-101
+    container_name: workflow-scenario-101-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Bootstrap code (>=16) + JWT signing secret (>=32). Test-only literals.
+      AUTH_BOOTSTRAP_CODE: "scenario-101-bootstrap-code-do-not-use-in-prod"
+      AUTH_JWT_SECRET: "scenario-101-jwt-signing-secret-32b-min-do-not-use"
+      # database.workflow reads this DSN from the app.yaml config (${DATABASE_URL}).
+      DATABASE_URL: "postgres://scenario101:scenario101@postgres:5432/scenario101?sslmode=disable"
+    ports:
+      - "127.0.0.1:18101:8080"
+    volumes:
+      - ./config:/etc/scenario-101:ro
+      - ./ui:/ui:ro
+    # ENTRYPOINT is already /usr/local/bin/server — do NOT prepend "server" (Go's flag
+    # parser stops at the first non-flag arg, so a leading "server" makes -config ignored).
+    command:
+      - "-config"
+      - "/etc/scenario-101/app.yaml"
+    healthcheck:
+      test:
+        - CMD
+        - sh
+        - -c
+        - "wget -q -O- http://127.0.0.1:8080/healthz || exit 1"
+      interval: 3s
+      timeout: 2s
+      retries: 30

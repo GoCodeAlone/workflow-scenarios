@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scenario 101 — Admin Bootstrap</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 480px; margin: 60px auto; padding: 0 16px; }
+    h1 { font-size: 1.4rem; margin-bottom: 8px; }
+    .panel { border: 1px solid #ddd; border-radius: 8px; padding: 24px; margin-top: 16px; }
+    label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9rem; }
+    input { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 16px; }
+    button { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.95rem; }
+    .btn-primary { background: #0070f3; color: #fff; }
+    .btn-secondary { background: #f3f3f3; color: #333; margin-left: 8px; }
+    .btn-danger { background: #e00; color: #fff; margin-left: 8px; }
+    .msg { margin-top: 12px; padding: 10px; border-radius: 4px; font-size: 0.9rem; }
+    .msg-ok { background: #d4edda; color: #155724; }
+    .msg-err { background: #f8d7da; color: #721c24; }
+    .hidden { display: none; }
+    #status-badge { font-size: 0.8rem; padding: 2px 8px; border-radius: 12px; margin-left: 8px; }
+    .badge-open { background: #fff3cd; color: #856404; }
+    .badge-closed { background: #d1ecf1; color: #0c5460; }
+  </style>
+</head>
+<body>
+  <h1>
+    Scenario 101 — Admin Bootstrap
+    <span id="status-badge"></span>
+  </h1>
+
+  <!-- Bootstrap form (shown when open=true) -->
+  <div id="panel-bootstrap" class="panel hidden">
+    <p>Bootstrap mode: no admin credentials exist. Redeem the one-time code to create the first admin session.</p>
+    <label for="code">Bootstrap Code</label>
+    <input id="code" type="text" placeholder="Enter bootstrap code" autocomplete="off" />
+    <button class="btn-primary" id="btn-redeem">Redeem</button>
+    <div id="msg-redeem"></div>
+  </div>
+
+  <!-- Authenticated panel (shown after redeem or passkey login) -->
+  <div id="panel-authed" class="panel hidden">
+    <p>Authenticated as <strong id="authed-email"></strong></p>
+    <button class="btn-primary" id="btn-enrol">Enrol Passkey</button>
+    <button class="btn-danger" id="btn-logout">Logout</button>
+    <div id="msg-enrol"></div>
+  </div>
+
+  <!-- Sign-in panel (shown when open=false and not authenticated) -->
+  <div id="panel-signin" class="panel hidden">
+    <p>Bootstrap is complete. Sign in with your passkey.</p>
+    <label for="signin-email">Email</label>
+    <input id="signin-email" type="email" placeholder="admin@example.com" autocomplete="username webauthn" />
+    <button class="btn-primary" id="btn-signin">Sign in with Passkey</button>
+    <div id="msg-signin"></div>
+  </div>
+
+  <script src="/admin.js"></script>
+</body>
+</html>
