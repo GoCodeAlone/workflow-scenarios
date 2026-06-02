@@ -18,32 +18,6 @@ const BOOTSTRAP_CODE = 'scenario-101-bootstrap-code-do-not-use-in-prod';
 const ADMIN_EMAIL = 'admin@scenario-101.test';
 
 // ---------------------------------------------------------------------------
-// CDP virtual-authenticator helpers
-// ---------------------------------------------------------------------------
-
-async function enableVirtualAuth(context: BrowserContext): Promise<string> {
-  // Playwright 1.x: open a CDP session on the first page of the context.
-  // WebAuthn.enable + addVirtualAuthenticator returns an authenticatorId.
-  const page = context.pages()[0] ?? (await context.newPage());
-  const cdp = await context.newCDPSession(page);
-
-  await cdp.send('WebAuthn.enable', { enableUI: false });
-
-  const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
-    options: {
-      protocol: 'ctap2',
-      transport: 'internal',
-      hasResidentKey: true,
-      hasUserVerification: true,
-      isUserVerified: true,
-      automaticPresenceSimulation: true,
-    },
-  });
-
-  return authenticatorId;
-}
-
-// ---------------------------------------------------------------------------
 // Suite
 // ---------------------------------------------------------------------------
 

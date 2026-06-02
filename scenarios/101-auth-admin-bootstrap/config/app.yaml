@@ -278,7 +278,7 @@ pipelines:
         config:
           values:
             user_id: "{{ .steps.parse.body.email }}"
-            credentials: '[{{ .steps.fetch_cred.row.credential_json }}]'
+            credentials: '[{{ with .steps.fetch_cred.row.credential_json }}{{ . }}{{ end }}]'
       - name: begin
         type: step.auth_passkey_begin_login
         config: { module: authcred }
@@ -309,7 +309,7 @@ pipelines:
           values:
             user_id: "{{ .steps.parse.body.email }}"
             email: "{{ .steps.parse.body.email }}"
-            credentials: '[{{ .steps.fetch_cred.row.credential_json }}]'
+            credentials: '[{{ with .steps.fetch_cred.row.credential_json }}{{ . }}{{ end }}]'
             session_data: "{{ .steps.parse.body.session_data }}"
             assertion: "{{ .steps.parse.body.assertion }}"
       - name: finish
