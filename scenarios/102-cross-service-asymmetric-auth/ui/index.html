@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cross-Service Verification Console — Scenario 102</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 680px;
+      margin-bottom: 1.5rem;
+    }
+    h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.3rem; color: #f8fafc; }
+    .subtitle { font-size: 0.85rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    label { display: block; font-size: 0.8rem; font-weight: 600; color: #94a3b8; margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    textarea {
+      width: 100%;
+      height: 110px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-family: monospace;
+      font-size: 0.78rem;
+      padding: 0.75rem;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    textarea:focus { border-color: #6366f1; }
+    .btn-row { display: flex; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap; }
+    button {
+      padding: 0.55rem 1.25rem;
+      border: none;
+      border-radius: 7px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #btn-fetch { background: #0ea5e9; color: #fff; }
+    #btn-fetch:hover:not(:disabled) { background: #38bdf8; }
+    #btn-verify { background: #6366f1; color: #fff; }
+    #btn-verify:hover:not(:disabled) { background: #818cf8; }
+    #btn-clear { background: #475569; color: #e2e8f0; }
+    #btn-clear:hover { background: #64748b; }
+    .result-box {
+      margin-top: 1.25rem;
+      padding: 1rem;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+      min-height: 2.5rem;
+      border: 1px solid transparent;
+      display: none;
+    }
+    .result-box.success { background: #052e16; border-color: #16a34a; color: #4ade80; }
+    .result-box.error   { background: #2d0f0f; border-color: #dc2626; color: #f87171; }
+    .result-box.info    { background: #0c1a2e; border-color: #1d4ed8; color: #60a5fa; }
+    .status-badge {
+      display: inline-block;
+      padding: 0.2rem 0.7rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      margin-left: 0.5rem;
+    }
+    .badge-ok  { background: #052e16; color: #4ade80; }
+    .badge-err { background: #2d0f0f; color: #f87171; }
+    .badge-idle { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+    .section-head { font-size: 0.9rem; font-weight: 600; color: #cbd5e1; margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem; }
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid #475569;
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .help-text { font-size: 0.78rem; color: #64748b; margin-top: 0.4rem; }
+    /* Architecture diagram */
+    .arch { display: flex; align-items: center; justify-content: center; gap: 0; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .svc {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      text-align: center;
+      font-size: 0.75rem;
+    }
+    .svc .name { font-weight: 700; color: #f8fafc; }
+    .svc .role { color: #94a3b8; }
+    .arrow { color: #6366f1; font-size: 1.1rem; padding: 0 0.5rem; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h1>Cross-Service Verification Console</h1>
+    <p class="subtitle">Scenario 102 — Genuine ES256 asymmetric JWT verification across two Workflow processes</p>
+
+    <!-- Architecture diagram -->
+    <div class="arch">
+      <div class="svc">
+        <div class="name">App A</div>
+        <div class="role">auth.m2m issuer</div>
+        <div class="role">ES256 · /oauth/jwks</div>
+      </div>
+      <span class="arrow">→ JWKS →</span>
+      <div class="svc">
+        <div class="name">App B</div>
+        <div class="role">sso.oidc verifier</div>
+        <div class="role">jwksUri mode · /verify</div>
+      </div>
+    </div>
+
+    <!-- Step 1: Fetch token -->
+    <div class="section-head">
+      1. Fetch a token from App A
+      <span id="fetch-status" class="status-badge badge-idle">idle</span>
+    </div>
+    <p class="help-text" style="margin-bottom:0.75rem">Fetches an ES256 access_token from App A's /oauth/token (client_credentials grant). <strong>Note:</strong> this is a cross-origin (App B → App A) request; a browser may block it via CORS (App A sets no CORS headers in this demo). If it fails, paste a token obtained from <code>curl app-a:18102/oauth/token</code> below — verification works the same.</p>
+    <button id="btn-fetch">Fetch Token from App A</button>
+
+    <!-- Step 2: Verify -->
+    <div class="section-head" style="margin-top:1.5rem">
+      2. Token to verify
+      <span id="verify-status" class="status-badge badge-idle">idle</span>
+    </div>
+    <label for="token-input">JWT Bearer token</label>
+    <textarea id="token-input" placeholder="Paste or fetch a JWT token above..."></textarea>
+    <p class="help-text">The token is sent as <code>Authorization: Bearer &lt;token&gt;</code> to App B's /verify endpoint.</p>
+
+    <div class="btn-row">
+      <button id="btn-verify">Verify via App B</button>
+      <button id="btn-clear">Clear</button>
+    </div>
+
+    <div id="result" class="result-box"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-head">About this demo</div>
+    <p style="font-size:0.83rem;color:#94a3b8;line-height:1.6">
+      App B holds <strong>only App A's public JWKS</strong> (fetched from
+      <code>http://app-a:8080/oauth/jwks</code> via <code>sso.oidc jwksUri</code> mode).
+      There is no shared secret between the two services. A token signed by any
+      other key will be rejected, proving genuine asymmetric cross-service verification.
+    </p>
+  </div>
+
+<script>
+  // App A is accessible from the host at :18102; App B is this page's origin.
+  const APP_A_TOKEN_URL = 'http://localhost:18102/oauth/token';
+  const APP_A_CLIENT_ID = 'app-b-caller';
+  const APP_A_CLIENT_SECRET = 'scenario-102-app-a-client-secret-do-not-use-in-prod';
+  const APP_B_VERIFY_URL = '/verify';
+
+  const tokenInput    = document.getElementById('token-input');
+  const resultBox     = document.getElementById('result');
+  const btnFetch      = document.getElementById('btn-fetch');
+  const btnVerify     = document.getElementById('btn-verify');
+  const btnClear      = document.getElementById('btn-clear');
+  const fetchStatus   = document.getElementById('fetch-status');
+  const verifyStatus  = document.getElementById('verify-status');
+
+  function showResult(cls, text) {
+    resultBox.className = 'result-box ' + cls;
+    resultBox.style.display = 'block';
+    resultBox.textContent = text;
+  }
+
+  function setBadge(el, cls, text) {
+    el.className = 'status-badge ' + cls;
+    el.textContent = text;
+  }
+
+  // Fetch token from App A
+  btnFetch.addEventListener('click', async () => {
+    btnFetch.disabled = true;
+    setBadge(fetchStatus, 'badge-idle', '⏳ fetching…');
+    showResult('info', 'Fetching token from App A /oauth/token…');
+
+    try {
+      const body = new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: APP_A_CLIENT_ID,
+        client_secret: APP_A_CLIENT_SECRET,
+      });
+      const resp = await fetch(APP_A_TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.access_token) {
+        setBadge(fetchStatus, 'badge-err', '✗ failed');
+        showResult('error', 'App A returned:\n' + JSON.stringify(data, null, 2));
+        return;
+      }
+      tokenInput.value = data.access_token;
+      setBadge(fetchStatus, 'badge-ok', '✓ fetched');
+      showResult('info', 'Token fetched from App A.\nDecoded header:\n' + decodeJWTPart(data.access_token, 0) +
+                         '\n\nDecoded payload:\n' + decodeJWTPart(data.access_token, 1));
+    } catch (err) {
+      setBadge(fetchStatus, 'badge-err', '✗ error');
+      showResult('error', 'Fetch error: ' + err.message);
+    } finally {
+      btnFetch.disabled = false;
+    }
+  });
+
+  // Verify token via App B
+  btnVerify.addEventListener('click', async () => {
+    const token = tokenInput.value.trim();
+    if (!token) { showResult('error', 'No token to verify. Paste a JWT or fetch one from App A.'); return; }
+
+    btnVerify.disabled = true;
+    setBadge(verifyStatus, 'badge-idle', '⏳ verifying…');
+    showResult('info', 'Sending token to App B /verify…');
+
+    try {
+      const resp = await fetch(APP_B_VERIFY_URL, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token },
+      });
+      const data = await resp.json();
+      if (resp.ok && data.verified) {
+        setBadge(verifyStatus, 'badge-ok', '✓ verified');
+        showResult('success', '✓ VERIFIED by App B (via App A public JWKS only)\n\n' + JSON.stringify(data, null, 2));
+      } else {
+        setBadge(verifyStatus, 'badge-err', '✗ rejected');
+        showResult('error', '✗ REJECTED by App B\n\nHTTP ' + resp.status + '\n' + JSON.stringify(data, null, 2));
+      }
+    } catch (err) {
+      setBadge(verifyStatus, 'badge-err', '✗ error');
+      showResult('error', 'Verify error: ' + err.message);
+    } finally {
+      btnVerify.disabled = false;
+    }
+  });
+
+  btnClear.addEventListener('click', () => {
+    tokenInput.value = '';
+    resultBox.style.display = 'none';
+    setBadge(fetchStatus, 'badge-idle', 'idle');
+    setBadge(verifyStatus, 'badge-idle', 'idle');
+  });
+
+  // Decode a JWT part (0=header, 1=payload) for display
+  function decodeJWTPart(jwt, part) {
+    try {
+      let b64 = jwt.split('.')[part].replace(/-/g,'+').replace(/_/g,'/');
+      b64 += '='.repeat((4 - b64.length % 4) % 4); // pad to a multiple of 4 (atob needs padding)
+      return JSON.stringify(JSON.parse(atob(b64)), null, 2);
+    } catch { return '(parse error)'; }
+  }
+</script>
+</body>
+</html>

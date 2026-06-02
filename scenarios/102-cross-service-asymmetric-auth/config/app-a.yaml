@@ -1,0 +1,61 @@
+# ============================================================
+# Scenario 102 — App A (Issuer)
+#
+# auth.m2m ES256 issuer. Auto-generates an EC key at startup.
+# Serves:
+#   POST /oauth/token  — client_credentials grant
+#   GET  /oauth/jwks   — public JWKS (ES256)
+#   GET  /healthz
+#
+# Cross-service trust: App B holds ONLY this public JWKS.
+# The client_credentials secret is App-A-local.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: appissuer
+    type: auth.m2m
+    config:
+      algorithm: ES256
+      # omit privateKey → auto-generate EC key at init
+      issuer: http://app-a:8080
+      tokenExpiry: 1h
+      clients:
+        - clientId: app-b-caller
+          clientSecret: ${APP_A_CLIENT_SECRET}
+          # aud flows via client.Claims pass-through (N1)
+          claims:
+            aud: app-b
+    dependsOn: [router]
+
+workflows:
+  http:
+    server: server
+    router: router
+    routes:
+      # Mount auth.m2m's Handle method (dispatches by path-suffix).
+      # scenario-20 handler: pattern — engine binds by GetService(name, &HTTPHandler).
+      - method: POST
+        path: /oauth/token
+        handler: appissuer
+      - method: GET
+        path: /oauth/jwks
+        handler: appissuer
+
+pipelines:
+  healthz:
+    trigger: { type: http, config: { path: /healthz, method: GET } }
+    steps:
+      - name: ok
+        type: step.json_response
+        config:
+          status: 200
+          body: { status: ok, service: app-a-issuer, scenario: "102-cross-service-asymmetric-auth" }
