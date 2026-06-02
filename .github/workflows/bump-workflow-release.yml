@@ -117,11 +117,12 @@ jobs:
         run: |
           set -euo pipefail
           review_threads_query='
-            query($owner:String!, $repo:String!, $number:Int!) {
+            query($owner:String!, $repo:String!, $number:Int!, $cursor:String) {
               repository(owner:$owner, name:$repo) {
                 pullRequest(number:$number) {
-                  reviewThreads(first:100) {
+                  reviewThreads(first:100, after:$cursor) {
                     nodes { isResolved }
+                    pageInfo { hasNextPage endCursor }
                   }
                 }
               }
@@ -130,7 +131,17 @@ jobs:
             pr_state="$(gh pr view "$PR_NUMBER" --json state --jq .state)"
             [ "$pr_state" != "MERGED" ] || exit 0
 
-            checks="$(gh pr checks "$PR_NUMBER" --json name,bucket,state,link 2>/dev/null || printf '[]')"
+            if ! checks="$(gh pr checks "$PR_NUMBER" --json name,bucket,state,link 2>/dev/null)"; then
+              echo "workflow bump PR #${PR_NUMBER}: checks not available yet; poll ${attempt}/60"
+              sleep 20
+              continue
+            fi
+            total_checks="$(jq 'length' <<< "$checks")"
+            if [ "$total_checks" = "0" ]; then
+              echo "workflow bump PR #${PR_NUMBER}: no checks attached yet; poll ${attempt}/60"
+              sleep 20
+              continue
+            fi
             failed="$(jq '[.[] | select(.bucket == "fail")] | length' <<< "$checks")"
             pending="$(jq '[.[] | select(.bucket == "pending")] | length' <<< "$checks")"
             if [ "$failed" != "0" ]; then
@@ -138,12 +149,20 @@ jobs:
               exit 1
             fi
             if [ "$pending" = "0" ]; then
-              unresolved_threads="$(gh api graphql \
-                -f owner="${GITHUB_REPOSITORY_OWNER}" \
-                -f repo="${GITHUB_REPOSITORY#*/}" \
-                -F number="$PR_NUMBER" \
-                -f query="$review_threads_query" \
-                --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length')"
+              unresolved_threads=0
+              cursor=""
+              while :; do
+                args=(-f owner="${GITHUB_REPOSITORY_OWNER}" -f repo="${GITHUB_REPOSITORY#*/}" -F number="$PR_NUMBER" -f query="$review_threads_query")
+                if [ -n "$cursor" ]; then
+                  args+=(-f cursor="$cursor")
+                fi
+                thread_page="$(gh api graphql "${args[@]}")"
+                page_unresolved="$(jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length' <<< "$thread_page")"
+                unresolved_threads=$((unresolved_threads + page_unresolved))
+                has_next="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<< "$thread_page")"
+                [ "$has_next" = "true" ] || break
+                cursor="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor' <<< "$thread_page")"
+              done
               if [ "$unresolved_threads" != "0" ]; then
                 echo "::warning::Workflow bump PR #${PR_NUMBER} has unresolved review threads; leaving it open."
                 exit 0
