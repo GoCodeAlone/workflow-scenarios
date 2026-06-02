@@ -33,6 +33,18 @@ test('Scenario 90 admin surfaces are usable and protected', async ({ page, conte
   await expect(page.locator('#contribution-list')).toContainText('OAuth providers');
   await page.getByRole('button', { name: 'Validate changes' }).click();
   await expect(page.locator('#contribution-list')).toContainText(/valid/i);
+  await expect(page.getByRole('button', { name: 'Apply changes' })).toBeVisible();
+  await page.getByLabel('Passkey relying party ID').fill('127.0.0.1');
+  await page.getByLabel('Passkey origin').fill('http://127.0.0.1:18080');
+  await page.getByLabel('Auth routes').check();
+  await page.getByLabel('Auth0 domain').fill('demo.us.auth0.com');
+  await page.getByLabel('M2M client ID').fill('scenario90-browser-client');
+  await page.getByLabel('M2M client secret').fill('scenario90-browser-secret-value');
+  await page.getByRole('button', { name: 'Apply changes' }).click();
+  await expect(page.locator('#contribution-list')).toContainText(/"applied"\s*:\s*true/);
+  await expect(page.locator('#contribution-list')).toContainText(/"auth0_client_secret"\s*:\s*"secret:\/\/scenario90\/auth0_client_secret"/);
+  await expect(page.locator('#contribution-list')).not.toContainText('scenario90-browser-secret-value');
+  await expect(page.getByLabel('M2M client secret')).toHaveValue('');
   let activeLabels = await page.locator('button.nav-item.active').evaluateAll((nodes) => nodes.map((node) => node.textContent.trim()));
   expect(activeLabels).toEqual(['Authentication']);
 

@@ -17,6 +17,19 @@ modules:
       allowRegistration: true
     dependsOn: [router]
 
+  - name: admin-db
+    type: database.workflow
+    config:
+      driver: sqlite
+      dsn: /data/data/scenario90-admin.db
+
+  - name: scenario90-secrets
+    type: secrets.vault
+    config:
+      address: http://vault:8200
+      token: scenario90-root-token
+      mountPath: secret
+
   - name: admin
     type: admin.dashboard
     config:
@@ -691,7 +704,11 @@ pipelines:
           mode: single
       - name: describe-auth-contribution
         type: step.auth_admin_contribution_describe
-        config: {}
+        config:
+          metadata:
+            describe_path: /api/admin/auth/config
+            validate_path: /api/admin/auth/config/validate
+            apply_path: /api/admin/auth/config/apply
       - name: register-auth
         type: step.admin_register_contribution
         config:
@@ -1154,6 +1171,312 @@ pipelines:
           body:
             allowed: false
             reason: missing admin:auth.config:update
+
+  auth-admin-config-apply:
+    trigger:
+      type: http
+      config:
+        path: /api/admin/auth/config/apply
+        method: POST
+    steps:
+      - name: parse_request
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+          parse_body: true
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_request.headers.Authorization
+          subject_field: subject
+      - *scenario90_create_role_table_step
+      - name: create-auth-config-state-table
+        type: step.db_exec
+        config:
+          database: admin-db
+          query: |
+            CREATE TABLE IF NOT EXISTS scenario90_auth_config_applied (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              accepted_config_json TEXT NOT NULL,
+              secret_refs_json TEXT NOT NULL,
+              updated_by TEXT NOT NULL,
+              updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+          ignore_error: true
+      - name: find-auth-config-update
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:auth.config:update
+          mode: single
+      - name: route-by-auth-config-update
+        type: step.conditional
+        config:
+          field: steps.find-auth-config-update.found
+          routes:
+            'true': validate
+          default: deny-response
+      - name: validate
+        type: step.auth_admin_config_validate
+        config:
+          require_primary_method: true
+        input:
+          desired_config: { _from: "steps.parse_request.body.desired_config" }
+          providers: *auth_provider_descriptors
+      - name: route-by-validation
+        type: step.conditional
+        config:
+          field: steps.validate.valid
+          routes:
+            'true': fetch-current-secret-refs
+          default: invalid-response
+      - name: fetch-current-secret-refs
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT secret_refs_json,
+                   CAST(secret_refs_json AS BLOB) AS secret_refs
+            FROM scenario90_auth_config_applied
+            WHERE id = 1
+          mode: single
+      - name: find-submitted-auth0-secret
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT 1 AS has_secret
+            WHERE ? != '' AND ? != '<no value>'
+          params:
+            - '{{ index .steps "parse_request" "body" "desired_config" "auth0_client_secret" }}'
+            - '{{ index .steps "parse_request" "body" "desired_config" "auth0_client_secret" }}'
+          mode: single
+      - name: route-by-submitted-auth0-secret
+        type: step.conditional
+        config:
+          field: steps.find-submitted-auth0-secret.found
+          routes:
+            'true': write-auth0-client-secret
+          default: route-by-existing-secret-refs
+      - name: route-by-existing-secret-refs
+        type: step.conditional
+        config:
+          field: steps.fetch-current-secret-refs.found
+          routes:
+            'true': persist-with-existing-secret-refs
+          default: persist-without-secret
+      - name: write-auth0-client-secret
+        type: step.secret_set
+        config:
+          module: scenario90-secrets
+          secrets:
+            scenario90/auth0_client_secret: '{{ index .steps "parse_request" "body" "desired_config" "auth0_client_secret" }}'
+      - name: persist-with-secret
+        type: step.db_exec
+        config:
+          database: admin-db
+          query: |
+            INSERT INTO scenario90_auth_config_applied (id, accepted_config_json, secret_refs_json, updated_by, updated_at)
+            VALUES (1, ?, ?, ?, datetime('now'))
+            ON CONFLICT(id) DO UPDATE SET
+              accepted_config_json = excluded.accepted_config_json,
+              secret_refs_json = excluded.secret_refs_json,
+              updated_by = excluded.updated_by,
+              updated_at = datetime('now')
+          params:
+            - '{{ json (index .steps "validate" "accepted_config") }}'
+            - '{"auth0_client_secret":"secret://scenario90/auth0_client_secret"}'
+            - '{{ index .steps "authenticate" "email" }}'
+      - name: apply-with-secret-response
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            applied: true
+            valid: { _from: "steps.validate.valid" }
+            accepted_config: { _from: "steps.validate.accepted_config" }
+            methods_policy: { _from: "steps.validate.methods_policy" }
+            warnings: { _from: "steps.validate.warnings" }
+            secret_fields: { _from: "steps.validate.secret_fields" }
+            secret_refs:
+              auth0_client_secret: secret://scenario90/auth0_client_secret
+            secret_write: { _from: "steps.write-auth0-client-secret.set_keys" }
+            updated_by: { _from: "steps.authenticate.email" }
+      - name: persist-without-secret
+        type: step.db_exec
+        config:
+          database: admin-db
+          query: |
+            INSERT INTO scenario90_auth_config_applied (id, accepted_config_json, secret_refs_json, updated_by, updated_at)
+            VALUES (1, ?, ?, ?, datetime('now'))
+            ON CONFLICT(id) DO UPDATE SET
+              accepted_config_json = excluded.accepted_config_json,
+              secret_refs_json = excluded.secret_refs_json,
+              updated_by = excluded.updated_by,
+              updated_at = datetime('now')
+          params:
+            - '{{ json (index .steps "validate" "accepted_config") }}'
+            - '{}'
+            - '{{ index .steps "authenticate" "email" }}'
+      - name: apply-without-secret-response
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            applied: true
+            valid: { _from: "steps.validate.valid" }
+            accepted_config: { _from: "steps.validate.accepted_config" }
+            methods_policy: { _from: "steps.validate.methods_policy" }
+            warnings: { _from: "steps.validate.warnings" }
+            secret_fields: { _from: "steps.validate.secret_fields" }
+            secret_refs: {}
+            updated_by: { _from: "steps.authenticate.email" }
+      - name: persist-with-existing-secret-refs
+        type: step.db_exec
+        config:
+          database: admin-db
+          query: |
+            INSERT INTO scenario90_auth_config_applied (id, accepted_config_json, secret_refs_json, updated_by, updated_at)
+            VALUES (1, ?, ?, ?, datetime('now'))
+            ON CONFLICT(id) DO UPDATE SET
+              accepted_config_json = excluded.accepted_config_json,
+              secret_refs_json = excluded.secret_refs_json,
+              updated_by = excluded.updated_by,
+              updated_at = datetime('now')
+          params:
+            - '{{ json (index .steps "validate" "accepted_config") }}'
+            - '{{ index .steps "fetch-current-secret-refs" "row" "secret_refs_json" }}'
+            - '{{ index .steps "authenticate" "email" }}'
+      - name: apply-with-existing-secret-refs-response
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            applied: true
+            valid: { _from: "steps.validate.valid" }
+            accepted_config: { _from: "steps.validate.accepted_config" }
+            methods_policy: { _from: "steps.validate.methods_policy" }
+            warnings: { _from: "steps.validate.warnings" }
+            secret_fields: { _from: "steps.validate.secret_fields" }
+            secret_refs: { _from: "steps.fetch-current-secret-refs.row.secret_refs" }
+            updated_by: { _from: "steps.authenticate.email" }
+      - name: invalid-response
+        type: step.json_response
+        config:
+          status: 422
+          body:
+            applied: false
+            valid: { _from: "steps.validate.valid" }
+            accepted_config: { _from: "steps.validate.accepted_config" }
+            methods_policy: { _from: "steps.validate.methods_policy" }
+            errors: { _from: "steps.validate.errors" }
+            warnings: { _from: "steps.validate.warnings" }
+            secret_fields: { _from: "steps.validate.secret_fields" }
+      - name: deny-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            allowed: false
+            reason: missing admin:auth.config:update
+
+  auth-admin-config-applied:
+    trigger:
+      type: http
+      config:
+        path: /api/admin/auth/config/applied
+        method: GET
+    steps:
+      - name: parse_auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
+      - *scenario90_create_role_table_step
+      - name: create-auth-config-state-table
+        type: step.db_exec
+        config:
+          database: admin-db
+          query: |
+            CREATE TABLE IF NOT EXISTS scenario90_auth_config_applied (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              accepted_config_json TEXT NOT NULL,
+              secret_refs_json TEXT NOT NULL,
+              updated_by TEXT NOT NULL,
+              updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+          ignore_error: true
+      - name: find-auth-config-read
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT user, role, context
+            FROM scenario90_role_assignments
+            WHERE user = ? AND context = ?
+              AND EXISTS (
+                SELECT 1
+                FROM json_each(scenario90_role_assignments.scopes_json)
+                WHERE value = ?
+              )
+            LIMIT 1
+          params:
+            - '{{ index .steps "authenticate" "email" }}'
+            - admin
+            - admin:auth.config:read
+          mode: single
+      - name: route-by-auth-config-read
+        type: step.conditional
+        config:
+          field: steps.find-auth-config-read.found
+          routes:
+            'true': fetch-applied-state
+          default: deny-read-response
+      - name: fetch-applied-state
+        type: step.db_query
+        config:
+          database: admin-db
+          query: |
+            SELECT CAST(accepted_config_json AS BLOB) AS accepted_config,
+                   CAST(secret_refs_json AS BLOB) AS secret_refs,
+                   updated_by,
+                   updated_at
+            FROM scenario90_auth_config_applied
+            WHERE id = 1
+          mode: single
+      - name: applied-state-response
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            applied: { _from: "steps.fetch-applied-state.found" }
+            state: { _from: "steps.fetch-applied-state.row" }
+      - name: deny-read-response
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            allowed: false
+            reason: missing admin:auth.config:read
 
   describe-auth0-provider:
     trigger:

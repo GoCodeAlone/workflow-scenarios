@@ -34,6 +34,8 @@ admin_ui_dir_has_auth_gate() {
 admin_ui_dir_has_contribution_renderers() {
   local ui_dir="$1"
   grep -R 'renderConfigForm' "$ui_dir" >/dev/null 2>&1 &&
+    grep -R 'apply_path' "$ui_dir" >/dev/null 2>&1 &&
+    grep -R 'Apply changes' "$ui_dir" >/dev/null 2>&1 &&
     grep -R 'workflow.admin.auth.request' "$ui_dir" >/dev/null 2>&1 &&
     grep -R 'workflow.admin.auth.response' "$ui_dir" >/dev/null 2>&1
 }
@@ -81,10 +83,38 @@ find_admin_repo() {
   return 1
 }
 
+authz_ui_repo_is_usable() {
+  local repo="$1"
+  [ -f "$repo/go.mod" ] &&
+    [ -f "$repo/plugin.json" ] &&
+    grep 'step.authz_admin_contribution' "$repo/internal/plugin.go" >/dev/null 2>&1
+}
+
+find_authz_ui_repo() {
+  if [ -n "${PLUGIN_AUTHZ_UI_REPO:-}" ]; then
+    echo "$PLUGIN_AUTHZ_UI_REPO"
+    return 0
+  fi
+
+  local root="$WORKSPACE_ROOT/workflow-plugin-authz-ui"
+  local candidate
+  for candidate in "$root" "$root"/.worktrees/*; do
+    [ -d "$candidate" ] || continue
+    if authz_ui_repo_is_usable "$candidate"; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  echo "ERROR: no workflow-plugin-authz-ui checkout with step.authz_admin_contribution found under $root" >&2
+  echo "       Use workflow-plugin-authz-ui with the admin contribution step, or set PLUGIN_AUTHZ_UI_REPO explicitly." >&2
+  return 1
+}
+
 WORKFLOW_REPO="${WORKFLOW_REPO:-$WORKSPACE_ROOT/workflow}"
 PLUGIN_ADMIN_REPO="$(find_admin_repo)"
-PLUGIN_AUTH_REPO="${PLUGIN_AUTH_REPO:-$WORKSPACE_ROOT/workflow-plugin-auth/.worktrees/auth-admin-contribution}"
-PLUGIN_AUTHZ_UI_REPO="${PLUGIN_AUTHZ_UI_REPO:-$WORKSPACE_ROOT/workflow-plugin-authz-ui/.worktrees/authz-ui-admin-bridge}"
+PLUGIN_AUTH_REPO="${PLUGIN_AUTH_REPO:-$WORKSPACE_ROOT/workflow-plugin-auth}"
+PLUGIN_AUTHZ_UI_REPO="$(find_authz_ui_repo)"
 IMAGE_TAG="${IMAGE_TAG:-workflow-admin:scenario-90}"
 
 provider_repos=(
@@ -176,8 +206,8 @@ if ! admin_ui_dir_has_auth_gate "$BUILD_DIR/admin-ui"; then
   exit 1
 fi
 if ! admin_ui_dir_has_contribution_renderers "$BUILD_DIR/admin-ui"; then
-  echo "ERROR: selected workflow-plugin-admin UI does not render config-form surfaces or iframe auth bridge requests" >&2
-  echo "       Use workflow-plugin-admin with contribution renderer assets, or set PLUGIN_ADMIN_REPO explicitly." >&2
+  echo "ERROR: selected workflow-plugin-admin UI does not render config-form apply surfaces or iframe auth bridge requests" >&2
+  echo "       Use workflow-plugin-admin with contribution renderer/apply assets, or set PLUGIN_ADMIN_REPO explicitly." >&2
   exit 1
 fi
 if [ -d "$PLUGIN_AUTHZ_UI_REPO/ui/dist" ]; then
