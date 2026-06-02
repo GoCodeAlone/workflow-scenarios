@@ -38,6 +38,10 @@ fi
 # --- Phase 2: live smoke ------------------------------------------------------
 curl -fs "$BASE_URL/healthz" >/dev/null 2>&1 && pass "GET /healthz 200" || fail "GET /healthz (is seed.sh up?)"
 
+# Self-isolate: reset the consumer DB so the smoke starts from a fresh
+# (bootstrap-open) state regardless of any prior Playwright/UI run ordering.
+"${PGEXEC[@]}" "TRUNCATE credentials, users CASCADE;" >/dev/null 2>&1 && echo "  (db reset to fresh state)"
+
 # 1. fresh DB → bootstrap open
 st=$(curl -fs "$BASE_URL/admin/bootstrap/status" 2>/dev/null)
 echo "$st" | grep -q '"open":true' && pass "status open on fresh DB" || fail "status not open (got: $st)"

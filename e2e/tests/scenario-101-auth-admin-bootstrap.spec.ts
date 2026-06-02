@@ -1,4 +1,5 @@
 import { test, expect, chromium, type BrowserContext } from '@playwright/test';
+import { execSync } from 'node:child_process';
 
 // Scenario 101 — Auth Admin Bootstrap
 //
@@ -55,6 +56,19 @@ test.describe('Scenario 101: Auth Admin Bootstrap (passkey ceremony)', () => {
   let context: BrowserContext;
 
   test.beforeAll(async () => {
+    // Self-isolate: reset the consumer DB so the suite always starts from a
+    // fresh (bootstrap-open) state regardless of any prior curl smoke / run
+    // ordering. Best-effort — if the stack is remote (no local docker), the
+    // fresh-DB tests will surface the state instead.
+    try {
+      execSync(
+        `docker compose -f "${__dirname}/../../scenarios/101-auth-admin-bootstrap/docker-compose.yml" ` +
+          `exec -T postgres psql -U scenario101 -d scenario101 -c "TRUNCATE credentials, users CASCADE;"`,
+        { stdio: 'ignore' },
+      );
+    } catch {
+      /* stack not local; fresh-DB precondition documented in scenario README */
+    }
     const browser = await chromium.launch({
       headless: true,
       args: [
