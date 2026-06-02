@@ -9,7 +9,9 @@ description: |
   registers it as service "stub-iac-provider" so step.iac_provider_* steps
   resolve it at runtime.
 
-  Pipelines (no infra.admin module type — that was deleted):
+  The engine-built-in infra.admin module was deleted; the SPA is now the
+  external workflow-plugin-infra plugin's infra.admin module type, served at
+  /admin/infra. IaC operations flow through step.iac_provider_* pipelines:
     - GET /api/infra/catalog → step.iac_provider_catalog (live regions via RegionLister)
     - GET /api/infra/resources → step.iac_provider_list
     - POST /api/infra/plan → step.iac_provider_plan (desired_hash, 1 create action)
@@ -34,6 +36,7 @@ components:
   - workflow v0.70.0 (step.iac_provider_* from platform plugin)
   - stub-iac-provider (external gRPC plugin, fixture)
   - workflow-plugin-admin (external gRPC plugin)
+  - workflow-plugin-infra v1.1.0 (external plugin — infra.admin SPA at /admin/infra)
   - iac.state (memory)
 status: testable
 tags:

@@ -149,6 +149,7 @@ cp "$PLUGIN_INFRA_REPO/plugin.json" "$BUILD_DIR/plugins/workflow-plugin-infra/pl
 # Pre-extract the embedded SPA so extractAssets() finds ui_dist/index.html and
 # returns without attempting any filesystem writes at runtime.
 echo "Pre-copying infra SPA assets (ui_dist) into plugin directory..."
+mkdir -p "$BUILD_DIR/plugins/workflow-plugin-infra/ui_dist"
 cp -r "$PLUGIN_INFRA_REPO/internal/ui_dist/." \
   "$BUILD_DIR/plugins/workflow-plugin-infra/ui_dist/"
 

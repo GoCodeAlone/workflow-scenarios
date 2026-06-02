@@ -2,7 +2,7 @@
 # Scenario 92 — Infra Admin MIGRATION Demo docker-compose
 #
 # Brings up the scenario-92 workflow server with external gRPC plugins
-# (stub-iac-provider + workflow-plugin-admin) baked into the image.
+# (stub-iac-provider + workflow-plugin-admin + workflow-plugin-infra) baked into the image.
 #
 # The stub-iac-provider is loaded as an EXTERNAL plugin. The WiringHook
 # registers it as an IaCProvider service under name "stub-iac-provider".

@@ -17,9 +17,11 @@
 # Auth/RBAC:
 #   - step.auth_validate (Bearer JWT) on every mutation pipeline
 #   - step.conditional routing on JWT sub claim for RBAC:
-#     operator → allowed for plan/apply/destroy/drift
-#     viewer   → allowed for read-only catalog/list/drift-read
+#     operator → allowed for the mutation pipelines wired here (plan/apply/commit)
+#     viewer   → 403 on mutations; allowed for read-only views (catalog/list/drift)
 #     unauthenticated → 401 via auth_validate
+#   (destroy is supported by step.iac_provider_destroy but no /api/infra/destroy
+#    route is wired in this demo — out of the v2 assertion scope.)
 #
 # NOTE: "stub-iac-provider" is the provider service name because the
 #       WiringHook registers the external plugin under its plugin.json "name".
@@ -119,7 +121,10 @@ pipelines:
           body:
             contributions: { _from: "steps.list.contributions" }
 
-  # ── catalog (read-only, no auth required for demo) ─────────────────────────
+  # ── catalog (operator-authed view; step.auth_validate gates it) ────────────
+  # NOTE: the SPA's dropdowns use the SEPARATE unauthenticated
+  #       GET /api/infra/providers/{provider}/catalog (infra-spa-catalog); this
+  #       /api/infra/catalog pipeline is the authed operator view.
 
   infra-catalog:
     trigger:

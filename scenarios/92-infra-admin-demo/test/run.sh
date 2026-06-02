@@ -61,7 +61,7 @@ JWT_SECRET=$(python3 -c "
 import re, sys
 try:
     data = open('${CFG_LOCAL}').read()
-    m = re.search(r'type:\s*auth\.jwt.*?secret:\s*[\"\'']?([^\"\''\n]+?)[\"\'']?\s*$', data, re.DOTALL | re.MULTILINE)
+    m = re.search(r'type:\s*auth\.jwt.*?secret:\s*[\x22\x27]?([^\x22\x27\n]+?)[\x22\x27]?\s*$', data, re.DOTALL | re.MULTILINE)
     if m:
         print(m.group(1).strip())
     else:
