@@ -70,3 +70,12 @@ App B holds only App A's public JWKS and rejects tokens signed by any other key.
   request fixture to bypass CORS.
 - F2: Wrong-key rejection (assert 8) uses `mint-token` with an ephemeral EC key;
   this is the definitive proof that App B's verification is genuinely asymmetric.
+
+## Lead-verified pass (2026-06-02, playwright-cli, post-merge sso v0.1.8)
+
+Re-ran the playwright-cli walkthrough against the live 2-process stack (App A :18102 issuer, App B :18112 verifier) using a fresh ES256 token from App A's `/oauth/token`:
+
+- **Verify (valid token):** console shows `✓ VERIFIED by App B (via App A public JWKS only)` with claims `{aud:app-b, iss:http://app-a:8080, sub:app-b-caller, verified:true}` → `screenshots/qa-verified.png`.
+- **Verify (tampered signature):** console shows `✗ REJECTED by App B — HTTP 401, "failed to verify id token signature", verified:false` → `screenshots/qa-rejected.png`.
+
+Confirms genuine cross-service asymmetric verification end-to-end in a browser: App B holds only App A's public JWKS (no shared secret); a token not signed by App A's private key is rejected.
