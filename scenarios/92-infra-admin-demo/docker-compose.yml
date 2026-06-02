@@ -7,7 +7,7 @@
 # Port 18092 — does not collide with other scenarios.
 #
 # Volumes:
-#   .build/gitrepo.git  → /data/gitrepo.git (bare git repo for GitOps commit)
+#   .build/gitrepo.git → /data/gitrepo.git (bare git repo for GitOps commit)
 #   /var/run/docker.sock → /var/run/docker.sock (Docker-in-Docker for sandbox_exec)
 # ============================================================
 
@@ -15,6 +15,14 @@ services:
   app:
     image: workflow-admin:scenario-92
     container_name: workflow-scenario-92-app
+    environment:
+      # JWT_SECRET for the admin.dashboard plugin's admin-auth module.
+      # Must be ≥32 bytes. This is a test-only value; do not use in production.
+      JWT_SECRET: scenario-92-admin-plugin-jwt-secret-do-not-use
+      # GITREPO_HOST_PATH: the absolute host-side path to the bare git repo.
+      # Required by step.sandbox_exec for Docker-in-Docker bind mounts.
+      # Injected by seed.sh via GITREPO_HOST_PATH env var.
+      GITREPO_HOST_PATH: ${GITREPO_HOST_PATH}
     ports:
       - "127.0.0.1:18092:8080"
     volumes:
@@ -25,13 +33,14 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     command:
       - "-config"
-      - "/home/nonroot/app.yaml"
+      - "/home/app/app.yaml"
       - "-data-dir"
-      - "/home/nonroot"
+      - "/home/app"
     healthcheck:
+      # Accept both "ok" (healthz pipeline) and "healthy" (admin-health module)
       test:
         - CMD-SHELL
-        - "wget -q -O- http://127.0.0.1:8080/healthz 2>/dev/null | grep -q ok || exit 1"
+        - "wget -q -O- http://127.0.0.1:8080/healthz 2>/dev/null | grep -q status || exit 1"
       interval: 3s
       timeout: 3s
       retries: 30
