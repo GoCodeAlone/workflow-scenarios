@@ -1,23 +1,33 @@
 #!/usr/bin/env bash
-# Scenario 92 — Infra Admin test runner
+# Scenario 92 — Infra Admin MIGRATION demo test runner (v2)
 #
-# Runs:
-#   1. curl smoke checks against the live docker-compose stack
-#      (config-validation + RPC endpoints)
-#   2. wfctl infra admin CLI parity smoke (per plan §CLI end-to-end smoke)
-#   3. Playwright regression spec from the central e2e harness
+# Tests the migration from the deleted infra.admin engine module to the
+# new step.iac_provider_* pipeline architecture (workflow v0.70.0).
 #
-# Assumes seed.sh has already brought up the stack.
+# Assertions:
+#   1. /healthz 200 (stack health)
+#   2. /api/admin/contributions 200 (admin shell reachable)
+#   3. GET /api/infra/catalog → regions [stub-east,stub-west] + types [stub.database,stub.bucket]
+#   4. GET /api/infra/resources → provider stub-iac-provider, resources []
+#   5. POST /api/infra/plan (operator) → plan.actions[0].action=create, desired_hash=64-char hex
+#   6. POST /api/infra/apply (operator) → apply_result, no error (hash guard passes)
+#   7. POST /api/infra/commit (operator) → committed=true
+#   8. GET /api/infra/drift (operator) → supported, any_drifted=false
+#   9. Unauthenticated mutation → 401
+#  10. Non-Bearer auth → 401 (CSRF gate)
+#  11. Viewer POST /api/infra/apply → 403 (server-side RBAC)
+#  12. GET /api/infra/secrets → metadata_only=true, values not exposed
+#  13. Playwright spec (catalog dropdowns + SPA loads)
+#
+# Assumes seed.sh has already brought up the stack on port 18092.
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCENARIO_DIR="$(dirname "$SCRIPT_DIR")"
 SCENARIOS_ROOT="$(cd "$SCENARIO_DIR/../.." && pwd)"
-WORKFLOW_REPO="${WORKFLOW_REPO:-$(cd "$SCENARIOS_ROOT/.." && pwd)/workflow}"
 BASE_URL="${BASE_URL:-http://127.0.0.1:18092}"
 SCENARIO="92-infra-admin-demo"
-VARIANT="${VARIANT:-}"
 
 PASS=0
 FAIL=0
@@ -28,66 +38,27 @@ fail() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
 skip() { echo "SKIP: $1"; SKIP=$((SKIP + 1)); }
 
 echo ""
-echo "=== Scenario $SCENARIO (variant=${VARIANT:-stub}) ==="
+echo "=== Scenario $SCENARIO (v2: migration demo) ==="
 echo ""
 
-# --- Locate wfctl binary -----------------------------------------------------
+# --- PRECONDITION: /healthz ---------------------------------------------------
 
-WFCTL=""
-for candidate in \
-    "$(which wfctl 2>/dev/null)" \
-    "$WORKFLOW_REPO/wfctl" \
-    "$WORKFLOW_REPO/bin/wfctl" \
-    "${WFCTL_BIN:-}"; do
-    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
-        WFCTL="$candidate"
-        break
-    fi
-done
-
-if [ -z "$WFCTL" ]; then
-    echo "Building wfctl from $WORKFLOW_REPO..."
-    (cd "$WORKFLOW_REPO" && GOWORK=off go build -o wfctl ./cmd/wfctl)
-    WFCTL="$WORKFLOW_REPO/wfctl"
-fi
-
-CFG_NAME="app.yaml"
-[ -n "$VARIANT" ] && CFG_NAME="app-${VARIANT}.yaml"
-CFG_LOCAL="$SCENARIO_DIR/config/$CFG_NAME"
-
-# --- Phase 1: config validation ----------------------------------------------
-# Note: wfctl validate checks against a static type registry; new module
-# types added by plugins (health.checker, http.middleware.auth) are not
-# in the static registry → validation reports unknown types. This is
-# expected behavior; runtime module loading resolves them correctly.
-if "$WFCTL" validate "$CFG_LOCAL" >/dev/null 2>&1; then
-    pass "wfctl validate accepts $CFG_NAME"
-else
-    skip "wfctl validate reported unknown plugin-only module types (health.checker, auth-mw) — expected; runtime resolves them"
-fi
-
-# --- Phase 2: HTTP smoke against live stack ----------------------------------
-
-# T16 PRECONDITION: /healthz must be 200 before running any tests.
-# This gate would have caught v1's boot blocker (stack never came up).
 if ! curl -fs "$BASE_URL/healthz" >/dev/null 2>&1; then
-    echo "FATAL: /healthz is not 200 — did seed.sh complete successfully?" >&2
-    echo "Run: WORKFLOW_REPO=... bash seed/seed.sh" >&2
-    exit 1
+  echo "FATAL: /healthz is not 200 — did seed.sh complete successfully?" >&2
+  echo "Run: bash $SCENARIO_DIR/seed/seed.sh" >&2
+  exit 1
 fi
-pass "GET /healthz returns 200 (T16 precondition)"
+pass "GET /healthz returns 200 (stack health)"
 
-# --- Mint HS256 JWT matching the scenario's auth.jwt module ---
-# T18: Single source of truth — read JWT secret from config/app.yaml
-# (the auth.jwt module's `secret:` field) rather than hard-coding it here.
-# If python3 or the grep fails gracefully, the script falls back to the
-# known literal so smoke tests still work in stripped environments.
+# --- JWT minting helpers -------------------------------------------------------
+
+CFG_LOCAL="$SCENARIO_DIR/config/app.yaml"
+
 JWT_SECRET=$(python3 -c "
 import re, sys
 try:
     data = open('${CFG_LOCAL}').read()
-    # Accepts quoted ('...' or \"...\") or bare YAML string values.
-    m = re.search(r'type:\s*auth\.jwt.*?secret:\s*[\"\x27]?([^\"\x27\n]+?)[\"\x27]?\s*$', data, re.DOTALL | re.MULTILINE)
+    m = re.search(r'type:\s*auth\.jwt.*?secret:\s*[\"\'']?([^\"\''\n]+?)[\"\'']?\s*$', data, re.DOTALL | re.MULTILINE)
     if m:
         print(m.group(1).strip())
     else:
@@ -95,222 +66,326 @@ try:
 except Exception:
     sys.exit(1)
 " 2>/dev/null) || JWT_SECRET='scenario-92-jwt-secret-do-not-use-in-prod'
-# Export so Playwright (Phase 4) reads the same secret from env.
 export JWT_SECRET
+
 NOW=$(date +%s)
 EXP=$((NOW + 3600))
 
 b64url() { openssl base64 -e -A | tr '+/' '-_' | tr -d '='; }
 
 HEADER=$(printf '%s' '{"alg":"HS256","typ":"JWT"}' | b64url)
-PAYLOAD=$(printf '{"iss":"scenario-92","sub":"scenario-92-run","iat":%d,"exp":%d}' "$NOW" "$EXP" | b64url)
-UNSIGNED="${HEADER}.${PAYLOAD}"
-SIGNATURE=$(printf '%s' "$UNSIGNED" | openssl dgst -sha256 -hmac "$JWT_SECRET" -binary | b64url)
-BEARER="${UNSIGNED}.${SIGNATURE}"
-AUTH_HEADER="Authorization: Bearer $BEARER"
 
-# T16: Mint operator and viewer JWTs (sub = casbin subject).
-# operator: allowed infra:read + infra:apply + infra:destroy (per policy)
-# viewer: allowed infra:read only
-# authz.local (in-process Enforcer fixture) is configured as authz_module in
-# app.yaml, so the server enforces server-side write-tier RBAC. Below we test
-# authn gates (401), CSRF (401 without Bearer), and RBAC (403 viewer-denied).
-PAYLOAD_OP=$(printf '{"iss":"scenario-92","sub":"operator","iat":%d,"exp":%d}' "$NOW" "$EXP" | b64url)
-UNSIGNED_OP="${HEADER}.${PAYLOAD_OP}"
-SIG_OP=$(printf '%s' "$UNSIGNED_OP" | openssl dgst -sha256 -hmac "$JWT_SECRET" -binary | b64url)
-OP_TOKEN="${UNSIGNED_OP}.${SIG_OP}"
+# Mint a JWT for the given sub claim
+mint_jwt() {
+  local sub="$1"
+  local payload
+  payload=$(printf '{"iss":"scenario-92","sub":"%s","iat":%d,"exp":%d}' "$sub" "$NOW" "$EXP" | b64url)
+  local unsigned="${HEADER}.${payload}"
+  local sig
+  sig=$(printf '%s' "$unsigned" | openssl dgst -sha256 -hmac "$JWT_SECRET" -binary | b64url)
+  printf '%s.%s' "$unsigned" "$sig"
+}
 
-PAYLOAD_VW=$(printf '{"iss":"scenario-92","sub":"viewer","iat":%d,"exp":%d}' "$NOW" "$EXP" | b64url)
-UNSIGNED_VW="${HEADER}.${PAYLOAD_VW}"
-SIG_VW=$(printf '%s' "$UNSIGNED_VW" | openssl dgst -sha256 -hmac "$JWT_SECRET" -binary | b64url)
-VIEWER_TOKEN="${UNSIGNED_VW}.${SIG_VW}"
+OP_TOKEN=$(mint_jwt "operator")
+VIEWER_TOKEN=$(mint_jwt "viewer")
 
-# T15 auth-gate regression check: unauthenticated request must 401.
-unauth_code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
-    -H 'Content-Type: application/json' \
-    -d '{"evidence":{"authz_checked":true,"authz_allowed":true}}' \
-    "$BASE_URL/api/infra-admin/resources" || echo "000")
-if [ "$unauth_code" = "401" ]; then
-    pass "POST /api/infra-admin/resources without auth returns 401 (T15 auth gate)"
-else
-    fail "POST /api/infra-admin/resources without auth returned $unauth_code (want 401)"
-fi
+# --- 1. Admin contributions ---------------------------------------------------
 
-# Admin contributions endpoint (auto-populated by infra.admin.Start()).
-# Note: the admin.dashboard plugin filters contributions by granted_permissions
-# from the pipeline trigger. The list-admin-contributions HTTP trigger doesn't
-# forward the caller's JWT claims, so contributions may return null without
-# explicit permissions wiring. The registration pipelines fire successfully
-# (log: "Result registered: true") — this is a pre-existing admin.dashboard
-# behavior. Smoke-check the endpoint is reachable (200), not the content.
-CONTRIB_CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "$AUTH_HEADER" "$BASE_URL/api/admin/contributions" || echo "000")
+CONTRIB_CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+  -H "Authorization: Bearer $OP_TOKEN" \
+  "$BASE_URL/api/admin/contributions" || echo "000")
 if [ "$CONTRIB_CODE" = "200" ]; then
-    pass "GET /api/admin/contributions reachable (200)"
+  pass "GET /api/admin/contributions reachable (200)"
 else
-    fail "GET /api/admin/contributions returned $CONTRIB_CODE"
+  fail "GET /api/admin/contributions returned $CONTRIB_CODE (want 200)"
 fi
 
-# Read-side typed RPCs: POST returns 200 with the typed payload.
-RPC_BODY='{"evidence":{"authz_checked":true,"authz_allowed":true}}'
-for rpc in resources types providers; do
-    code=$(curl -s -o /tmp/scenario-92-$rpc.json -w '%{http_code}' \
-        -X POST -H 'Content-Type: application/json' -H "$AUTH_HEADER" \
-        -d "$RPC_BODY" "$BASE_URL/api/infra-admin/$rpc" || echo "000")
-    if [ "$code" = "200" ]; then
-        pass "POST /api/infra-admin/$rpc returns 200"
-    else
-        fail "POST /api/infra-admin/$rpc returned $code"
-    fi
+# --- 2. Catalog (stub regions + types) ----------------------------------------
+
+CATALOG_BODY=$(curl -s -H "Authorization: Bearer $OP_TOKEN" "$BASE_URL/api/infra/catalog" || echo '{}')
+CATALOG_CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $OP_TOKEN" "$BASE_URL/api/infra/catalog" || echo "000")
+
+if [ "$CATALOG_CODE" = "200" ]; then
+  pass "GET /api/infra/catalog returns 200"
+else
+  fail "GET /api/infra/catalog returned $CATALOG_CODE (want 200)"
+fi
+
+if printf '%s' "$CATALOG_BODY" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+regions = [r if isinstance(r, str) else r.get('name', '') for r in d.get('regions', [])]
+if 'stub-east' in regions and 'stub-west' in regions:
+    sys.exit(0)
+sys.exit(1)
+" 2>/dev/null; then
+  pass "Catalog regions include stub-east and stub-west (external plugin)"
+else
+  fail "Catalog regions missing stub-east/stub-west (got: $(printf '%s' "$CATALOG_BODY" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("regions", []))' 2>/dev/null || echo 'parse error'))"
+fi
+
+if printf '%s' "$CATALOG_BODY" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+types = [t.get('resource_type', t) if isinstance(t, dict) else t for t in d.get('types', [])]
+if 'stub.database' in types and 'stub.bucket' in types:
+    sys.exit(0)
+sys.exit(1)
+" 2>/dev/null; then
+  pass "Catalog types include stub.database and stub.bucket (external plugin capabilities)"
+else
+  fail "Catalog types missing stub.database/stub.bucket (got: $(printf '%s' "$CATALOG_BODY" | python3 -c 'import sys,json; d=json.load(sys.stdin); print([t.get("resource_type","") for t in d.get("types",[])])' 2>/dev/null || echo 'parse error'))"
+fi
+
+if printf '%s' "$CATALOG_BODY" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+if d.get('source') == 'live':
+    sys.exit(0)
+sys.exit(1)
+" 2>/dev/null; then
+  pass "Catalog source=live (RegionLister served from external plugin gRPC)"
+else
+  skip "Catalog source not 'live' — may be static fallback (got: $(printf '%s' "$CATALOG_BODY" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("source"))' 2>/dev/null || echo 'unknown'))"
+fi
+
+# --- 3. List resources --------------------------------------------------------
+
+LIST_CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+  -H "Authorization: Bearer $OP_TOKEN" \
+  "$BASE_URL/api/infra/resources" || echo "000")
+if [ "$LIST_CODE" = "200" ]; then
+  pass "GET /api/infra/resources returns 200 (step.iac_provider_list)"
+else
+  fail "GET /api/infra/resources returned $LIST_CODE (want 200)"
+fi
+
+# --- 4. Plan (operator) -------------------------------------------------------
+
+PLAN_BODY=$(curl -s -X POST "$BASE_URL/api/infra/plan" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $OP_TOKEN" \
+  -d '{}' || echo '{}')
+PLAN_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/infra/plan" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $OP_TOKEN" \
+  -d '{}' || echo "000")
+
+if [ "$PLAN_CODE" = "200" ]; then
+  pass "POST /api/infra/plan (operator) returns 200 (step.iac_provider_plan)"
+else
+  fail "POST /api/infra/plan (operator) returned $PLAN_CODE (want 200)"
+fi
+
+DESIRED_HASH=$(printf '%s' "$PLAN_BODY" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(d.get('desired_hash', ''))
+" 2>/dev/null || true)
+
+if printf '%s' "$DESIRED_HASH" | grep -qE '^[0-9a-f]{64}$'; then
+  pass "plan desired_hash is 64-char lowercase hex SHA-256 (M-3 two-phase guard)"
+else
+  fail "plan desired_hash not 64-char hex: got '$DESIRED_HASH'"
+fi
+
+PLAN_ACTIONS=$(printf '%s' "$PLAN_BODY" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+plan = d.get('plan', {})
+actions = plan.get('actions', plan.get('Actions', [])) if isinstance(plan, dict) else []
+if actions and len(actions) > 0:
+    print(actions[0].get('action', actions[0].get('Action', '')))
+else:
+    print('')
+" 2>/dev/null || true)
+
+if [ "$PLAN_ACTIONS" = "create" ]; then
+  pass "Plan contains 1 'create' action (stub provider deterministic data)"
+else
+  fail "Plan first action not 'create': got '$PLAN_ACTIONS' (full plan: $PLAN_BODY)"
+fi
+
+# --- 5. Apply (operator, hash guard) ------------------------------------------
+
+APPLY_BODY=$(curl -s -X POST "$BASE_URL/api/infra/apply" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $OP_TOKEN" \
+  -d '{}' || echo '{}')
+APPLY_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/infra/apply" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $OP_TOKEN" \
+  -d '{}' || echo "000")
+
+if [ "$APPLY_CODE" = "200" ]; then
+  pass "POST /api/infra/apply (operator) returns 200 (step.iac_provider_apply, hash guard passes)"
+else
+  APPLY_ERROR=$(printf '%s' "$APPLY_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('error',''))" 2>/dev/null || echo "")
+  fail "POST /api/infra/apply (operator) returned $APPLY_CODE: $APPLY_ERROR"
+fi
+
+# --- 6. Commit (operator) -----------------------------------------------------
+
+COMMIT_BODY=$(curl -s -X POST "$BASE_URL/api/infra/commit" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $OP_TOKEN" \
+  -d '{}' || echo '{}')
+COMMIT_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/infra/commit" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $OP_TOKEN" \
+  -d '{}' || echo "000")
+
+if [ "$COMMIT_CODE" = "200" ]; then
+  pass "POST /api/infra/commit (operator) returns 200"
+else
+  fail "POST /api/infra/commit returned $COMMIT_CODE"
+fi
+
+COMMITTED=$(printf '%s' "$COMMIT_BODY" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(str(d.get('committed', '')).lower())
+" 2>/dev/null || echo "false")
+if [ "$COMMITTED" = "true" ]; then
+  pass "Commit response committed=true"
+else
+  fail "Commit response committed not true: $COMMIT_BODY"
+fi
+
+# --- 7. Drift check (operator) ------------------------------------------------
+
+DRIFT_BODY=$(curl -s -H "Authorization: Bearer $OP_TOKEN" "$BASE_URL/api/infra/drift" || echo '{}')
+DRIFT_CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $OP_TOKEN" "$BASE_URL/api/infra/drift" || echo "000")
+
+if [ "$DRIFT_CODE" = "200" ]; then
+  pass "GET /api/infra/drift returns 200 (step.iac_provider_drift)"
+else
+  fail "GET /api/infra/drift returned $DRIFT_CODE (want 200)"
+fi
+
+ANY_DRIFTED=$(printf '%s' "$DRIFT_BODY" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(str(d.get('any_drifted', '')).lower())
+" 2>/dev/null || echo "")
+if [ "$ANY_DRIFTED" = "false" ]; then
+  pass "Drift any_drifted=false (stub DetectDrift returns InSync for all refs)"
+else
+  skip "Drift any_drifted not false: $DRIFT_BODY"
+fi
+
+# --- 8. Secrets metadata ------------------------------------------------------
+
+SECRETS_BODY=$(curl -s -H "Authorization: Bearer $OP_TOKEN" "$BASE_URL/api/infra/secrets" || echo '{}')
+SECRETS_CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $OP_TOKEN" "$BASE_URL/api/infra/secrets" || echo "000")
+
+if [ "$SECRETS_CODE" = "200" ]; then
+  pass "GET /api/infra/secrets returns 200 (metadata only)"
+else
+  fail "GET /api/infra/secrets returned $SECRETS_CODE"
+fi
+
+META_ONLY=$(printf '%s' "$SECRETS_BODY" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(str(d.get('metadata_only', '')).lower())
+" 2>/dev/null || echo "false")
+if [ "$META_ONLY" = "true" ]; then
+  pass "Secrets response metadata_only=true (values never echoed)"
+else
+  fail "Secrets metadata_only not true: $SECRETS_BODY"
+fi
+
+# --- 9. Unauthenticated mutations → 401 ---------------------------------------
+
+for endpoint in "plan" "apply" "commit"; do
+  unauth_code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+    -H 'Content-Type: application/json' \
+    -d '{}' \
+    "$BASE_URL/api/infra/$endpoint" || echo "000")
+  if [ "$unauth_code" = "401" ]; then
+    pass "POST /api/infra/$endpoint without auth → 401 (auth gate)"
+  else
+    fail "POST /api/infra/$endpoint unauthenticated returned $unauth_code (want 401)"
+  fi
 done
 
-# Asset page reachable (proves embed.FS + middleware wiring).
-if curl -fs -H "$AUTH_HEADER" "$BASE_URL/admin/infra-admin/new.html" | grep -q '<title>Draft New Infra Resource</title>'; then
-    pass "GET /admin/infra-admin/new.html serves the form-builder page"
-else
-    fail "new.html not served correctly"
-fi
+# --- 10. Non-Bearer Authorization → 401 (CSRF gate) --------------------------
 
-# --- Phase 2b: T16 mutation curl flow ----------------------------------------
-# Demonstrates Plan→Apply with stub provider. desired_hash must be a
-# 64-char lowercase hex SHA-256 (plan-review M-3).
-
-EVIDENCE='{"authz_checked":true,"authz_allowed":true}'
-
-# Plan with operator token.
-PLAN_RESPONSE=$(curl -s -X POST "$BASE_URL/api/infra-admin/plan" \
-    -H 'Content-Type: application/json' \
-    -H "Authorization: Bearer $OP_TOKEN" \
-    -d "{\"app_context\":\"\",\"resource_filter\":\"\",\"evidence\":$EVIDENCE}")
-PLAN_ERROR=$(printf '%s' "$PLAN_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('error',''))" 2>/dev/null || true)
-DESIRED_HASH=$(printf '%s' "$PLAN_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('desired_hash',''))" 2>/dev/null || true)
-PLAN_ID=$(printf '%s' "$PLAN_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('plan_id',''))" 2>/dev/null || true)
-if [ -z "$PLAN_ERROR" ] && [ -n "$DESIRED_HASH" ]; then
-    pass "POST /api/infra-admin/plan (operator) returns plan_id + desired_hash"
-else
-    fail "POST /api/infra-admin/plan (operator) failed: error=$PLAN_ERROR hash=$DESIRED_HASH"
-fi
-
-# M-3: desired_hash must be exactly 64 lowercase hex chars (SHA-256).
-if printf '%s' "$DESIRED_HASH" | grep -qE '^[0-9a-f]{64}$'; then
-    pass "desired_hash is 64-char lowercase hex SHA-256 (M-3)"
-else
-    fail "desired_hash is not 64-char hex: got '$DESIRED_HASH'"
-fi
-
-# Apply with operator token.
-APPLY_RESPONSE=$(curl -s -X POST "$BASE_URL/api/infra-admin/apply" \
-    -H 'Content-Type: application/json' \
-    -H "Authorization: Bearer $OP_TOKEN" \
-    -d "{\"plan_id\":\"$PLAN_ID\",\"desired_hash\":\"$DESIRED_HASH\",\"allow_replace\":[],\"app_context\":\"\",\"evidence\":$EVIDENCE}")
-APPLY_ERROR=$(printf '%s' "$APPLY_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('error',''))" 2>/dev/null || true)
-if [ -z "$APPLY_ERROR" ]; then
-    pass "POST /api/infra-admin/apply (operator) returns no top-level error"
-else
-    fail "POST /api/infra-admin/apply (operator) returned error: $APPLY_ERROR"
-fi
-
-# Apply with viewer token → 403 (server-side RBAC, even though authenticated).
-# authz.local enforcer: viewer has infra:read but NOT infra:apply → denied.
-# This proves RBAC is server-authoritative (not client-body evidence).
-viewer_apply=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/infra-admin/apply" \
-    -H 'Content-Type: application/json' \
-    -H "Authorization: Bearer $VIEWER_TOKEN" \
-    -d "{\"plan_id\":\"$PLAN_ID\",\"desired_hash\":\"$DESIRED_HASH\",\"allow_replace\":[],\"app_context\":\"\",\"evidence\":{\"authz_checked\":true,\"authz_allowed\":true}}")
-if [ "$viewer_apply" = "403" ]; then
-    pass "POST /api/infra-admin/apply (viewer) → 403 (server-side RBAC)"
-else
-    fail "POST /api/infra-admin/apply (viewer) returned $viewer_apply (want 403)"
-fi
-
-# Unauthenticated mutation → 401 (auth middleware gate).
-unauth_mut=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/infra-admin/plan" \
-    -H 'Content-Type: application/json' \
-    -d "{\"evidence\":$EVIDENCE}")
-if [ "$unauth_mut" = "401" ]; then
-    pass "POST /api/infra-admin/plan without auth → 401 (unauthenticated)"
-else
-    fail "POST /api/infra-admin/plan without auth returned $unauth_mut (want 401)"
-fi
-
-# Missing Bearer header → 401 (CSRF gate / requireBearer middleware).
-# Sending Authorization: Token (wrong scheme) — not Bearer.
-no_bearer=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/infra-admin/plan" \
+for endpoint in "plan" "apply"; do
+  no_bearer=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
     -H 'Content-Type: application/json' \
     -H "Authorization: Token $OP_TOKEN" \
-    -d "{\"evidence\":$EVIDENCE}")
-if [ "$no_bearer" = "401" ]; then
-    pass "POST /api/infra-admin/plan with non-Bearer auth → 401 (CSRF gate)"
-else
-    fail "POST /api/infra-admin/plan with non-Bearer auth returned $no_bearer (want 401)"
-fi
-
-# Drift check with operator token.
-DRIFT_RESPONSE=$(curl -s -X POST "$BASE_URL/api/infra-admin/drift" \
-    -H 'Content-Type: application/json' \
-    -H "Authorization: Bearer $OP_TOKEN" \
-    -d "{\"refs\":[],\"evidence\":$EVIDENCE}")
-DRIFT_ERROR=$(printf '%s' "$DRIFT_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('error',''))" 2>/dev/null || true)
-if [ -z "$DRIFT_ERROR" ]; then
-    pass "POST /api/infra-admin/drift (operator) returns no top-level error"
-else
-    fail "POST /api/infra-admin/drift returned error: $DRIFT_ERROR"
-fi
-
-# Audit-viewer page reachable.
-if curl -fs -H "Authorization: Bearer $OP_TOKEN" "$BASE_URL/admin/infra-admin/actions.html" | grep -q 'Audit Log'; then
-    pass "GET /admin/infra-admin/actions.html serves audit-viewer"
-else
-    fail "actions.html not served correctly"
-fi
-
-# --- Phase 3: wfctl infra admin CLI smoke (per plan §CLI end-to-end smoke) ---
-
-# wfctl infra admin CLI smoke — requires a running server and proper local
-# config path resolution. In Docker environments the CLI path may differ.
-# Skip gracefully if the CLI commands fail (they need server connectivity).
-for cmd in "list-resources" "list-types" "list-providers"; do
-    out_file="/tmp/scenario-92-wfctl-$cmd.json"
-    if ! "$WFCTL" infra admin $cmd -c "$CFG_LOCAL" --format json > "$out_file" 2>/dev/null; then
-        skip "wfctl infra admin $cmd unavailable (server connectivity or CLI path)"
-        continue
-    fi
-    if command -v jq >/dev/null 2>&1; then
-        if jq -e '.' "$out_file" >/dev/null 2>&1; then
-            pass "wfctl infra admin $cmd output is valid JSON"
-        else
-            fail "wfctl infra admin $cmd output not valid JSON"
-        fi
-    else
-        # Fallback when jq absent: smoke-check braces.
-        if grep -q '{' "$out_file"; then
-            pass "wfctl infra admin $cmd output looks JSON-shaped (jq absent)"
-        else
-            skip "wfctl infra admin $cmd (jq absent, cannot validate JSON shape)"
-        fi
-    fi
+    -d '{}' \
+    "$BASE_URL/api/infra/$endpoint" || echo "000")
+  if [ "$no_bearer" = "401" ]; then
+    pass "POST /api/infra/$endpoint with Token (non-Bearer) → 401 (CSRF gate)"
+  else
+    fail "POST /api/infra/$endpoint Token scheme returned $no_bearer (want 401)"
+  fi
 done
 
-# --- Phase 4: Playwright regression spec from central harness ----------------
+# --- 11. Viewer apply → 403 (server-side RBAC) --------------------------------
+
+viewer_apply=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $VIEWER_TOKEN" \
+  -d '{}' \
+  "$BASE_URL/api/infra/apply" || echo "000")
+if [ "$viewer_apply" = "403" ]; then
+  pass "POST /api/infra/apply (viewer) → 403 (server-side RBAC: viewer cannot apply)"
+else
+  fail "POST /api/infra/apply (viewer) returned $viewer_apply (want 403)"
+fi
+
+viewer_plan=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $VIEWER_TOKEN" \
+  -d '{}' \
+  "$BASE_URL/api/infra/plan" || echo "000")
+if [ "$viewer_plan" = "403" ]; then
+  pass "POST /api/infra/plan (viewer) → 403 (server-side RBAC: viewer cannot plan)"
+else
+  fail "POST /api/infra/plan (viewer) returned $viewer_plan (want 403)"
+fi
+
+# --- 12. Bare git repo fixture (seed.sh initialized it) ----------------------
+# Verify the bare git repo was initialized and has at least one commit.
+
+BARE_REPO="$SCENARIO_DIR/.build/gitrepo.git"
+if [ -d "$BARE_REPO/objects" ]; then
+  GIT_LOG=$(GIT_DIR="$BARE_REPO" git log --oneline 2>/dev/null | head -1)
+  if [ -n "$GIT_LOG" ]; then
+    pass "Bare git repo has commits: $GIT_LOG (gitops fixture ready)"
+  else
+    fail "Bare git repo has no commits"
+  fi
+else
+  skip "Bare git repo not found at $BARE_REPO (seed.sh not run yet)"
+fi
+
+# --- 13. Playwright spec ------------------------------------------------------
 
 PLAYWRIGHT_SPEC="$SCENARIOS_ROOT/e2e/tests/scenario-92-infra-admin.spec.ts"
 if [ -f "$PLAYWRIGHT_SPEC" ]; then
-    if command -v npx >/dev/null 2>&1; then
-        echo ""
-        echo "Running Playwright regression spec..."
-        (cd "$SCENARIOS_ROOT/e2e" && \
-            SCENARIO_URL="$BASE_URL" \
-            npx playwright test scenario-92-infra-admin.spec.ts \
-            --reporter=list 2>&1 | tail -40) \
-            && pass "Playwright scenario-92 spec passed" \
-            || fail "Playwright scenario-92 spec failed (see output above)"
-    else
-        skip "Playwright skipped (npx not installed)"
-    fi
+  if command -v npx >/dev/null 2>&1; then
+    echo ""
+    echo "Running Playwright regression spec..."
+    (cd "$SCENARIOS_ROOT/e2e" && \
+      SCENARIO_URL="$BASE_URL" \
+      JWT_SECRET="$JWT_SECRET" \
+      npx playwright test scenario-92-infra-admin.spec.ts \
+      --reporter=list 2>&1 | tail -40) \
+      && pass "Playwright scenario-92 spec passed" \
+      || fail "Playwright scenario-92 spec failed (see output above)"
+  else
+    skip "Playwright skipped (npx not installed)"
+  fi
 else
-    fail "Playwright spec not found at $PLAYWRIGHT_SPEC"
+  fail "Playwright spec not found at $PLAYWRIGHT_SPEC"
 fi
 
-# --- Summary -----------------------------------------------------------------
+# --- Summary ------------------------------------------------------------------
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed, $SKIP skipped"

@@ -1,42 +1,33 @@
 import { test, expect, type Page } from '@playwright/test';
 import { createHmac } from 'crypto';
 
-// Scenario 92 — Infra Admin (Dynamic, Proto-Driven)
+// Scenario 92 — Infra Admin MIGRATION Demo (v2: step-based IaC pipelines)
 //
-// Exercises the host-side infra.admin module + form-builder UI end-to-end
-// against the docker-compose stack from seed/seed.sh. Test ordering
-// matches the plan §Task 24 spec block.
+// Tests the migration from the deleted infra.admin engine module to the new
+// step.iac_provider_* pipeline architecture (workflow v0.70.0).
 //
-// SCENARIO_URL points at the running stack (default http://127.0.0.1:18092
-// for scenario 92's port mapping). Override via env var.
+// The stub-iac-provider is loaded as an EXTERNAL gRPC plugin. The WiringHook
+// registers it as service "stub-iac-provider". Pipelines use:
+//   step.iac_provider_catalog  → catalog with live regions from RegionLister
+//   step.iac_provider_list     → list resources
+//   step.iac_provider_plan     → plan (returns desired_hash)
+//   step.iac_provider_apply    → apply (validates hash guard)
+//   step.iac_provider_drift    → drift detection (DriftDetector)
 //
-// Auth: every /api/infra-admin/* and /admin/infra-admin/* request must
-// carry a Bearer JWT signed by the scenario's HS256 secret, since
-// PR-1 47341ff6f (T15 auth fix) added a route-level auth middleware.
-// The token is minted once in beforeAll and threaded through fetch
-// headers + page.setExtraHTTPHeaders for browser navigations.
+// SCENARIO_URL points at the running stack (default http://127.0.0.1:18092).
 
 const BASE_URL = process.env.SCENARIO_URL || 'http://127.0.0.1:18092';
 
-// T18: Single source of truth — read from JWT_SECRET env var when available.
-// run.sh exports JWT_SECRET by extracting it from config/app.yaml; standalone
-// runs fall back to the known literal so the spec works without run.sh.
-// The value MUST match config/app.yaml::modules[name=auth].config.secret.
+// JWT_SECRET exported by run.sh from config/app.yaml; fallback to literal
+// so the spec also works standalone.
 const JWT_SECRET = process.env['JWT_SECRET'] ?? 'scenario-92-jwt-secret-do-not-use-in-prod';
 const JWT_ISSUER = 'scenario-92';
 
 function base64Url(buf: Buffer | string): string {
   const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
-  return b
-    .toString('base64')
-    .replace(/=+$/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
+  return b.toString('base64').replace(/=+$/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 }
 
-// mintJWT issues a self-signed HS256 JWT with a custom sub claim.
-// T18: reads JWT_SECRET from env (exported by run.sh from app.yaml) with
-// literal fallback so the spec also works standalone.
 function mintJWT(sub: string): string {
   const header = base64Url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   const now = Math.floor(Date.now() / 1000);
@@ -50,408 +41,239 @@ function mintJWT(sub: string): string {
   return `${unsigned}.${signature}`;
 }
 
-// Default token for beforeEach (matches v1 "playwright-scenario-92" sub).
-const BEARER_TOKEN = mintJWT('playwright-scenario-92');
-const AUTH_HEADER = { Authorization: `Bearer ${BEARER_TOKEN}` };
-
-async function adminFetch(page: Page, path: string, body: unknown) {
-  return page.evaluate(
-    async ([url, payload, auth]) => {
-      const resp = await fetch(url as string, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: auth as string,
-        },
-        body: JSON.stringify(payload),
-      });
-      let parsed: unknown = null;
-      try {
-        parsed = await resp.json();
-      } catch (_) {
-        /* not JSON — leave parsed null */
-      }
-      return { status: resp.status, body: parsed };
-    },
-    [path, body, AUTH_HEADER.Authorization] as const,
-  );
-}
-
-const EVIDENCE = { authz_checked: true, authz_allowed: true };
+const OP_TOKEN = mintJWT('operator');
+const VIEWER_TOKEN = mintJWT('viewer');
 
 // @scenario-92
-test.describe('Scenario 92: Infra Admin (Dynamic, Proto-Driven)', () => {
-  // Authenticate every browser navigation. /healthz is public (no
-  // auth middleware) so it's safe even when the header is sent; the
-  // /admin/infra-admin/* asset pages and /api/infra-admin/* RPCs
-  // require it per PR-1 T15 auth gate (47341ff6f).
+test.describe('Scenario 92: Infra Admin Migration Demo', () => {
   test.beforeEach(async ({ page }) => {
-    await page.setExtraHTTPHeaders({ Authorization: `Bearer ${BEARER_TOKEN}` });
+    await page.setExtraHTTPHeaders({ Authorization: `Bearer ${OP_TOKEN}` });
   });
 
-  test('@scenario-92 healthz OK', async ({ page }) => {
+  // ── health ──────────────────────────────────────────────────────────────────
+
+  test('@scenario-92 healthz returns 200', async ({ page }) => {
     const resp = await page.goto(`${BASE_URL}/healthz`);
     expect(resp?.status()).toBe(200);
   });
 
-  test('@scenario-92 unauthenticated /api/infra-admin/* returns 401', async ({
-    request,
-  }) => {
-    // PR-1 T15 auth-middleware regression gate. Without an
-    // Authorization header, the auth gate MUST return 401 BEFORE
-    // any handler runs — clients can't spoof the in-body evidence
-    // {authz_checked:true, authz_allowed:true} to bypass the
-    // application-level default-deny.
-    //
-    // CRITICAL: uses the `request` fixture (fresh APIRequestContext
-    // with no inherited headers) NOT `page` — Playwright's
-    // setExtraHTTPHeaders() applies at the browser network layer to
-    // ALL browser-initiated requests, including fetch() inside
-    // page.evaluate. Using `page` here would silently leak the
-    // beforeEach-set Authorization header into this test and the
-    // request would be authenticated. Spec-reviewer PR-2 F1 catch.
-    //
-    // Mirrors implementer-1's unit test
-    // TestInfraAdmin_ClientCannotSpoofAuthzEvidence at the e2e tier.
-    const resp = await request.post(`${BASE_URL}/api/infra-admin/resources`, {
-      headers: { 'Content-Type': 'application/json' },
-      data: { evidence: { authz_checked: true, authz_allowed: true } },
-    });
-    expect(resp.status()).toBe(401);
-    // 401 is enforced by the auth middleware BEFORE the handler runs,
-    // so the body should NOT contain a handler-shaped
-    // `AdminListResourcesOutput` with a tag-100 error. Just assert no
-    // 200-shaped resources field — the 401 status is the load-bearing
-    // assertion here.
-    let body: unknown = null;
-    try {
-      body = await resp.json();
-    } catch (_) {
-      /* 401 body may not be JSON — leave null */
-    }
-    if (body && typeof body === 'object') {
-      expect((body as Record<string, unknown>).resources).toBeUndefined();
-    }
-  });
+  // ── admin shell ─────────────────────────────────────────────────────────────
 
-  test('@scenario-92 infra contributions endpoint reachable', async ({ page }) => {
-    await page.goto(BASE_URL);
-    // /api/admin/contributions is gated by admin.dashboard's auth_module.
-    // The endpoint returns 200; contributions content requires permission
-    // forwarding that admin.dashboard handles internally. Smoke-check
-    // the endpoint is reachable with a valid Bearer token.
-    const { status } = await page.evaluate(
-      async ([url, auth]) => {
-        const resp = await fetch(`${url}/api/admin/contributions`, {
-          headers: { Authorization: auth as string },
-        });
-        return { status: resp.status };
-      },
-      [BASE_URL, AUTH_HEADER.Authorization] as const,
-    );
-    expect(status).toBe(200);
-  });
-
-  test('@scenario-92 ListProviders returns at least the stub provider', async ({ page }) => {
-    await page.goto(BASE_URL);
-    const { status, body } = await adminFetch(page, `${BASE_URL}/api/infra-admin/providers`, {
-      evidence: EVIDENCE,
-    });
-    expect(status).toBe(200);
-    expect(body.providers?.length ?? 0).toBeGreaterThan(0);
-    // The stub provider registers under module_name "stub-provider".
-    // provider_type may be empty when the engine config section doesn't
-    // surface the `provider: stub` YAML value to populateProviderTypes.
-    const moduleNames = body.providers.map((p: { module_name: string }) => p.module_name);
-    expect(moduleNames).toContain('stub-provider');
-  });
-
-  test('@scenario-92 ListResourceTypes returns all 13 typed Configs', async ({ page }) => {
-    await page.goto(BASE_URL);
-    const { status, body } = await adminFetch(page, `${BASE_URL}/api/infra-admin/types`, {
-      evidence: EVIDENCE,
-    });
-    expect(status).toBe(200);
-    const typeNames = (body.types ?? []).map((t: { type: string }) => t.type);
-    expect(typeNames).toEqual(
-      expect.arrayContaining([
-        'infra.vpc',
-        'infra.database',
-        'infra.container_service',
-        'infra.k8s_cluster',
-        'infra.cache',
-        'infra.load_balancer',
-        'infra.dns',
-        'infra.registry',
-        'infra.api_gateway',
-        'infra.firewall',
-        'infra.iam_role',
-        'infra.storage',
-        'infra.certificate',
-      ]),
-    );
-  });
-
-  test('@scenario-92 authenticated request without evidence still default-denies', async ({
-    page,
-  }) => {
-    // Two-tier security check exercised together: auth gate passes
-    // (Bearer header set in adminFetch), but handler-library default-
-    // deny rejects because the body omits the AdminAuthzEvidence
-    // payload. Result is 200 with tag-100 error string (per design's
-    // "errors surface via Output.error not Go-level errors" contract).
-    // Spec-reviewer PR-2 review item #4.
-    await page.goto(BASE_URL);
-    const { status, body } = await adminFetch(page, `${BASE_URL}/api/infra-admin/resources`, {});
-    expect(status).toBe(200);
-    expect((body as { error?: string }).error).toBeTruthy();
-  });
-
-  test('@scenario-92 resources.html serves and references resources.js', async ({ page }) => {
-    const resp = await page.goto(`${BASE_URL}/admin/infra-admin/resources.html`);
-    expect(resp?.status()).toBe(200);
-    const html = await page.content();
-    expect(html).toContain('Infra Resources');
-    expect(html).toMatch(/<script[^>]*src="\/admin\/infra-admin\/resources\.js"/);
-  });
-
-  test('@scenario-92 new.html form-builder loads and populates type dropdown', async ({ page }) => {
-    await page.goto(`${BASE_URL}/admin/infra-admin/new.html`);
-    // Wait for the loadCatalog fetch to populate the select.
-    await expect(page.locator('#type')).toBeVisible();
-    await page.waitForFunction(
-      () => {
-        const sel = document.getElementById('type') as HTMLSelectElement | null;
-        return sel != null && sel.options.length > 1;
-      },
-      undefined,
-      { timeout: 5000 },
-    );
-    const typeCount = await page.locator('#type option').count();
-    expect(typeCount).toBeGreaterThan(1); // "— select —" + at least one type
-  });
-
-  test('@scenario-92 new-resource form: provider dropdown populates after type select', async ({
-    page,
-  }) => {
-    await page.goto(`${BASE_URL}/admin/infra-admin/new.html`);
-    await page.waitForFunction(() => {
-      const sel = document.getElementById('type') as HTMLSelectElement | null;
-      return sel != null && sel.options.length > 1;
-    });
-    await page.selectOption('#type', 'infra.vpc');
-    // After type select, the provider field should render.
-    const providerSelect = page.locator('select[name="provider"]');
-    await expect(providerSelect).toBeVisible();
-    const optCount = await providerSelect.locator('option').count();
-    expect(optCount).toBeGreaterThan(1);
-  });
-
-  test('@scenario-92 new-resource form: region depends_on provider', async ({ page }) => {
-    await page.goto(`${BASE_URL}/admin/infra-admin/new.html`);
-    await page.waitForFunction(() => {
-      const sel = document.getElementById('type') as HTMLSelectElement | null;
-      return sel != null && sel.options.length > 1;
-    });
-    await page.selectOption('#type', 'infra.vpc');
-    await expect(page.locator('select[name="provider"]')).toBeVisible();
-    // Pick the first non-placeholder provider option.
-    const firstProvider = await page
-      .locator('select[name="provider"] option:not([value=""])')
-      .first()
-      .getAttribute('value');
-    expect(firstProvider).toBeTruthy();
-    await page.selectOption('select[name="provider"]', firstProvider!);
-    // After provider chosen, region dropdown should populate.
-    const regionSelect = page.locator('select[name="region"]');
-    await expect(regionSelect).toBeVisible();
-    await page.waitForFunction(() => {
-      const sel = document.querySelector(
-        'select[name="region"]',
-      ) as HTMLSelectElement | null;
-      return sel != null && sel.options.length > 1;
-    });
-    const regionCount = await regionSelect.locator('option').count();
-    expect(regionCount).toBeGreaterThan(1);
-  });
-
-  test('@scenario-92 generate-config returns YAML snippet', async ({ page }) => {
-    await page.goto(`${BASE_URL}/admin/infra-admin/new.html`);
-    await page.waitForFunction(() => {
-      const sel = document.getElementById('type') as HTMLSelectElement | null;
-      return sel != null && sel.options.length > 1;
-    });
-    await page.selectOption('#type', 'infra.vpc');
-    await page.fill('#name', 'demo-vpc');
-
-    // Pick first available provider + region.
-    const provVal = await page
-      .locator('select[name="provider"] option:not([value=""])')
-      .first()
-      .getAttribute('value');
-    await page.selectOption('select[name="provider"]', provVal!);
-    await page.waitForFunction(() => {
-      const sel = document.querySelector(
-        'select[name="region"]',
-      ) as HTMLSelectElement | null;
-      return sel != null && sel.options.length > 1;
-    });
-    const regionVal = await page
-      .locator('select[name="region"] option:not([value=""])')
-      .first()
-      .getAttribute('value');
-    await page.selectOption('select[name="region"]', regionVal!);
-
-    // VPC needs cidr.
-    await page.fill('input[name="cidr"]', '10.0.0.0/16');
-
-    await page.click('#submit');
-    await expect(page.locator('#yaml-output')).toContainText('infra.vpc');
-    await expect(page.locator('#yaml-output')).toContainText('demo-vpc');
-  });
-
-  test('@scenario-92 CSP enforces no inline scripts on asset pages', async ({ page }) => {
-    // Asset pages MUST NOT contain inline `<script>` tags with content
-    // (only external `src` references). This guards against the
-    // design-cycle-5 CSP regression class.
-    for (const path of ['resources.html', 'resource.html', 'new.html']) {
-      await page.goto(`${BASE_URL}/admin/infra-admin/${path}`);
-      const inlineScriptCount = await page.evaluate(() => {
-        return Array.from(document.querySelectorAll('script'))
-          .filter(s => !s.src && s.textContent && s.textContent.trim().length > 0)
-          .length;
-      });
-      expect(inlineScriptCount, `${path} has inline scripts`).toBe(0);
-    }
-  });
-
-  test('@scenario-92 full-page screenshot', async ({ page }) => {
-    await page.goto(`${BASE_URL}/admin/infra-admin/new.html`);
-    await page.waitForFunction(() => {
-      const sel = document.getElementById('type') as HTMLSelectElement | null;
-      return sel != null && sel.options.length > 1;
-    });
-    await page.screenshot({
-      path: 'test-results/scenario-92-new-form.png',
-      fullPage: true,
-    });
-  });
-
-  // --- T17: v1.1 mutation flow + auth/CSRF E2E ----------------------------
-
-  test('@scenario-92 v1.1 plan returns 64-char hex desired_hash (M-3)', async ({ request }) => {
-    const opToken = mintJWT('operator');
-    const resp = await request.post(`${BASE_URL}/api/infra-admin/plan`, {
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${opToken}` },
-      data: { app_context: '', resource_filter: '', evidence: { authz_checked: true, authz_allowed: true } },
+  test('@scenario-92 admin contributions endpoint reachable', async ({ request }) => {
+    const resp = await request.get(`${BASE_URL}/api/admin/contributions`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}` },
     });
     expect(resp.status()).toBe(200);
-    const body = await resp.json() as { desired_hash?: string; plan_id?: string };
+    const body = await resp.json() as { contributions?: unknown[] };
+    // contributions may be empty array or non-null — endpoint must be reachable
+    expect(body).toHaveProperty('contributions');
+  });
+
+  // ── catalog: regions + types from external plugin ──────────────────────────
+
+  test('@scenario-92 catalog returns stub-east and stub-west regions', async ({ request }) => {
+    const resp = await request.get(`${BASE_URL}/api/infra/catalog`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}` },
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { regions?: Array<string | { name: string }>; types?: Array<{ resource_type: string }> };
+    const regions = (body.regions ?? []).map(r =>
+      typeof r === 'string' ? r : r.name,
+    );
+    // Stub plugin ListRegions returns these two fixed regions.
+    expect(regions).toContain('stub-east');
+    expect(regions).toContain('stub-west');
+  });
+
+  test('@scenario-92 catalog returns stub.database and stub.bucket types', async ({ request }) => {
+    const resp = await request.get(`${BASE_URL}/api/infra/catalog`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}` },
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { types?: Array<{ resource_type: string }> };
+    const typeNames = (body.types ?? []).map(t => t.resource_type);
+    // Stub plugin Capabilities returns stub.database and stub.bucket.
+    expect(typeNames).toContain('stub.database');
+    expect(typeNames).toContain('stub.bucket');
+  });
+
+  test('@scenario-92 catalog source is live (RegionLister served via external gRPC)', async ({ request }) => {
+    const resp = await request.get(`${BASE_URL}/api/infra/catalog`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}` },
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { source?: string };
+    // When the external plugin serves IaCProviderRegionLister, source=live.
+    // This proves the WiringHook and gRPC stub are working end-to-end.
+    expect(body.source).toBe('live');
+  });
+
+  // ── list resources ──────────────────────────────────────────────────────────
+
+  test('@scenario-92 list resources returns 200 with provider stub-iac-provider', async ({ request }) => {
+    const resp = await request.get(`${BASE_URL}/api/infra/resources`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}` },
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { provider?: string; resources?: unknown[] };
+    expect(body.provider).toBe('stub-iac-provider');
+    // Stub Status() returns empty list (no real cloud state).
+    expect(Array.isArray(body.resources)).toBe(true);
+  });
+
+  // ── plan ────────────────────────────────────────────────────────────────────
+
+  test('@scenario-92 plan returns 64-char hex desired_hash and create action', async ({ request }) => {
+    const resp = await request.post(`${BASE_URL}/api/infra/plan`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
+      data: {},
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as {
+      desired_hash?: string;
+      plan?: { Actions?: Array<{ Action: string }>; actions?: Array<{ action: string }> };
+    };
+    // desired_hash must be a 64-char lowercase hex SHA-256 (M-3 guard)
     expect(body.desired_hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(body.plan_id).toBeTruthy();
+    // Stub Plan() returns 1 "create" action per desired spec
+    const actions = body.plan?.actions ?? body.plan?.Actions ?? [];
+    expect(actions.length).toBeGreaterThan(0);
+    const firstAction = (actions[0] as { action?: string; Action?: string }).action ??
+                        (actions[0] as { action?: string; Action?: string }).Action;
+    expect(firstAction).toBe('create');
   });
 
-  test('@scenario-92 v1.1 apply with operator JWT succeeds (200, no error)', async ({ request }) => {
-    // Use request fixture (no page navigation) for a clean, fast two-step plan→apply.
-    const opToken = mintJWT('operator');
-    const planResp = await request.post(`${BASE_URL}/api/infra-admin/plan`, {
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${opToken}` },
-      data: { app_context: '', resource_filter: '', evidence: { authz_checked: true, authz_allowed: true } },
+  test('@scenario-92 viewer cannot plan → 403', async ({ request }) => {
+    const resp = await request.post(`${BASE_URL}/api/infra/plan`, {
+      headers: { Authorization: `Bearer ${VIEWER_TOKEN}`, 'Content-Type': 'application/json' },
+      data: {},
     });
-    expect(planResp.status()).toBe(200);
-    const plan = await planResp.json() as { plan_id?: string; desired_hash?: string };
-    expect(plan.plan_id).toBeTruthy();
-    expect(plan.desired_hash).toBeTruthy();
-
-    const applyResp = await request.post(`${BASE_URL}/api/infra-admin/apply`, {
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${opToken}` },
-      data: {
-        plan_id: plan.plan_id,
-        desired_hash: plan.desired_hash,
-        allow_replace: [],
-        app_context: '',
-        evidence: { authz_checked: true, authz_allowed: true },
-      },
-    });
-    expect(applyResp.status()).toBe(200);
-    const applyBody = await applyResp.json() as { error?: string };
-    expect(applyBody.error ?? '').toBe('');
+    expect(resp.status()).toBe(403);
   });
 
-  test('@scenario-92 v1.1 unauthenticated mutation endpoints → 401', async ({ request }) => {
-    // Use request fixture (no inherited Bearer header) to prove the
-    // auth middleware gate fires BEFORE the handler (mirrors T16 curl check).
-    for (const endpoint of ['/api/infra-admin/plan', '/api/infra-admin/apply',
-                             '/api/infra-admin/destroy', '/api/infra-admin/drift']) {
+  // ── apply ───────────────────────────────────────────────────────────────────
+
+  test('@scenario-92 apply with operator JWT succeeds (hash guard passes)', async ({ request }) => {
+    const resp = await request.post(`${BASE_URL}/api/infra/apply`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
+      data: {},
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { error?: string; desired_hash?: string };
+    // No top-level error means the two-phase hash guard passed.
+    expect(body.error ?? '').toBe('');
+    // desired_hash in response matches the precomputed value.
+    expect(body.desired_hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test('@scenario-92 viewer cannot apply → 403 (server-side RBAC)', async ({ request }) => {
+    const resp = await request.post(`${BASE_URL}/api/infra/apply`, {
+      headers: { Authorization: `Bearer ${VIEWER_TOKEN}`, 'Content-Type': 'application/json' },
+      data: {},
+    });
+    // Proves RBAC is server-authoritative: viewer JWT → 403 regardless of body.
+    expect(resp.status()).toBe(403);
+  });
+
+  // ── commit ──────────────────────────────────────────────────────────────────
+
+  test('@scenario-92 commit with operator JWT returns committed=true', async ({ request }) => {
+    const resp = await request.post(`${BASE_URL}/api/infra/commit`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
+      data: {},
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { committed?: boolean; branch?: string };
+    expect(body.committed).toBe(true);
+    expect(body.branch).toBeTruthy();
+  });
+
+  test('@scenario-92 viewer cannot commit → 403', async ({ request }) => {
+    const resp = await request.post(`${BASE_URL}/api/infra/commit`, {
+      headers: { Authorization: `Bearer ${VIEWER_TOKEN}`, 'Content-Type': 'application/json' },
+      data: {},
+    });
+    expect(resp.status()).toBe(403);
+  });
+
+  // ── drift ───────────────────────────────────────────────────────────────────
+
+  test('@scenario-92 drift returns supported=true, any_drifted=false', async ({ request }) => {
+    const resp = await request.get(`${BASE_URL}/api/infra/drift`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}` },
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { supported?: boolean; any_drifted?: boolean };
+    // Stub DetectDrift returns Drifted:false for all refs (InSync).
+    expect(body.any_drifted).toBe(false);
+    // DriftDetector service served via external gRPC → supported=true.
+    expect(body.supported).toBe(true);
+  });
+
+  // ── auth/CSRF gates ─────────────────────────────────────────────────────────
+
+  test('@scenario-92 unauthenticated mutation routes → 401', async ({ request }) => {
+    for (const endpoint of ['/api/infra/plan', '/api/infra/apply', '/api/infra/commit']) {
       const resp = await request.post(`${BASE_URL}${endpoint}`, {
         headers: { 'Content-Type': 'application/json' },
-        data: { evidence: { authz_checked: true, authz_allowed: true } },
+        data: {},
       });
       expect(resp.status(), `${endpoint} unauthenticated`).toBe(401);
     }
   });
 
-  test('@scenario-92 v1.1 mutation without Bearer scheme → 401 (CSRF gate)', async ({ request }) => {
-    // Non-Bearer Authorization scheme rejected by requireBearer middleware (all 4 endpoints).
-    const opToken = mintJWT('operator');
-    for (const endpoint of ['/api/infra-admin/plan', '/api/infra-admin/apply',
-                             '/api/infra-admin/destroy', '/api/infra-admin/drift']) {
+  test('@scenario-92 non-Bearer Authorization → 401 (CSRF guard)', async ({ request }) => {
+    for (const endpoint of ['/api/infra/plan', '/api/infra/apply']) {
       const resp = await request.post(`${BASE_URL}${endpoint}`, {
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Token ${opToken}`,
+          Authorization: `Token ${OP_TOKEN}`,
         },
-        data: { evidence: { authz_checked: true, authz_allowed: true } },
+        data: {},
       });
-      expect(resp.status(), `${endpoint} non-Bearer`).toBe(401);
+      // step.auth_validate strips "Bearer " prefix; "Token " is not Bearer → 401.
+      expect(resp.status(), `${endpoint} Token scheme`).toBe(401);
     }
   });
 
-  test('@scenario-92 v1.1 viewer JWT on apply → 403 (server-side RBAC)', async ({ request }) => {
-    // authz.local: viewer has infra:read only. Apply requires infra:apply → denied.
-    // Proves RBAC is server-authoritative (not client-body evidence).
-    const viewerToken = mintJWT('viewer');
-    const resp = await request.post(`${BASE_URL}/api/infra-admin/apply`, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${viewerToken}`,
-      },
-      data: {
-        plan_id: 'irrelevant',
-        desired_hash: '0'.repeat(64),
-        allow_replace: [],
-        app_context: '',
-        evidence: { authz_checked: true, authz_allowed: true },
-      },
+  // ── secrets metadata ────────────────────────────────────────────────────────
+
+  test('@scenario-92 secrets list returns metadata_only=true, no values', async ({ request }) => {
+    const resp = await request.get(`${BASE_URL}/api/infra/secrets`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}` },
     });
-    expect(resp.status()).toBe(403);
-    const body = await resp.json() as { error?: string };
-    expect(body.error).toContain('denied');
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { metadata_only?: boolean; secrets?: Array<{ name: string }> };
+    // Secrets endpoint never exposes values.
+    expect(body.metadata_only).toBe(true);
+    expect(Array.isArray(body.secrets)).toBe(true);
+    // None of the secrets should have a "value" key.
+    for (const secret of (body.secrets ?? [])) {
+      expect(secret).not.toHaveProperty('value');
+    }
   });
 
-  test('@scenario-92 v1.1 audit-viewer actions.html serves and loads', async ({ page }) => {
-    // Spec says assert HTTP 200 (T17 IMPORTANT fix).
-    const resp = await page.goto(`${BASE_URL}/admin/infra-admin/actions.html`);
+  test('@scenario-92 secrets declare returns 200 for operator', async ({ request }) => {
+    const resp = await request.post(`${BASE_URL}/api/infra/secrets`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
+      data: { name: 'STUB_IAC_PROVIDER_API_KEY', value: 'REDACTED' },
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { declared?: boolean; metadata_only?: boolean };
+    expect(body.declared).toBe(true);
+    // Value must not appear in the response.
+    expect(body).not.toHaveProperty('value');
+    expect(body.metadata_only).toBe(true);
+  });
+
+  // ── screenshot ──────────────────────────────────────────────────────────────
+
+  test('@scenario-92 admin shell loads at /admin/', async ({ page }) => {
+    const resp = await page.goto(`${BASE_URL}/admin/`);
+    // admin.dashboard serves HTML with admin shell.
     expect(resp?.status()).toBe(200);
-    const html = await page.content();
-    expect(html).toContain('Audit Log');
-    expect(html).toMatch(/<script[^>]*src="\/admin\/infra-admin\/actions\.js"/);
     await page.screenshot({
-      path: 'test-results/scenario-92-audit-viewer.png',
-      fullPage: true,
-    });
-  });
-
-  test('@scenario-92 v1.1 resource.html mutation panel present', async ({ page }) => {
-    await page.goto(`${BASE_URL}/admin/infra-admin/resource.html?name=test`);
-    // Mutation panel markup must be present per T11.
-    await expect(page.locator('#mutations')).toBeAttached();
-    await expect(page.locator('#btn-plan')).toBeAttached();
-    await expect(page.locator('#btn-apply')).toBeAttached();
-    await expect(page.locator('#btn-destroy')).toBeAttached();
-    await expect(page.locator('#btn-drift')).toBeAttached();
-    await page.screenshot({
-      path: 'test-results/scenario-92-resource-mutation-panel.png',
+      path: 'test-results/scenario-92-admin-shell.png',
       fullPage: true,
     });
   });
