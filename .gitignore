@@ -15,3 +15,8 @@ scenarios/*/mock/mock-*
 scenarios/*/*.db
 sample-orders
 data/
+
+# built server binary (never commit)
+/server
+scenarios/*/server
+/.claude/

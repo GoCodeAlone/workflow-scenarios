@@ -1093,15 +1093,17 @@
       "lastResult": "pass"
     },
     "92-infra-admin-demo": {
-      "status": "pending",
+      "status": "passed",
       "namespace": "wf-scenario-92",
       "deployed": false,
-      "lastTested": "",
-      "lastResult": "",
-      "testCount": 0,
-      "passCount": 0,
+      "localOnly": true,
+      "lastTested": "2026-06-02",
+      "lastResult": "passed",
+      "testCount": 53,
+      "passCount": 53,
       "failCount": 0,
-      "blockers": []
+      "blockers": [],
+      "notes": "Infra-admin migration demo (workflow v0.70.0): the deleted engine infra.admin module is replaced by step.iac_provider_* pipeline steps + an EXTERNAL stub-iac-provider gRPC plugin (registered via WiringHook) + the external workflow-plugin-infra SPA (type:infra.admin, served at /admin/infra). Real-stack boot: 3 external plugins. 28 shell + 25 Playwright assertions: live catalog dropdowns, plan/desired_hash, two-phase apply, sandbox git commit, server-side authz (unauth 401, viewer 403, operator allowed), secrets metadata-only, CSRF."
     },
     "93-dns-cross-provider-transfer": {
       "status": "passed",

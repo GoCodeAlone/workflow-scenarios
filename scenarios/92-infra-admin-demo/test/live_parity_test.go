@@ -7,12 +7,12 @@
 //
 // Verifies that Plan/Apply/Destroy response shapes are consistent across
 // real cloud providers (AWS, GCP, DigitalOcean) when mutation routes are
-// used against a live infra.admin server pointed at a real provider.
+// used against a running scenario-92 stack pointed at a real provider.
 //
 // # Required environment
 //
 //	WFCTL_LIVE_CLOUD=1          — enable (default: tests skip)
-//	INFRA_ADMIN_BASE_URL        — base URL of a running infra.admin server
+//	INFRA_ADMIN_BASE_URL        — base URL of the running scenario-92 server
 //	INFRA_ADMIN_BEARER          — valid JWT bearer token (operator sub)
 //
 // One or more of the following provider credential sets:
@@ -141,7 +141,7 @@ func TestLiveParity_PlanApplyDestroyShapeParity(t *testing.T) {
 		prov := prov
 		t.Run(prov, func(t *testing.T) {
 			// Plan.
-			planResp := c.post(t, "/api/infra-admin/plan", map[string]any{
+			planResp := c.post(t, "/api/infra/plan", map[string]any{
 				"app_context":     "",
 				"resource_filter": "",
 				"evidence":        evidence,
@@ -157,7 +157,7 @@ func TestLiveParity_PlanApplyDestroyShapeParity(t *testing.T) {
 			t.Logf("provider %s: plan_id=%s desired_hash=%s", prov, planID, desiredHash)
 
 			// Apply.
-			applyResp := c.post(t, "/api/infra-admin/apply", map[string]any{
+			applyResp := c.post(t, "/api/infra/apply", map[string]any{
 				"plan_id":      planID,
 				"desired_hash": desiredHash,
 				"allow_replace": []string{},
@@ -177,7 +177,7 @@ func TestLiveParity_PlanApplyDestroyShapeParity(t *testing.T) {
 						"type": rm["type"],
 					})
 				}
-				destroyResp := c.post(t, "/api/infra-admin/destroy", map[string]any{
+				destroyResp := c.post(t, "/api/infra/destroy", map[string]any{
 					"refs":         refs,
 					"confirm_hash": desiredHash,
 					"evidence":     evidence,
@@ -202,7 +202,7 @@ func TestLiveParity_DriftCheckShape(t *testing.T) {
 	for _, prov := range providers {
 		prov := prov
 		t.Run(prov, func(t *testing.T) {
-			driftResp := c.post(t, "/api/infra-admin/drift", map[string]any{
+			driftResp := c.post(t, "/api/infra/drift", map[string]any{
 				"refs":     []any{},
 				"evidence": map[string]any{"authz_checked": true, "authz_allowed": true},
 			})
