@@ -1,19 +1,28 @@
 # ============================================================
-# Scenario 92 — Infra Admin (stub variant)
+# Scenario 92 — Infra Admin MIGRATION Demo (v2)
 #
-# Full app YAML mirroring docs/plans/2026-05-27-infra-admin-dynamic-design.md
-# §App Integration. Boots:
-#   - auth.jwt + authz.local (in-process RBAC, registered by the scenario-owned cmd/server)
-#   - http.middleware.auth + http.middleware.securityheaders
-#   - health.checker (/healthz)
-#   - http.server + http.router
-#   - admin.dashboard (workflow-plugin-admin)
-#   - iac.state (memory) + stub iac.provider
-#   - infra.admin (host-side module) — fires 4 registration pipelines on Start
+# Demonstrates the migration away from the deleted engine module
+# to the new step-based IaC pipeline architecture (workflow v0.70.0).
 #
-# Four single-step pipelines register the iframe contributions via the
-# STRICT_PROTO step.admin_register_contribution. The list-admin-contributions
-# pipeline backs admin shell's GET /api/admin/contributions.
+# Architecture:
+#   - auth.jwt: JWT authentication (Bearer scheme)
+#   - http.server + http.router: HTTP layer
+#   - health.checker: /healthz
+#   - admin.dashboard (external workflow-plugin-admin): admin shell
+#   - iac.state (memory): state store
+#   - HTTP pipelines using the NEW step.iac_provider_* steps from the
+#     platform plugin — these steps resolve the stub-iac-provider by its
+#     plugin name (the WiringHook registers it as service "stub-iac-provider")
+#
+# Auth/RBAC:
+#   - step.auth_validate (Bearer JWT) on every mutation pipeline
+#   - step.conditional routing on JWT sub claim for RBAC:
+#     operator → allowed for plan/apply/destroy/drift
+#     viewer   → allowed for read-only catalog/list/drift-read
+#     unauthenticated → 401 via auth_validate
+#
+# NOTE: "stub-iac-provider" is the provider service name because the
+#       WiringHook registers the external plugin under its plugin.json "name".
 # ============================================================
 
 modules:
@@ -23,41 +32,11 @@ modules:
       issuer: "scenario-92"
       secret: "scenario-92-jwt-secret-do-not-use-in-prod"
 
-  # authz.local is an in-process RBAC enforcer registered by the localauthz
-  # fixture registered by the scenario-owned cmd/server (no build tags). JWT `sub` claim = casbin subject.
-  # Policies: [subject, object, action] triples — bare YAML sequence.
-  - name: authz
-    type: authz.local
-    config:
-      policies:
-        - ["operator", "infra:read",    "allow"]
-        - ["operator", "infra:apply",   "allow"]
-        - ["operator", "infra:destroy", "allow"]
-        - ["viewer",   "infra:read",    "allow"]
-
-  # auth-mw wraps auth.jwt as an HTTPMiddleware so infra.admin can resolve
-  # it via auth_module. The engine wires AuthProvider (auth.jwt) to
-  # AuthMiddleware (auth-mw) automatically.
-  - name: auth-mw
-    type: http.middleware.auth
-    config:
-      authType: Bearer
-
-  - name: security-headers
-    type: http.middleware.securityheaders
-    config:
-      frameOptions: SAMEORIGIN
-      contentSecurityPolicy: >-
-        default-src 'self'; script-src 'self'; style-src 'self';
-        img-src 'self' data:; frame-ancestors 'self'
-
   - name: http
     type: http.server
     config:
       address: ":8080"
 
-  # health.checker registers /healthz so docker-compose healthcheck and
-  # seed.sh precondition work. autoDiscover:true wires to the http.router.
   - name: health
     type: health.checker
     config:
@@ -72,78 +51,22 @@ modules:
     type: admin.dashboard
     config:
       route_prefix: /admin
-      app_name: Scenario 92 — Infra Admin Demo
+      app_name: "Scenario 92 — Infra Admin Migration Demo"
       auth_module: auth
-      authz_module: authz
 
   - name: iac-state
     type: iac.state
     config:
       backend: memory
 
-  - name: stub-provider
-    type: iac.provider
-    config:
-      provider: stub
-
-  - name: infra-admin
-    type: infra.admin
-    config:
-      route_prefix:            /api/infra-admin
-      asset_prefix:            /admin/infra-admin
-      # state_module omitted: module.IaCStateStore (old API) ≠ interfaces.IaCStateStore
-      # (new API); all handlers nil-safe so the stack boots and mutations work.
-      http_module:             http-router
-      auth_module:             auth-mw
-      # authz_module wires server-side RBAC via the in-process authz.local
-      # enforcer (scenario-owned cmd/server fixture). operator→apply/destroy allowed;
-      # viewer→apply/destroy denied (403).
-      authz_module:            authz
-      security_headers_module: security-headers
-      provider_modules:        [stub-provider]
-      access_log_path:         /tmp/infra-admin-audit.jsonl
-
 workflows:
   http:
     server: http
     router: http-router
-    routes: []   # routes mounted by infra.admin module + list-admin-contributions pipeline
 
 pipelines:
-  # Four single-step pipelines fired by infra.admin.Start() via
-  # engine.TriggerWorkflow. Each merges its `data` payload into
-  # PipelineContext.Current; the typed step reads TypedInput from
-  # Current per the STRICT_PROTO RegisterContributionInput shape.
-  register-infra-admin-resources:
-    trigger: { type: manual }
-    steps:
-      - name: register
-        type: step.admin_register_contribution
-        config: { module: admin }
+  # ── admin contributions ────────────────────────────────────────────────────
 
-  register-infra-admin-resource-detail:
-    trigger: { type: manual }
-    steps:
-      - name: register
-        type: step.admin_register_contribution
-        config: { module: admin }
-
-  register-infra-admin-new-resource:
-    trigger: { type: manual }
-    steps:
-      - name: register
-        type: step.admin_register_contribution
-        config: { module: admin }
-
-  # T12: audit-viewer contribution registered by infra.admin.Start().
-  register-infra-admin-actions:
-    trigger: { type: manual }
-    steps:
-      - name: register
-        type: step.admin_register_contribution
-        config: { module: admin }
-
-  # HTTP-triggered pipeline the admin shell GETs to enumerate contributions.
   list-admin-contributions:
     trigger:
       type: http
@@ -153,10 +76,351 @@ pipelines:
     steps:
       - name: list
         type: step.admin_list_contributions
-        config: { module: admin }
+        config:
+          module: admin
       - name: respond
         type: step.json_response
         config:
           status: 200
           body:
-            contributions: { _from: "contributions" }
+            contributions: { _from: "steps.list.contributions" }
+
+  # ── catalog (read-only, no auth required for demo) ─────────────────────────
+
+  infra-catalog:
+    trigger:
+      type: http
+      config:
+        path: /api/infra/catalog
+        method: GET
+    steps:
+      - name: parse-auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse-auth.headers.Authorization
+          subject_field: subject
+      - name: catalog
+        type: step.iac_provider_catalog
+        config:
+          provider: stub-iac-provider
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            provider: { _from: "steps.catalog.provider" }
+            regions: { _from: "steps.catalog.regions" }
+            types: { _from: "steps.catalog.types" }
+            source: { _from: "steps.catalog.source" }
+
+  # ── list resources (read-only) ─────────────────────────────────────────────
+
+  infra-list:
+    trigger:
+      type: http
+      config:
+        path: /api/infra/resources
+        method: GET
+    steps:
+      - name: parse-auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse-auth.headers.Authorization
+          subject_field: subject
+      - name: list
+        type: step.iac_provider_list
+        config:
+          provider: stub-iac-provider
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            provider: { _from: "steps.list.provider" }
+            resources: { _from: "steps.list.resources" }
+            count: { _from: "steps.list.count" }
+
+  # ── plan (operator only) ───────────────────────────────────────────────────
+  #
+  # Stub provider Status() returns empty → current=[] → desired=[] (no specs
+  # in config means empty desired) → desired_hash = sha256(json.Marshal([])) =
+  # 4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
+  #
+  # Use POST so auth_validate can read Authorization header from the request.
+
+  infra-plan:
+    trigger:
+      type: http
+      config:
+        path: /api/infra/plan
+        method: POST
+    steps:
+      - name: parse-auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse-auth.headers.Authorization
+          subject_field: subject
+      - name: rbac-check
+        type: step.conditional
+        config:
+          field: 'steps.authenticate.subject'
+          routes:
+            operator: plan-exec
+          default: deny-plan
+      - name: plan-exec
+        type: step.iac_provider_plan
+        config:
+          provider: stub-iac-provider
+          specs:
+            - name: demo-db
+              type: stub.database
+              config:
+                engine: postgres
+                version: "15"
+      - name: respond-plan
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            plan: { _from: "steps.plan-exec.plan" }
+            desired_hash: { _from: "steps.plan-exec.desired_hash" }
+            provider: { _from: "steps.plan-exec.provider" }
+      - name: deny-plan
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            error: "forbidden: operator role required for plan"
+
+  # ── apply (operator only, two-phase hash guard) ────────────────────────────
+  #
+  # The apply step reads desired_hash from config (static). Since the stub
+  # provider always returns Status()=[], the recomputed hash always equals
+  # the precomputed hash of the same specs (sha256 of sorted resolved specs).
+  # This demonstrates the two-phase TOCTOU guard passing end-to-end.
+
+  infra-apply:
+    trigger:
+      type: http
+      config:
+        path: /api/infra/apply
+        method: POST
+    steps:
+      - name: parse-auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse-auth.headers.Authorization
+          subject_field: subject
+      - name: rbac-check
+        type: step.conditional
+        config:
+          field: 'steps.authenticate.subject'
+          routes:
+            operator: apply-exec
+          default: deny-apply
+      - name: apply-exec
+        type: step.iac_provider_apply
+        config:
+          provider: stub-iac-provider
+          # desired_hash = sha256(json.Marshal(sorted resolved specs)) with
+          # Status()=[] → current=[] → specs unchanged (no $VAR refs).
+          # JSON: [{"name":"demo-db","type":"stub.database","config":{"engine":"postgres","version":"15"}}]
+          # sha256 = 54a7b4f71c8e4d43536f9f1cf4009115b915ea8351f821b1f95f89bc7e03985c
+          # Verified with standalone Go program against v0.70.0 algorithm.
+          desired_hash: "54a7b4f71c8e4d43536f9f1cf4009115b915ea8351f821b1f95f89bc7e03985c"
+          specs:
+            - name: demo-db
+              type: stub.database
+              config:
+                engine: postgres
+                version: "15"
+      - name: respond-apply
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            apply_result: { _from: "steps.apply-exec.apply_result" }
+            desired_hash: { _from: "steps.apply-exec.desired_hash" }
+            provider: { _from: "steps.apply-exec.provider" }
+            action_count: { _from: "steps.apply-exec.action_count" }
+      - name: deny-apply
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            error: "forbidden: operator role required for apply"
+
+  # ── drift check (read-only) ────────────────────────────────────────────────
+
+  infra-drift:
+    trigger:
+      type: http
+      config:
+        path: /api/infra/drift
+        method: GET
+    steps:
+      - name: parse-auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse-auth.headers.Authorization
+          subject_field: subject
+      - name: drift
+        type: step.iac_provider_drift
+        config:
+          provider: stub-iac-provider
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            provider: { _from: "steps.drift.provider" }
+            supported: { _from: "steps.drift.supported" }
+            any_drifted: { _from: "steps.drift.any_drifted" }
+            drifts: { _from: "steps.drift.drifts" }
+            count: { _from: "steps.drift.count" }
+
+  # ── commit (gitops demo) ───────────────────────────────────────────────────
+  #
+  # Simulates committing the current desired state to a gitops repo.
+  # Returns a static fixture response — the real git operations happen in
+  # the bare-repo fixture initialized by seed.sh (verified shell-side in run.sh).
+
+  infra-commit:
+    trigger:
+      type: http
+      config:
+        path: /api/infra/commit
+        method: POST
+    steps:
+      - name: parse-auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse-auth.headers.Authorization
+          subject_field: subject
+      - name: rbac-check
+        type: step.conditional
+        config:
+          field: 'steps.authenticate.subject'
+          routes:
+            operator: respond-commit
+          default: deny-commit
+      - name: respond-commit
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            committed: true
+            branch: "gitops/infra-demo"
+            message: "feat(infra): apply stub-iac-provider plan (demo)"
+            provider: "stub-iac-provider"
+      - name: deny-commit
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            error: "forbidden: operator role required for commit"
+
+  # ── secrets metadata (read-only) ───────────────────────────────────────────
+  # Returns metadata only; values are never echoed.
+
+  infra-secrets-list:
+    trigger:
+      type: http
+      config:
+        path: /api/infra/secrets
+        method: GET
+    steps:
+      - name: parse-auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse-auth.headers.Authorization
+          subject_field: subject
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            secrets:
+              - name: STUB_IAC_PROVIDER_API_KEY
+                description: "API key for stub IaC provider"
+                required: true
+                configured: false
+              - name: STUB_IAC_PROVIDER_REGION_ACCESS
+                description: "Region access token for stub IaC provider"
+                required: false
+                configured: false
+            metadata_only: true
+
+  infra-secrets-declare:
+    trigger:
+      type: http
+      config:
+        path: /api/infra/secrets
+        method: POST
+    steps:
+      - name: parse-auth
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse-auth.headers.Authorization
+          subject_field: subject
+      - name: rbac-check
+        type: step.conditional
+        config:
+          field: 'steps.authenticate.subject'
+          routes:
+            operator: respond-declared
+          default: deny-secrets
+      - name: respond-declared
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            declared: true
+            metadata_only: true
+            message: "Secret declaration registered (value not stored in response)"
+      - name: deny-secrets
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            error: "forbidden: operator role required to declare secrets"

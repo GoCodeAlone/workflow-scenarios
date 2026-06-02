@@ -1,14 +1,15 @@
 // Command scenario92-server is the workflow server for scenario 92
-// (infra-admin v1.1 demo). It bootstraps the workflow engine with:
-//   - All default workflow plugins (auth, http, etc.) — in-process
-//   - Scenario-local stub iac.provider + authz.local RBAC enforcer — in-process
-//     fixtures that live in THIS repo, never in the workflow engine binary
-//   - workflow-plugin-admin (admin.dashboard) — discovered + loaded as an
-//     external gRPC plugin from <data-dir>/plugins, exactly as the stock
-//     workflow server does
+// (infra-admin migration demo). It bootstraps the workflow engine with:
+//   - All default workflow plugins (auth, http, platform, etc.) — in-process
+//   - External gRPC plugins discovered from <data-dir>/plugins:
+//     stub-iac-provider: scenario fixture IaC provider (built from fixtures/stub-iac-provider)
+//     workflow-plugin-admin: admin.dashboard module
+//   - NO in-process test fixtures (migration: fixtures removed per ADR-0010)
 //
-// Keeping test fixtures inside the scenario repo (not the workflow engine)
-// follows the established pattern from scenarios/85/86/87.
+// The stub-iac-provider is loaded as an EXTERNAL plugin. The engine's
+// WiringHook (ExternalPluginAdapter.WiringHooks) registers it as an
+// interfaces.IaCProvider service under the plugin name "stub-iac-provider"
+// so the step.iac_provider_* steps can resolve it via `provider: stub-iac-provider`.
 package main
 
 import (
@@ -28,8 +29,6 @@ import (
 	"github.com/GoCodeAlone/workflow/plugins/all"
 	_ "github.com/GoCodeAlone/workflow/setup"
 	_ "modernc.org/sqlite"
-
-	"github.com/GoCodeAlone/workflow-scenarios/scenarios/92-infra-admin-demo/internal/fixtures"
 )
 
 var (
@@ -48,24 +47,22 @@ func main() {
 		log.Fatalf("failed to load config %s: %v", *configPath, err)
 	}
 
-	// Build the engine with in-process plugins (defaults + scenario fixtures),
-	// but NOT yet configured — Build() (not BuildFromConfig) so we can load
-	// external plugins before config validation runs.
+	// Build the engine with in-process plugins (defaults including the platform
+	// plugin which registers step.iac_provider_*). No in-process fixtures —
+	// the stub IaC provider is an external gRPC plugin.
 	engine, err := workflow.NewEngineBuilder().
 		WithAllDefaults().
 		WithLogger(logger).
 		WithPlugins(all.DefaultPlugins()...).
-		// Scenario-local fixtures — never enter the production workflow binary.
-		WithPlugin(fixtures.StubProviderPlugin()).
-		WithPlugin(fixtures.LocalAuthzPlugin()).
 		Build()
 	if err != nil {
 		log.Fatalf("failed to build engine: %v", err)
 	}
 
-	// Discover + load external gRPC plugins (workflow-plugin-admin →
-	// admin.dashboard) from <data-dir>/plugins, mirroring the stock server.
-	// Must happen before BuildFromConfig so admin.dashboard validates.
+	// Discover + load external gRPC plugins from <data-dir>/plugins.
+	// Required plugins:
+	//   stub-iac-provider → IaCProvider service (WiringHook registers as "stub-iac-provider")
+	//   workflow-plugin-admin → admin.dashboard module
 	extPluginDir := filepath.Join(*dataDir, "plugins")
 	extMgr := pluginexternal.NewExternalPluginManager(extPluginDir, log.Default())
 	extMgr.SetCallbackServer(pluginexternal.NewCallbackServer(
@@ -92,8 +89,7 @@ func main() {
 		logger.Info("loaded external plugin", "plugin", name)
 	}
 
-	// Now apply the configuration (admin.dashboard + infra.admin + authz.local
-	// + stub-provider all registered).
+	// Apply the configuration (admin.dashboard + stub-iac-provider all registered).
 	if err := engine.BuildFromConfig(cfg); err != nil {
 		log.Fatalf("failed to build from config: %v", err)
 	}

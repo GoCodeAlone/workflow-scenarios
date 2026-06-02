@@ -1,69 +1,58 @@
-# Scenario 92 — Infra Admin (Dynamic, Proto-Driven)
+# Scenario 92 — Infra Admin Migration Demo
 
-Demonstrates the host-side `infra.admin` workflow module + dynamic
-proto-driven admin UI surface introduced in workflow PR #791
-(`feat/infra-admin-host-module-2026-05-27T1534`).
+Demonstrates the migration from the deleted engine module to the new
+step-based IaC pipeline architecture (workflow v0.70.0, PR-5 Task 18-19).
 
-## What this exercises
+## Architecture
 
-- **infra.admin host module** mounts:
-  - `/api/infra-admin/{resources,resources/{name},types,providers,generate-config,audit}` RPC endpoints
-  - `/admin/infra-admin/{resources,resource,new,styles}.{html,js,css}` static asset pages
-- **admin.dashboard plugin** picks up three iframe contributions via the
-  per-pipeline `engine.TriggerWorkflow` registration flow.
-- **wfctl infra admin** CLI mirrors the same surface (parity-tested in
-  PR-1 at `cmd/wfctl/infra_admin_parity_test.go`).
+The stub IaC provider is an **external gRPC plugin** built from
+`fixtures/stub-iac-provider/`. The engine's `WiringHook` registers it as
+service `"stub-iac-provider"` so `step.iac_provider_*` steps resolve it.
 
-## Two variants
+**No `infra.admin` module type is used** — that was deleted from the engine.
+All IaC operations flow through the platform plugin's step types.
 
-| Variant | iac.provider modules | Notes |
-|---|---|---|
-| `config/app.yaml` | stub-provider only | Always-pass; deterministic Playwright behavior |
-| `config/app-do-dryrun.yaml` | stub-provider + do-provider (no token) | DO provider fails any live API call; ListProviders + ListTypes still succeed against empty state |
+## API routes (step-based pipelines)
 
-## Auth
+| Route | Method | Step | Notes |
+|---|---|---|---|
+| `/api/infra/catalog` | GET | `step.iac_provider_catalog` | Live regions via RegionLister gRPC |
+| `/api/infra/resources` | GET | `step.iac_provider_list` | Status from external plugin |
+| `/api/infra/plan` | POST | `step.iac_provider_plan` | Returns desired_hash + create action |
+| `/api/infra/apply` | POST | `step.iac_provider_apply` | Two-phase hash guard |
+| `/api/infra/drift` | GET | `step.iac_provider_drift` | DriftDetector via external gRPC |
+| `/api/infra/commit` | POST | `step.json_response` | Gitops commit fixture |
+| `/api/infra/secrets` | GET | `step.json_response` | Metadata-only, no values |
+| `/api/admin/contributions` | GET | `step.admin_list_contributions` | Admin shell |
 
-PR-1 T15 (commit 47341ff6f) added a route-level auth middleware that gates
-`/api/infra-admin/*` + `/admin/infra-admin/*` + `/api/admin/contributions`.
-The scenario wires it via `auth_module: auth` under `infra-admin.config`
-(mirroring `admin.dashboard.config.auth_module`).
+## Auth/RBAC
 
-The scenario uses an HS256 baked-in JWT secret for demo simplicity:
+JWT subject-based RBAC via `step.auth_validate` + `step.conditional`:
+- `operator` → plan/apply/commit allowed
+- `viewer` → catalog/list/drift only; plan/apply/commit → 403
+- unauthenticated → 401
 
 ```
 secret: "scenario-92-jwt-secret-do-not-use-in-prod"
 ```
 
-**This is test-only.** Both `test/run.sh` and the Playwright spec mint a
-short-lived Bearer token from this secret inline (no external dependency)
-and pass it as `Authorization: Bearer …`. Don't reuse this secret outside
-the scenario.
-
-The new Playwright test `unauthenticated /api/infra-admin/* returns 401`
-is the e2e regression gate that mirrors implementer-1's unit test
-`TestInfraAdmin_ClientCannotSpoofAuthzEvidence`.
-
 ## Running
 
 ```bash
-# Stub variant
-./seed/seed.sh                           # docker compose up + wait for /healthz
-./test/run.sh                            # PASS/FAIL prefixed test summary + Playwright
+# Seed (builds external plugins + docker compose up)
+./seed/seed.sh
 
-# DO dry-run variant
-VARIANT=do-dryrun ./seed/seed.sh
-VARIANT=do-dryrun ./test/run.sh
+# Tests (curl smoke + Playwright)
+./test/run.sh
 ```
 
-## Exploratory QA
+## External plugins loaded
 
-`test/EXPLORATORY.md` is the template for the post-PR-2 exploratory pass via
-the `playwright-cli` skill. Different from the regression Playwright spec —
-that's the `@playwright/test` spec at
-`workflow-scenarios/e2e/tests/scenario-92-infra-admin.spec.ts`.
+1. **stub-iac-provider** — built from `fixtures/stub-iac-provider/`
+   - Serves `IaCProviderRequired` + `IaCProviderRegionLister` + `IaCProviderDriftDetector`
+   - WiringHook registers it as service `"stub-iac-provider"`
+   - Deterministic data: regions `stub-east`/`stub-west`, types `stub.database`/`stub.bucket`
 
-## Source plan
-
-- Design: `/Users/jon/workspace/docs/plans/2026-05-27-infra-admin-dynamic-design.md`
-- Plan:   `/Users/jon/workspace/docs/plans/2026-05-27-infra-admin-dynamic.md` §Task 21-25 + §Task 27
-- ADR:    `/Users/jon/workspace/decisions/0002-infra-admin-host-module.md`
+2. **workflow-plugin-admin** — built from local checkout (`PLUGIN_ADMIN_REPO`)
+   - Provides `admin.dashboard` module type
+   - Serves admin shell at `/admin/`

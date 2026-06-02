@@ -1,35 +1,46 @@
-name: Infra Admin (Dynamic, Proto-Driven)
+name: Infra Admin Migration Demo (step-based IaC)
 id: "92-infra-admin-demo"
 category: C
 description: |
-  Boots a workflow server with admin.dashboard + infra.admin host-side module +
-  stub iac.provider. Exercises the typed admin RPC contracts (5 read RPCs +
-  audit) and the new-resource form-builder UI's dependent dropdowns end-to-end.
+  Demonstrates the migration from the deleted engine module to the new
+  step.iac_provider_* pipeline architecture (workflow v0.70.0).
 
-  Two variants:
-    - app.yaml         — stub iac.provider only (deterministic, always-pass)
-    - app-do-dryrun.yaml — adds an iac.provider type=digitalocean (no token,
-                          fails any live API call; ListProviders + ListTypes
-                          still succeed against empty state)
+  The stub IaC provider is an EXTERNAL gRPC plugin. The engine's WiringHook
+  registers it as service "stub-iac-provider" so step.iac_provider_* steps
+  resolve it at runtime.
 
-  v1 is read-only: no PLAN/APPLY/DESTROY/DRIFT-CHECK mutations from the UI.
-  Mutations remain in `wfctl infra apply/destroy/drift` as before.
+  Pipelines (no infra.admin module type — that was deleted):
+    - GET /api/infra/catalog → step.iac_provider_catalog (live regions via RegionLister)
+    - GET /api/infra/resources → step.iac_provider_list
+    - POST /api/infra/plan → step.iac_provider_plan (desired_hash, 1 create action)
+    - POST /api/infra/apply → step.iac_provider_apply (two-phase hash guard)
+    - GET /api/infra/drift → step.iac_provider_drift (DriftDetector, no drift)
+    - POST /api/infra/commit → gitops commit response
+    - GET /api/infra/secrets → metadata-only (no values)
+
+  Auth/RBAC via step.auth_validate + step.conditional (JWT sub claim):
+    operator → plan/apply/commit allowed
+    viewer → read-only (catalog, list, drift); plan/apply/commit → 403
+    unauthenticated → 401
 
   Playwright spec at e2e/tests/scenario-92-infra-admin.spec.ts covers:
-    - admin shell registers the 3 infra contributions
-    - resources table populates from pre-seeded state
-    - resource detail view renders typed summary + applied_config + outputs
-    - new-resource form-builder: type dropdown, dependent provider→region
-      dropdowns, --field submission, YAML output preview
+    - catalog returns stub-east/stub-west regions + stub.database/stub.bucket types
+    - plan returns desired_hash (64-char hex) + create action
+    - apply with operator JWT succeeds (hash guard passes)
+    - viewer cannot apply (403 RBAC)
+    - unauthenticated mutations return 401
+    - secrets metadata-only (no values)
 components:
-  - workflow (host-side infra.admin module)
-  - workflow-plugin-admin
+  - workflow v0.70.0 (step.iac_provider_* from platform plugin)
+  - stub-iac-provider (external gRPC plugin, fixture)
+  - workflow-plugin-admin (external gRPC plugin)
   - iac.state (memory)
-  - iac.provider (stub)
 status: testable
 tags:
   - admin
   - iac
-  - proto-contracts
-  - dropdown-forms
+  - migration
+  - step-based
+  - external-plugin
   - playwright
+  - iac_provider
