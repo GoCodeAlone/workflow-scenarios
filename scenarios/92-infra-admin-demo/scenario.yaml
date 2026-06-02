@@ -1,35 +1,45 @@
-name: Infra Admin (Dynamic, Proto-Driven)
+name: Infra Admin GitOps Demo (v1.1)
 id: "92-infra-admin-demo"
 category: C
 description: |
-  Boots a workflow server with admin.dashboard + infra.admin host-side module +
-  stub iac.provider. Exercises the typed admin RPC contracts (5 read RPCs +
-  audit) and the new-resource form-builder UI's dependent dropdowns end-to-end.
+  Boots a full admin stack with workflow-plugin-admin + infra.admin module +
+  stub iac.provider (in-process fixture). Demonstrates the infra GitOps
+  workflow:
 
-  Two variants:
-    - app.yaml         — stub iac.provider only (deterministic, always-pass)
-    - app-do-dryrun.yaml — adds an iac.provider type=digitalocean (no token,
-                          fails any live API call; ListProviders + ListTypes
-                          still succeed against empty state)
+    1. Load catalog (regions + types) via GET /api/infra/providers/stub/catalog
+    2. Plan resources via POST /api/infra/plan (stub: 1 "create" action per spec)
+    3. Commit desired-state YAML to a bare-git-repo fixture via
+       POST /api/infra/commit (step.sandbox_exec git clone/commit/push)
+    4. Drift detection via GET /api/infra/drift (stub: no drift, supported:true)
+    5. Secrets metadata management via GET/POST /api/infra/secrets
 
-  v1 is read-only: no PLAN/APPLY/DESTROY/DRIFT-CHECK mutations from the UI.
-  Mutations remain in `wfctl infra apply/destroy/drift` as before.
+  AuthZ:
+    - Mutation routes (plan/apply/commit/secrets-POST) require Bearer token → 401 unauthenticated
+    - Cross-origin mutations without Bearer rejected (CSRF defence)
+    - Operator role: full read + plan + apply + commit
+    - Viewer role: read only
 
-  Playwright spec at e2e/tests/scenario-92-infra-admin.spec.ts covers:
-    - admin shell registers the 3 infra contributions
-    - resources table populates from pre-seeded state
-    - resource detail view renders typed summary + applied_config + outputs
-    - new-resource form-builder: type dropdown, dependent provider→region
-      dropdowns, --field submission, YAML output preview
+  The infra SPA at /admin/infra/ is served as an admin.dashboard contribution
+  (id: infra-resources) and registered via the standard admin pipeline.
+
+  Playwright spec (test/run.sh): ≥18 checks including catalog dropdowns,
+  plan diff, commit branch verification, drift view, authZ 401/403, secrets.
+
 components:
   - workflow (host-side infra.admin module)
-  - workflow-plugin-admin
+  - workflow-plugin-admin (admin.dashboard)
+  - workflow-plugin-auth (auth.jwt backend)
   - iac.state (memory)
-  - iac.provider (stub)
+  - iac.provider (in-process stub fixture)
+  - stub-iac-provider (external gRPC fixture, Task 17)
+  - nosql.memory (secrets metadata)
+  - bare-git-repo fixture (commit/push target)
+
 status: testable
 tags:
   - admin
   - iac
+  - gitops
   - proto-contracts
-  - dropdown-forms
   - playwright
+  - sandbox-exec

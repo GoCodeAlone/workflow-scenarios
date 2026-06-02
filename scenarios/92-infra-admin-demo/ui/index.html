@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Infra Admin — GitOps Demo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; background: #f5f7fa; color: #1a1a2e; }
+    header { background: #0f3460; color: #fff; padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
+    header h1 { font-size: 18px; font-weight: 600; }
+    header span { font-size: 12px; background: #16213e; padding: 2px 8px; border-radius: 4px; }
+    main { max-width: 1100px; margin: 0 auto; padding: 20px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .card { background: #fff; border-radius: 8px; border: 1px solid #e2e8f0; padding: 16px; }
+    .card h2 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #2d3748; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }
+    .card-full { grid-column: 1 / -1; }
+    label { display: block; font-size: 12px; font-weight: 500; color: #4a5568; margin-bottom: 4px; margin-top: 10px; }
+    select, input { width: 100%; padding: 6px 10px; border: 1px solid #cbd5e0; border-radius: 4px; font-size: 13px; background: #fff; }
+    select:focus, input:focus { outline: 2px solid #0f3460; outline-offset: 1px; }
+    button { padding: 7px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; transition: opacity 0.15s; }
+    button:hover { opacity: 0.85; }
+    .btn-primary { background: #0f3460; color: #fff; }
+    .btn-success { background: #276749; color: #fff; }
+    .btn-warn { background: #b7791f; color: #fff; }
+    .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+    pre { background: #1a202c; color: #e2e8f0; padding: 12px; border-radius: 6px; font-size: 12px; overflow: auto; max-height: 220px; white-space: pre-wrap; word-break: break-word; }
+    .status { font-size: 12px; margin-top: 8px; padding: 6px 10px; border-radius: 4px; }
+    .status.ok { background: #c6f6d5; color: #22543d; }
+    .status.err { background: #fed7d7; color: #742a2a; }
+    .status.info { background: #bee3f8; color: #2a4365; }
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+    .badge-green { background: #c6f6d5; color: #22543d; }
+    .badge-blue { background: #bee3f8; color: #2a4365; }
+    .badge-gray { background: #e2e8f0; color: #4a5568; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 6px 8px; background: #f7fafc; border-bottom: 2px solid #e2e8f0; font-weight: 600; color: #4a5568; }
+    td { padding: 6px 8px; border-bottom: 1px solid #f0f4f8; }
+    tr:hover td { background: #f7fafc; }
+    .authz-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+    .authz-row input { width: auto; flex: 1; }
+    #drift-result .ok-badge { color: #276749; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Infra Admin — GitOps Demo</h1>
+    <span id="provider-badge">provider: stub</span>
+    <span id="auth-status" class="badge badge-gray">not authenticated</span>
+  </header>
+  <main>
+    <div class="grid">
+
+      <!-- Auth Panel -->
+      <div class="card">
+        <h2>Authentication</h2>
+        <label for="login-email">Email</label>
+        <input id="login-email" type="email" value="operator@infra" autocomplete="off">
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" value="operator-password">
+        <div class="btn-row">
+          <button class="btn-primary" id="btn-register" type="button">Register</button>
+          <button class="btn-primary" id="btn-login" type="button">Sign In</button>
+          <button id="btn-logout" type="button">Sign Out</button>
+        </div>
+        <div id="auth-msg" class="status info" style="display:none"></div>
+      </div>
+
+      <!-- Catalog Panel -->
+      <div class="card">
+        <h2>Provider Catalog <span id="catalog-loaded" class="badge badge-gray">not loaded</span></h2>
+        <label for="resource-region">Region</label>
+        <select id="resource-region" data-testid="region-select">
+          <option value="">— select region —</option>
+        </select>
+        <label for="resource-type">Resource Type</label>
+        <select id="resource-type" data-testid="type-select">
+          <option value="">— select type —</option>
+        </select>
+        <label for="resource-name">Resource Name</label>
+        <input id="resource-name" type="text" value="demo-database" placeholder="e.g. my-db">
+        <div class="btn-row">
+          <button class="btn-primary" id="btn-load-catalog" type="button">Load Catalog</button>
+        </div>
+        <div id="catalog-msg" class="status" style="display:none"></div>
+      </div>
+
+      <!-- Plan Panel -->
+      <div class="card">
+        <h2>Plan</h2>
+        <p style="font-size:12px;color:#718096;margin-bottom:8px">Select a resource above, then Plan to preview changes.</p>
+        <div class="btn-row">
+          <button class="btn-primary" id="btn-plan" type="button">Plan</button>
+        </div>
+        <div id="plan-result" style="display:none">
+          <div id="plan-actions-summary" class="status ok" style="margin-top:8px"></div>
+          <label style="margin-top:8px">desired_hash</label>
+          <pre id="plan-hash" style="max-height:40px"></pre>
+          <label>Plan actions</label>
+          <pre id="plan-actions"></pre>
+        </div>
+        <div id="plan-msg" class="status" style="display:none"></div>
+      </div>
+
+      <!-- Commit Panel -->
+      <div class="card">
+        <h2>GitOps Commit</h2>
+        <p style="font-size:12px;color:#718096;margin-bottom:8px">Commit desired-state YAML to the bare-git-repo fixture.</p>
+        <label for="commit-branch">Branch</label>
+        <input id="commit-branch" type="text" value="feat/gitops-demo">
+        <label for="commit-message">Commit message</label>
+        <input id="commit-message" type="text" value="chore(infra): update desired state via admin UI">
+        <div class="btn-row">
+          <button class="btn-success" id="btn-commit" type="button">Commit to Git</button>
+        </div>
+        <div id="commit-result" style="display:none">
+          <div id="commit-branch-display" class="status ok" style="margin-top:8px"></div>
+        </div>
+        <div id="commit-msg" class="status" style="display:none"></div>
+      </div>
+
+      <!-- Resources Table -->
+      <div class="card card-full">
+        <h2>Resources <button class="btn-primary" id="btn-refresh-resources" type="button" style="font-size:11px;padding:4px 8px;float:right">Refresh</button></h2>
+        <table id="resources-table">
+          <thead><tr><th>Name</th><th>Type</th><th>Provider</th><th>Status</th></tr></thead>
+          <tbody id="resources-body"></tbody>
+        </table>
+        <div id="resources-msg" class="status info" style="margin-top:8px">No resources loaded. Click Refresh after authenticating.</div>
+      </div>
+
+      <!-- Drift Panel -->
+      <div class="card">
+        <h2>Drift Detection</h2>
+        <div class="btn-row">
+          <button class="btn-primary" id="btn-drift" type="button">Check Drift</button>
+        </div>
+        <div id="drift-result" style="display:none">
+          <div id="drift-status" class="status ok" style="margin-top:8px"></div>
+        </div>
+        <div id="drift-msg" class="status" style="display:none"></div>
+      </div>
+
+      <!-- Secrets Panel -->
+      <div class="card">
+        <h2>Secrets <span style="font-size:11px;color:#718096">(metadata only)</span></h2>
+        <div id="secrets-list" style="font-size:12px;color:#718096;margin-bottom:8px">No secrets declared.</div>
+        <label for="secret-name">Secret name</label>
+        <input id="secret-name" type="text" placeholder="e.g. STRIPE_API_KEY">
+        <label for="secret-backend">Backend</label>
+        <select id="secret-backend">
+          <option value="env">env</option>
+          <option value="aws_ssm">aws_ssm</option>
+          <option value="vault">vault</option>
+        </select>
+        <div class="btn-row">
+          <button class="btn-primary" id="btn-secrets-list" type="button">List</button>
+          <button class="btn-warn" id="btn-secrets-declare" type="button">Declare</button>
+        </div>
+        <div id="secrets-msg" class="status" style="display:none"></div>
+      </div>
+
+      <!-- AuthZ Tests Panel -->
+      <div class="card card-full">
+        <h2>AuthZ & CSRF Tests</h2>
+        <p style="font-size:12px;color:#718096;margin-bottom:8px">
+          Validates: unauthenticated → 401; cross-origin no-bearer → rejected; operator → allowed.
+        </p>
+        <div class="btn-row">
+          <button class="btn-primary" id="btn-test-authz" type="button">Run AuthZ Checks</button>
+        </div>
+        <pre id="authz-results" style="margin-top:8px;display:none"></pre>
+      </div>
+
+    </div>
+  </main>
+  <script src="/admin/infra/app.js"></script>
+</body>
+</html>
