@@ -78,14 +78,15 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS credentials (
-    id          BIGSERIAL PRIMARY KEY,
-    user_email  TEXT NOT NULL REFERENCES users(email) ON DELETE CASCADE,
-    kind        TEXT NOT NULL CHECK (kind IN ('passkey','google','facebook')),
-    external_id TEXT,
-    public_key  BYTEA,
-    device_name TEXT,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_used_at TIMESTAMPTZ,
+    id              BIGSERIAL PRIMARY KEY,
+    user_email      TEXT NOT NULL REFERENCES users(email) ON DELETE CASCADE,
+    kind            TEXT NOT NULL CHECK (kind IN ('passkey','google','facebook')),
+    external_id     TEXT,
+    public_key      BYTEA,
+    device_name     TEXT,
+    credential_json TEXT,  -- full webauthn.Credential JSON for login validation
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_used_at    TIMESTAMPTZ,
     UNIQUE (kind, external_id)
 );
 SQL

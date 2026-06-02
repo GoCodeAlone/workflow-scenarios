@@ -53,6 +53,16 @@ modules:
       dsn: ${DATABASE_URL}
     dependsOn: [router]
 
+  # Admin UI: vanilla HTML+JS, volume-mounted from ./ui into the container.
+  # Served at / (spaFallback=true so the root also resolves to index.html).
+  - name: ui
+    type: static.fileserver
+    config:
+      root: /ui
+      prefix: /
+      spaFallback: true
+    dependsOn: [router]
+
 workflows:
   http:
     server: server
@@ -182,6 +192,15 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
+      # Wire user_id + email + display_name into the pipeline context so the
+      # passkey step can populate publicKey.user.id and RP user fields.
+      - name: prep
+        type: step.set
+        config:
+          values:
+            user_id: "{{ .steps.authenticate.subject }}"
+            email: "{{ .steps.authenticate.subject }}"
+            display_name: "{{ .steps.authenticate.subject }}"
       - name: begin
         type: step.auth_passkey_begin_register
         config: { module: authcred }
@@ -203,17 +222,31 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_auth.headers.Authorization
           subject_field: subject
+      # Wire user context + attestation from parsed request body into the
+      # pipeline current context for step.auth_passkey_finish_register.
+      - name: prep
+        type: step.set
+        config:
+          values:
+            user_id: "{{ .steps.authenticate.subject }}"
+            email: "{{ .steps.authenticate.subject }}"
+            display_name: "{{ .steps.authenticate.subject }}"
+            session_data: "{{ .steps.parse_auth.body.session_data }}"
+            attestation: "{{ .steps.parse_auth.body.attestation }}"
       - name: finish
         type: step.auth_passkey_finish_register
         config: { module: authcred }
+      # Persist the credential. credential_json stores the full webauthn.Credential
+      # JSON needed for login validation. external_id is the base64url credential ID.
       - name: store
         type: step.db_exec
         config:
           database: db
-          query: "INSERT INTO credentials(user_email, kind, external_id, device_name) VALUES ($1, 'passkey', $2, 'passkey') ON CONFLICT (kind, external_id) DO NOTHING"
+          query: "INSERT INTO credentials(user_email, kind, external_id, device_name, credential_json) VALUES ($1, 'passkey', $2, 'passkey', $3) ON CONFLICT (kind, external_id) DO NOTHING"
           params:
             - "{{ .steps.authenticate.subject }}"
             - "{{ .steps.finish.credential_id }}"
+            - "{{ .steps.finish.credential }}"
       - name: respond
         type: step.json_response
         config:
@@ -221,9 +254,31 @@ pipelines:
           body: { registered: true }
 
   # ---------------------------------------------------------------- passkey login → session
+  # User-specific login: client sends { email } in begin so we can look up
+  # stored credentials and pass them to BeginLogin (avoids discoverable-login
+  # session mismatch at ValidateLogin time).
   passkey-login-begin:
     trigger: { type: http, config: { path: /admin/login/passkey/begin, method: POST } }
     steps:
+      - name: parse
+        type: step.request_parse
+        config: { parse_body: true }
+      # Fetch the user's stored passkey credential JSON so BeginLogin can
+      # build the excludeCredentials / allowCredentials list.
+      - name: fetch_cred
+        type: step.db_query
+        config:
+          database: db
+          mode: single
+          query: "SELECT credential_json FROM credentials WHERE user_email = $1 AND kind = 'passkey' LIMIT 1"
+          params:
+            - "{{ .steps.parse.body.email }}"
+      - name: prep
+        type: step.set
+        config:
+          values:
+            user_id: "{{ .steps.parse.body.email }}"
+            credentials: '[{{ .steps.fetch_cred.row.credential_json }}]'
       - name: begin
         type: step.auth_passkey_begin_login
         config: { module: authcred }
@@ -239,16 +294,35 @@ pipelines:
       - name: parse
         type: step.request_parse
         config: { parse_body: true }
+      # Fetch the user's stored credential JSON (required by ValidateLogin).
+      - name: fetch_cred
+        type: step.db_query
+        config:
+          database: db
+          mode: single
+          query: "SELECT credential_json FROM credentials WHERE user_email = $1 AND kind = 'passkey' LIMIT 1"
+          params:
+            - "{{ .steps.parse.body.email }}"
+      - name: prep
+        type: step.set
+        config:
+          values:
+            user_id: "{{ .steps.parse.body.email }}"
+            email: "{{ .steps.parse.body.email }}"
+            credentials: '[{{ .steps.fetch_cred.row.credential_json }}]'
+            session_data: "{{ .steps.parse.body.session_data }}"
+            assertion: "{{ .steps.parse.body.assertion }}"
       - name: finish
         type: step.auth_passkey_finish_login
         config: { module: authcred }
-      - name: prep
+      - name: jwt_prep
         type: step.set
         config:
           values:
             subject: "{{ .steps.parse.body.email }}"
             claims:
               roles: ["super_admin"]
+              email: "{{ .steps.parse.body.email }}"
       - name: mint
         type: step.auth_jwt_issue
         config: { issuer: workflow-plugin-auth, ttl_seconds: 3600 }

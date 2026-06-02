@@ -37,6 +37,7 @@ services:
       - "127.0.0.1:18101:8080"
     volumes:
       - ./config:/etc/scenario-101:ro
+      - ./ui:/ui:ro
     # ENTRYPOINT is already /usr/local/bin/server — do NOT prepend "server" (Go's flag
     # parser stops at the first non-flag arg, so a leading "server" makes -config ignored).
     command:
