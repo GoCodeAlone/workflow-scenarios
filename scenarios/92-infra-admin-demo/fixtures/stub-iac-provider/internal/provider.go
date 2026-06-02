@@ -10,7 +10,7 @@
 // # Deterministic data
 //
 //   - Name()    → "stub"
-//   - Version() → "0.0.1-stub"
+//   - Version() → "0.1.0"
 //   - Capabilities() → stub.database, stub.bucket (Tier 1, full CRUD ops)
 //   - ListRegions()  → [{name:"stub-east"}, {name:"stub-west"}]
 //   - Plan(desired) → one "create" action per desired spec (all assumed new)
@@ -58,7 +58,7 @@ func (s *StubIaCServer) Name(_ context.Context, _ *pb.NameRequest) (*pb.NameResp
 
 // Version returns the fixture version tag used in scenario assertions.
 func (s *StubIaCServer) Version(_ context.Context, _ *pb.VersionRequest) (*pb.VersionResponse, error) {
-	return &pb.VersionResponse{Version: "0.0.1-stub"}, nil
+	return &pb.VersionResponse{Version: "0.1.0"}, nil
 }
 
 // Capabilities returns two resource types with full CRUD operations.
@@ -176,4 +176,19 @@ func (s *StubIaCServer) DetectDrift(_ context.Context, req *pb.DetectDriftReques
 		})
 	}
 	return &pb.DetectDriftResponse{Drifts: drifts}, nil
+}
+
+// DetectDriftWithSpecs implements the optional config-aware drift detection
+// method (IaCProviderDriftDetector.DetectDriftWithSpecs). The stub reports
+// every ref as in-sync, same as DetectDrift — no real cloud comparison.
+func (s *StubIaCServer) DetectDriftWithSpecs(_ context.Context, req *pb.DetectDriftWithSpecsRequest) (*pb.DetectDriftWithSpecsResponse, error) {
+	drifts := make([]*pb.DriftResult, 0, len(req.GetRefs()))
+	for _, r := range req.GetRefs() {
+		drifts = append(drifts, &pb.DriftResult{
+			Name:    r.GetName(),
+			Type:    r.GetType(),
+			Drifted: false,
+		})
+	}
+	return &pb.DetectDriftWithSpecsResponse{Drifts: drifts}, nil
 }

@@ -1,6 +1,6 @@
 {
   "name": "stub-iac-provider",
-  "version": "0.0.1-stub",
+  "version": "0.1.0",
   "description": "Scenario-92 stub IaC provider — deterministic fake data, no cloud credentials",
   "author": "GoCodeAlone",
   "license": "MIT",
