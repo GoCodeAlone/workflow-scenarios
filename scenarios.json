@@ -1209,6 +1209,17 @@
       "passCount": 17,
       "failCount": 0,
       "blockers": []
+    },
+    "102-cross-service-asymmetric-auth": {
+      "status": "pending",
+      "namespace": "wf-scenario-102",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 0,
+      "passCount": 0,
+      "failCount": 0,
+      "blockers": []
     }
   }
 }

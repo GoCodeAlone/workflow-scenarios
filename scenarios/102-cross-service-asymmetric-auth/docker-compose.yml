@@ -1,0 +1,60 @@
+# ============================================================
+# Scenario 102 — Cross-Service Asymmetric Auth docker-compose
+#
+# Two engine processes (App A issuer + App B verifier) using
+# one baked image (auth-xservice:scenario-102, built by seed.sh).
+# App B depends_on App A healthy (N2: issuer URL resolution).
+#
+# Port convention: 180<scenario-id> → 18102 (A), 18112 (B).
+# ============================================================
+
+services:
+  app-a:
+    image: auth-xservice-a:scenario-102
+    container_name: workflow-scenario-102-app-a
+    environment:
+      APP_A_CLIENT_SECRET: "scenario-102-app-a-client-secret-do-not-use-in-prod"
+    ports:
+      - "127.0.0.1:18102:8080"
+    volumes:
+      - ./config:/etc/scenario-102:ro
+    # ENTRYPOINT is /usr/local/bin/server — do NOT prepend "server"
+    command:
+      - "-config"
+      - "/etc/scenario-102/app-a.yaml"
+    healthcheck:
+      test:
+        - CMD
+        - sh
+        - -c
+        - "wget -q -O- http://127.0.0.1:8080/healthz || exit 1"
+      interval: 3s
+      timeout: 2s
+      retries: 30
+
+  app-b:
+    image: auth-xservice-b:scenario-102
+    container_name: workflow-scenario-102-app-b
+    depends_on:
+      app-a:
+        condition: service_healthy
+    environment:
+      # No shared secret with App A: cross-service trust is purely the public JWKS.
+      PLACEHOLDER: "unused"
+    ports:
+      - "127.0.0.1:18112:8080"
+    volumes:
+      - ./config:/etc/scenario-102:ro
+      - ./ui:/ui:ro
+    command:
+      - "-config"
+      - "/etc/scenario-102/app-b.yaml"
+    healthcheck:
+      test:
+        - CMD
+        - sh
+        - -c
+        - "wget -q -O- http://127.0.0.1:8080/healthz || exit 1"
+      interval: 3s
+      timeout: 2s
+      retries: 30

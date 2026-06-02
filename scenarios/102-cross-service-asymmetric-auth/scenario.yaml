@@ -1,0 +1,48 @@
+name: Cross-Service Asymmetric Auth (ES256)
+id: "102-cross-service-asymmetric-auth"
+category: C
+description: |
+  Two Workflow engine processes demonstrating genuine cross-service asymmetric
+  (ES256) JWT verification — no shared secret, no mock IDP, no OIDC discovery.
+
+  App A (auth.m2m) is the ES256 issuer:
+    - Auto-generates an EC P-256 key at startup
+    - POST /oauth/token (client_credentials grant, aud=app-b via client.Claims)
+    - GET  /oauth/jwks  (public key, RFC 7517 JWKS)
+    - GET  /healthz
+
+  App B (sso.oidc jwksUri mode) is the verifier:
+    - Holds ONLY App A's public JWKS (fetched from http://app-a:8080/oauth/jwks)
+    - POST /verify — Bearer token validated via App A's JWKS; returns 200+claims or 401
+    - GET  /healthz
+    - GET  /  — browser verification console (static.fileserver)
+
+  Curl smoke (test/run.sh) proves the genuine asymmetric cross-service guarantee:
+    ACCEPT: App A token → App B 200 (App B verified from App A public JWKS only)
+    REJECT: wrong EC key → 401 (proves not same-key)
+    REJECT: aud-mismatch → 401
+    REJECT: wrong-issuer → 401 (N3 — issuer pinning)
+    REJECT: expired → 401
+    REJECT: garbage → 401
+
+  Playwright (e2e/tests/scenario-102-cross-service-asymmetric.spec.ts) drives the
+  browser console: fetch token from App A → verify → assert claims shown; tamper
+  token → assert rejection.
+
+  This scenario closes workflow-plugin-auth#41 (Phase II IDP) by demonstrating
+  the full M2M auth composition using only existing engine+plugin primitives.
+
+components:
+  - workflow (engine, auth.m2m module)
+  - workflow-plugin-sso (sso.oidc jwksUri verify mode, step.sso_validate_token)
+status: testable
+tags:
+  - auth
+  - jwt
+  - es256
+  - asymmetric
+  - cross-service
+  - m2m
+  - oidc
+  - jwks
+  - playwright

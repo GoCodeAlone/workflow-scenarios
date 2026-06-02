@@ -1,0 +1,112 @@
+# ============================================================
+# Scenario 102 — App B (Verifier)
+#
+# sso.oidc jwksUri-only verify mode.  App B holds ONLY App A's
+# public JWKS — no shared secret, no OIDC discovery.
+# Serves:
+#   POST /verify        — validate Bearer token against App A's JWKS
+#   GET  /healthz
+#   GET  /              — browser verification console (static.fileserver)
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # JWKS-URI verify-only mode (PR 1 feature): skips OIDC discovery,
+  # fetches App A's public JWKS from http://app-a:8080/oauth/jwks.
+  # issuer MUST byte-match App A's auth.m2m.issuer (N2).
+  # signingAlgorithms MUST include ES256 (cycle-2 F1).
+  - name: verifier
+    type: sso.oidc
+    config:
+      providers:
+        - name: app-a
+          issuer: http://app-a:8080
+          jwksUri: http://app-a:8080/oauth/jwks
+          clientId: app-b
+          signingAlgorithms:
+            - ES256
+    dependsOn: [router]
+
+  # Browser verification console served at /
+  - name: ui
+    type: static.fileserver
+    config:
+      root: /ui
+      prefix: /
+      spaFallback: true
+    dependsOn: [router]
+
+workflows:
+  http:
+    server: server
+    router: router
+
+pipelines:
+  # ---------------------------------------------------------------- health
+  healthz:
+    trigger: { type: http, config: { path: /healthz, method: GET } }
+    steps:
+      - name: ok
+        type: step.json_response
+        config:
+          status: 200
+          body: { status: ok, service: app-b-verifier, scenario: "102-cross-service-asymmetric-auth" }
+
+  # ---------------------------------------------------------------- verify
+  # App B verifies the Bearer token against App A's public JWKS only.
+  # Returns 200 + claims on success, or 401 on any failure.
+  verify:
+    trigger: { type: http, config: { path: /verify, method: POST } }
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          parse_headers:
+            - Authorization
+
+      # Wire the Authorization header into the pipeline current context so
+      # step.sso_validate_token can read it via current["authorization"].
+      - name: prep
+        type: step.set
+        config:
+          values:
+            authorization: "{{ .steps.parse.headers.Authorization }}"
+
+      - name: validate
+        type: step.sso_validate_token
+        config:
+          provider: app-a
+
+      - name: route
+        type: step.conditional
+        config:
+          field: '{{ printf "%v" .steps.validate.valid }}'
+          routes:
+            "true": ok_response
+          default: deny_response
+
+      - name: ok_response
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            verified: true
+            claims: "{{ .steps.validate.claims }}"
+            userId: "{{ .steps.validate.userId }}"
+            expiresAt: "{{ .steps.validate.expiresAt }}"
+
+      - name: deny_response
+        type: step.json_response
+        config:
+          status: 401
+          body:
+            verified: false
+            error: "{{ .steps.validate.error }}"
