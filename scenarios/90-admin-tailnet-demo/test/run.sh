@@ -133,6 +133,7 @@ contribs="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/admin/contributions")"
 contains "$contribs" '"id":"authz-roles"' "Admin plugin registered authz contribution"
 contains "$contribs" '"id":"auth-config"' "Admin plugin registered auth contribution from auth plugin"
 contains "$contribs" '"render_mode":"config-form"' "Auth contribution uses generic config form render mode"
+contains "$contribs" '"apply_path":"/api/admin/auth/config/apply"' "Auth contribution advertises apply endpoint"
 contains "$contribs" '"render_mode":"iframe"' "Admin contribution uses pluggable iframe render mode"
 contains "$contribs" '"admin:authz.roles:update"' "Admin contribution grant bridge includes authz update scope"
 
@@ -175,11 +176,81 @@ contains "$delegated_auth_config" '"groups"' "Auth config read is authorized by 
 validate_config="$(curl -fsS -H "$AUTH_HEADER" -H 'content-type: application/json' -d '{"desired_config":{"environment":"production","password_auth_enabled":true}}' "$BASE/api/admin/auth/config/validate")"
 contains "$validate_config" '"valid":false' "Auth config validation rejects unsafe production password login"
 contains "$validate_config" 'password auth cannot be enabled in production' "Auth config validation returns plugin diagnostic"
+anonymous_apply_code="$(curl -s -o /tmp/scenario90-anonymous-apply.json -w "%{http_code}" -H 'content-type: application/json' -d '{"desired_config":{"environment":"development"}}' "$BASE/api/admin/auth/config/apply")"
+if [ "$anonymous_apply_code" = "401" ]; then
+  pass "Anonymous user cannot apply admin auth config"
+else
+  fail "Anonymous auth config apply expected 401, got $anonymous_apply_code"
+fi
+initial_no_secret_payload='{"desired_config":{"environment":"development","auth_routes_enabled":false,"password_auth_enabled":false,"webauthn_rp_id":"127.0.0.1","webauthn_origin":"http://127.0.0.1:18080"}}'
+initial_no_secret_apply="$(curl -fsS -H "$AUTH_HEADER" -H 'content-type: application/json' -d "$initial_no_secret_payload" "$BASE/api/admin/auth/config/apply")"
+contains "$initial_no_secret_apply" '"applied":true' "Auth config apply accepts first-time no-secret configuration"
+contains "$initial_no_secret_apply" '"secret_refs":{}' "First-time no-secret auth apply returns empty secret refs"
+initial_no_secret_state="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/admin/auth/config/applied")"
+contains "$initial_no_secret_state" '"secret_refs":{}' "First-time no-secret auth apply persists empty secret refs"
+apply_payload='{"desired_config":{"environment":"development","auth_routes_enabled":true,"password_auth_enabled":false,"webauthn_rp_id":"127.0.0.1","webauthn_origin":"http://127.0.0.1:18080","auth0_domain":"demo.us.auth0.com","auth0_client_id":"scenario90-client","auth0_client_secret":"scenario90-client-secret-value"}}'
+apply_config="$(curl -fsS -H "$AUTH_HEADER" -H 'content-type: application/json' -d "$apply_payload" "$BASE/api/admin/auth/config/apply")"
+contains "$apply_config" '"applied":true' "Auth config apply persists valid configuration"
+contains "$apply_config" '"valid":true' "Auth config apply runs plugin validation before persistence"
+contains "$apply_config" '"auth0_client_secret":"secret://scenario90/auth0_client_secret"' "Auth config apply returns secret ref instead of secret value"
+contains "$apply_config" '"scenario90/auth0_client_secret"' "Auth config apply reports written secret key"
+if grep -q 'scenario90-client-secret-value' <<<"$apply_config"; then
+  fail "Auth config apply response must not echo provider secret values"
+else
+  pass "Auth config apply response does not echo provider secrets"
+fi
+vault_secret="$(docker compose -f "$SCENARIO_DIR/docker-compose.yml" exec -T vault sh -c 'VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=scenario90-root-token vault kv get -field=value secret/scenario90/auth0_client_secret' 2>/dev/null || true)"
+if [ "$vault_secret" = "scenario90-client-secret-value" ]; then
+  pass "Auth config apply writes provider secret through Workflow Vault provider"
+else
+  fail "Auth config apply did not write provider secret to Vault sidecar"
+fi
+applied_state="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/admin/auth/config/applied")"
+contains "$applied_state" '"applied":true' "Auth applied-state endpoint reports persisted state"
+contains "$applied_state" '"auth0_client_secret":"secret://scenario90/auth0_client_secret"' "Auth applied-state endpoint returns persisted secret ref"
+contains "$applied_state" '"auth0_client_id":"scenario90-client"' "Auth applied-state endpoint returns non-secret accepted config"
+if grep -q 'scenario90-client-secret-value' <<<"$applied_state"; then
+  fail "Auth applied-state endpoint must not echo provider secret values"
+else
+  pass "Auth applied-state endpoint does not echo provider secrets"
+fi
+apply_without_secret_payload='{"desired_config":{"environment":"development","auth_routes_enabled":true,"password_auth_enabled":false,"webauthn_rp_id":"127.0.0.1","webauthn_origin":"http://127.0.0.1:18080","auth0_domain":"demo.us.auth0.com","auth0_client_id":"scenario90-client-rotated"}}'
+apply_without_secret="$(curl -fsS -H "$AUTH_HEADER" -H 'content-type: application/json' -d "$apply_without_secret_payload" "$BASE/api/admin/auth/config/apply")"
+contains "$apply_without_secret" '"applied":true' "Auth config apply accepts later non-secret updates"
+contains "$apply_without_secret" '"auth0_client_secret":"secret://scenario90/auth0_client_secret"' "Auth config apply preserves existing secret ref when secret is omitted"
+if grep -q 'scenario90-client-secret-value' <<<"$apply_without_secret"; then
+  fail "Auth config no-secret apply response must not echo provider secret values"
+else
+  pass "Auth config no-secret apply response does not echo provider secrets"
+fi
+applied_state_after_no_secret="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/admin/auth/config/applied")"
+contains "$applied_state_after_no_secret" '"auth0_client_id":"scenario90-client-rotated"' "Auth applied-state endpoint reflects later non-secret update"
+contains "$applied_state_after_no_secret" '"auth0_client_secret":"secret://scenario90/auth0_client_secret"' "Auth applied-state endpoint keeps secret ref after no-secret update"
+state_before_invalid="$(jq -c '.state' <<<"$applied_state_after_no_secret")"
+invalid_apply_code="$(curl -s -o /tmp/scenario90-invalid-apply.json -w "%{http_code}" -H "$AUTH_HEADER" -H 'content-type: application/json' -d '{"desired_config":{"environment":"production","password_auth_enabled":true}}' "$BASE/api/admin/auth/config/apply")"
+if [ "$invalid_apply_code" = "422" ]; then
+  pass "Auth config apply rejects invalid config before persistence"
+else
+  fail "Auth config invalid apply expected 422, got $invalid_apply_code"
+fi
+contains "$(cat /tmp/scenario90-invalid-apply.json)" '"applied":false' "Invalid auth apply reports unapplied state"
+state_after_invalid="$(curl -fsS -H "$AUTH_HEADER" "$BASE/api/admin/auth/config/applied" | jq -c '.state')"
+if [ "$state_after_invalid" = "$state_before_invalid" ]; then
+  pass "Invalid auth apply leaves persisted state unchanged"
+else
+  fail "Invalid auth apply changed persisted state"
+fi
 delegated_validate_code="$(curl -s -o /tmp/scenario90-delegated-validate.json -w "%{http_code}" -H "$DELEGATED_AUTH_HEADER" -H 'content-type: application/json' -d '{"desired_config":{"environment":"development"}}' "$BASE/api/admin/auth/config/validate")"
 if [ "$delegated_validate_code" = "403" ]; then
   pass "Delegated read-only auth admin cannot validate config without update scope"
 else
   fail "Delegated auth config validate expected 403, got $delegated_validate_code"
+fi
+delegated_apply_code="$(curl -s -o /tmp/scenario90-delegated-apply.json -w "%{http_code}" -H "$DELEGATED_AUTH_HEADER" -H 'content-type: application/json' -d '{"desired_config":{"environment":"development"}}' "$BASE/api/admin/auth/config/apply")"
+if [ "$delegated_apply_code" = "403" ]; then
+  pass "Delegated read-only auth admin cannot apply config without update scope"
+else
+  fail "Delegated auth config apply expected 403, got $delegated_apply_code"
 fi
 delegated_scopes_code="$(curl -s -o /tmp/scenario90-delegated-authz-scopes.json -w "%{http_code}" -H "$DELEGATED_AUTH_HEADER" "$BASE/api/authz/scopes")"
 if [ "$delegated_scopes_code" = "403" ]; then
@@ -292,6 +363,12 @@ if [ "$support_validate_code" = "403" ]; then
   pass "Support cannot validate admin auth config without admin auth update scope"
 else
   fail "Support auth config validate expected 403, got $support_validate_code"
+fi
+support_apply_code="$(curl -s -o /tmp/scenario90-support-auth-apply.json -w "%{http_code}" -H "$SUPPORT_AUTH_HEADER" -H 'content-type: application/json' -d '{"desired_config":{"environment":"development"}}' "$BASE/api/admin/auth/config/apply")"
+if [ "$support_apply_code" = "403" ]; then
+  pass "Support cannot apply admin auth config without admin auth update scope"
+else
+  fail "Support auth config apply expected 403, got $support_apply_code"
 fi
 viewer_roles_code="$(curl -s -o /tmp/scenario90-viewer-roles.json -w "%{http_code}" -H "$VIEWER_AUTH_HEADER" "$BASE/api/authz/roles")"
 if [ "$viewer_roles_code" = "403" ]; then

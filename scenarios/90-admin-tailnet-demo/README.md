@@ -9,6 +9,8 @@ does not contain or run an application-specific Python/Node/Ruby web harness.
 - Authz admin contribution: <http://localhost:18080/admin/authz/>
 - Admin contribution API: <http://localhost:18080/api/admin/contributions>
 - Auth provider catalog API: <http://localhost:18080/api/admin/auth/providers>
+- Auth config apply API: <http://localhost:18080/api/admin/auth/config/apply>
+- Auth config applied-state API: <http://localhost:18080/api/admin/auth/config/applied>
 
 The scenario creates an admin user during tests:
 
@@ -42,6 +44,21 @@ configuration is declared by `step.auth_admin_contribution_describe` and rendere
 through the admin shell's generic config-form mode; authz proof endpoints use
 `workflow-plugin-authz-ui` steps. The app demonstrates frontend scope checks for
 order read/update and admin scope checks for auth/authz management pages.
+
+Auth config apply is host-owned Workflow YAML: the endpoint authenticates with
+`auth.jwt`, enforces `admin:auth.config:update`, validates through
+`workflow-plugin-auth`, writes the submitted Auth0 provider secret through a
+real `secrets.vault` module backed by the scenario Vault sidecar, and persists
+only accepted non-secret config plus `secret://` refs in SQLite. The
+applied-state endpoint exposes the persisted non-secret config and secret refs
+for scenario verification and admin observability, without returning secret
+values.
+
+Provider catalog and provider descriptor routes are public-CI safe. Live
+remote Auth0/Okta/Entra/Ory/Scalekit provisioning remains provider-plugin-owned
+and should run in credentialed/provider-specific scenarios, not through
+`workflow-plugin-infra` unless an identity resource is explicitly modeled as
+IaC.
 
 ## Run
 
