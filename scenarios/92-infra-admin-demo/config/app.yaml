@@ -1,38 +1,40 @@
 # ============================================================
 # Scenario 92 — Infra Admin GitOps Demo (v1.1)
 #
-# Boots a full admin stack with:
-#   - auth.jwt + authz.local (operator/viewer inline RBAC)
-#   - http.middleware.auth (Bearer gate for infra.admin routes)
-#   - health.checker (/healthz)
+# Boots a full admin stack:
+#   - auth.jwt (Bearer token auth, secret from JWT_SECRET env or literal)
+#   - authz.local (inline RBAC: operator / viewer roles)
 #   - admin.dashboard (workflow-plugin-admin)
 #   - infra.admin (host-side IaC admin, stub iac.provider in-process)
-#   - iac.state (memory — kept for step.iac_* access; NOT wired to infra.admin
-#     due to v0.69.0 interfaces.IaCStateStore ≠ module.IaCStateStore mismatch)
+#   - iac.state (memory backend)
 #   - static.fileserver for infra SPA at /admin/infra/
 #   - nosql.memory (secrets metadata)
+#   - Pipeline routes: catalog, resources, plan, apply, commit, drift, secrets
+#   - Pipeline: admin contribution registration
 #
-# Pipeline routes:
-#   GET  /api/infra/providers/stub/catalog  — stub regions + types
-#   GET  /api/infra/resources               — proxy to infra.admin resources RPC
-#   POST /api/infra/plan                    — stub plan (1 create per spec)
-#   POST /api/infra/apply                   — stub apply
-#   POST /api/infra/commit                  — step.sandbox_exec git clone/commit/push
-#   GET  /api/infra/drift                   — stub drift (no drift, supported:true)
-#   GET  /api/infra/secrets                 — metadata only (values never returned)
-#   POST /api/infra/secrets                 — declare a secret name
-#
-# Admin contribution: infra-resources → /admin/infra/ (iframe)
-#
-# JWT secret (test-only): scenario-92-jwt-secret-do-not-use-in-prod
+# JWT secret:  scenario-92-jwt-secret-do-not-use-in-prod
+# Operator:    full read + plan + apply + commit
+# Viewer:      read only
 # ============================================================
 
 modules:
+  - name: http
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [http]
+
   - name: auth
     type: auth.jwt
     config:
-      issuer: "scenario-92"
-      secret: "scenario-92-jwt-secret-do-not-use-in-prod"
+      secret: scenario-92-jwt-secret-do-not-use-in-prod
+      issuer: scenario-92
+      tokenExpiry: 24h
+      allowRegistration: true
+    dependsOn: [router]
 
   - name: authz
     type: authz.local
@@ -42,41 +44,6 @@ modules:
         - ["operator@infra", "infra:apply",   "allow"]
         - ["operator@infra", "infra:destroy", "allow"]
         - ["viewer@infra",   "infra:read",    "allow"]
-
-  # auth-mw: wraps auth.jwt as HTTPMiddleware so infra.admin can resolve it.
-  - name: auth-mw
-    type: http.middleware.auth
-    config:
-      authType: Bearer
-
-  - name: security-headers
-    type: http.middleware.securityheaders
-    config:
-      frameOptions: SAMEORIGIN
-      contentSecurityPolicy: >-
-        default-src 'self'; script-src 'self'; style-src 'self';
-        img-src 'self' data:; frame-ancestors 'self'
-
-  - name: http
-    type: http.server
-    config:
-      address: ":8080"
-
-  # health.checker removed: it uses a random scan to find a router and would
-  # bind /healthz to admin-router (:8081) rather than http-router (:8080).
-  # /healthz is served by the healthz pipeline trigger instead.
-
-  - name: router
-    type: http.router
-    dependsOn: [http]
-
-  - name: admin
-    type: admin.dashboard
-    config:
-      route_prefix: /admin
-      app_name: "Scenario 92 — Infra Admin GitOps Demo"
-      auth_module: auth
-      authz_module: authz
 
   - name: iac-state
     type: iac.state
@@ -94,17 +61,21 @@ modules:
   - name: infra-admin
     type: infra.admin
     config:
-      route_prefix:            /api/infra-admin
-      asset_prefix:            /admin/infra-admin
-      # state_module intentionally omitted: module.IaCStateStore (iac.state) ≠
-      # interfaces.IaCStateStore (infra.admin expects); handlers are nil-safe.
-      http_module:             router
-      auth_module:             auth-mw
-      authz_module:            authz
-      security_headers_module: security-headers
-      provider_modules:        [stub-provider]
-      access_log_path:         /tmp/infra-admin-audit.jsonl
-    dependsOn: [router, auth-mw, authz, security-headers, stub-provider]
+      route_prefix:     /api/infra-admin
+      asset_prefix:     /admin/infra-admin
+      state_module:     iac-state
+      http_module:      router
+      auth_module:      auth
+      provider_modules: [stub-provider]
+      access_log_path:  ""
+    dependsOn: [router, auth, authz, iac-state, stub-provider]
+
+  - name: admin
+    type: admin.dashboard
+    config:
+      route_prefix: /admin
+      app_name: "Scenario 92 — Infra Admin GitOps Demo"
+      target_app: scenario-92-infra-admin-gitops
 
   - name: infra-spa-static
     type: static.fileserver
@@ -141,9 +112,7 @@ workflows:
 
 pipelines:
 
-  # ── /healthz ───────────────────────────────────────────────────────────────
-  # Pipeline healthz: bound to http-router via custom trigger wrapper in cmd/server.
-  # Replaces the health.checker module which uses a random router scan.
+  # ── healthz ────────────────────────────────────────────────
   healthz:
     trigger:
       type: http
@@ -158,8 +127,26 @@ pipelines:
           body:
             status: ok
             scenario: "92-infra-admin-gitops"
+            runtime: workflow-go-server
 
-  # ── Admin contribution registration ───────────────────────────────────────
+  # ── admin root redirect ─────────────────────────────────────
+  admin-redirect:
+    trigger:
+      type: http
+      config:
+        path: /admin
+        method: GET
+    steps:
+      - name: redirect
+        type: step.raw_response
+        config:
+          status: 308
+          content_type: text/plain
+          headers:
+            Location: /admin/
+          body: ""
+
+  # ── Contribution registration pipelines ────────────────────
   # Called by infra.admin.Start() via engine.TriggerWorkflow.
   register-infra-admin-resources:
     trigger:
@@ -188,18 +175,9 @@ pipelines:
         config:
           module: admin
 
-  register-infra-admin-actions:
-    trigger:
-      type: manual
-    steps:
-      - name: register
-        type: step.admin_register_contribution
-        config:
-          module: admin
-
-  # ── GET /api/admin/contributions ──────────────────────────────────────────
-  # Admin shell polls this. Registers infra-resources contribution
-  # (id: infra-resources, path: /admin/infra/).
+  # ── GET /api/admin/contributions ────────────────────────────
+  # Admin shell polls this; registers the infra SPA as a contribution
+  # (id: infra-resources) so it appears in the nav.
   list-admin-contributions:
     trigger:
       type: http
@@ -260,8 +238,9 @@ pipelines:
           body:
             contributions: { _from: "steps.list.contributions" }
 
-  # ── GET /api/infra/providers/stub/catalog ─────────────────────────────────
-  # Deterministic stub catalog: regions + types match stub-iac-provider gRPC.
+  # ── GET /api/infra/providers/stub/catalog ──────────────────
+  # Returns the deterministic stub catalog (regions + types).
+  # Values match stub-iac-provider gRPC ListRegions + Capabilities.
   infra-catalog:
     trigger:
       type: http
@@ -294,8 +273,8 @@ pipelines:
               - stub.database
               - stub.bucket
 
-  # ── GET /api/infra/resources ──────────────────────────────────────────────
-  # Proxies to the infra.admin typed resources RPC.
+  # ── GET /api/infra/resources ───────────────────────────────
+  # Lists resources from infra.admin (iac.state memory backend).
   infra-list-resources:
     trigger:
       type: http
@@ -331,9 +310,10 @@ pipelines:
             resources: { _from: "steps.call-backend.body.resources" }
             provider: stub
 
-  # ── POST /api/infra/plan ──────────────────────────────────────────────────
+  # ── POST /api/infra/plan ────────────────────────────────────
   # {provider:"stub", specs:[{name,type,region}]}
-  # Stub: 1 "create" action per spec; deterministic desired_hash.
+  # Returns: {plan:{actions:[...]}, desired_hash}
+  # The stub returns 1 "create" action per spec (deterministic).
   infra-plan:
     trigger:
       type: http
@@ -376,8 +356,9 @@ pipelines:
             plan: { _from: "steps.build-plan.plan" }
             desired_hash: { _from: "steps.build-plan.desired_hash" }
 
-  # ── POST /api/infra/apply ─────────────────────────────────────────────────
+  # ── POST /api/infra/apply ───────────────────────────────────
   # {provider:"stub", specs:[...], desired_hash:"..."}
+  # Applies the plan; stub always succeeds.
   infra-apply:
     trigger:
       type: http
@@ -415,12 +396,11 @@ pipelines:
             applied: { _from: "steps.apply-result.applied" }
             provider: { _from: "steps.apply-result.provider" }
 
-  # ── POST /api/infra/commit ────────────────────────────────────────────────
+  # ── POST /api/infra/commit ──────────────────────────────────
   # {specs:[...], branch:"feat/...", message:"..."}
-  # Uses step.sandbox_exec to run a git clone/commit/push via the alpine/git
-  # image. The bare-git-repo fixture is at /data/gitrepo.git (container) and
-  # ${GITREPO_HOST_PATH} (host) — the sandbox mount uses the HOST path.
-  # seed.sh exports GITREPO_HOST_PATH (absolute host path) before docker compose up.
+  # Clones the bare-git-repo fixture, writes a desired-state YAML,
+  # commits + pushes. Returns {branch, committed:true}.
+  # Requires: Docker socket mount + /data/gitrepo.git volume.
   infra-commit:
     trigger:
       type: http
@@ -439,16 +419,21 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_request.headers.Authorization
           subject_field: subject
+      - name: require-bearer
+        type: step.set
+        config:
+          values:
+            bearer_present: true
       - name: git-commit
         type: step.sandbox_exec
         config:
-          image: alpine:3.20
+          image: alpine/git:latest
           security_profile: standard
           network: bridge
-          timeout: 60s
-          fail_on_error: true
+          timeout: 30s
+          fail_on_error: false
           mounts:
-            - source: "${GITREPO_HOST_PATH}"
+            - source: /data/gitrepo.git
               target: /gitrepo.git
               read_only: false
           command:
@@ -456,15 +441,16 @@ pipelines:
             - -c
             - |
               set -e
-              apk add --no-cache git -q 2>/dev/null
-              git clone /gitrepo.git /tmp/repo
-              cd /tmp/repo
+              WORK=$(mktemp -d)
+              git clone /gitrepo.git "$WORK/repo"
+              cd "$WORK/repo"
               git config user.email "scenario-92@infra-admin.local"
               git config user.name "Scenario 92 GitOps"
-              git checkout -B feat/gitops-demo
+              BRANCH="feat/gitops-demo"
+              git checkout -B "$BRANCH"
               mkdir -p infra
-              printf '%s\n%s\n%s\n%s\n%s\n%s\n' \
-                '# Desired infra state - committed via GitOps demo' \
+              printf '%s\n' \
+                '# Desired infra state — committed via GitOps demo' \
                 'provider: stub' \
                 'resources:' \
                 '  - name: demo-database' \
@@ -472,9 +458,9 @@ pipelines:
                 '    region: stub-east' \
                 > infra/desired-state.yaml
               git add infra/desired-state.yaml
-              git commit -m "chore(infra): update desired state via admin UI" || echo "nothing to commit"
-              git push origin feat/gitops-demo
-              echo '{"branch":"feat/gitops-demo","committed":true}'
+              git commit -m "chore(infra): update desired state via admin UI" || true
+              git push origin "$BRANCH"
+              printf '{"branch":"%s","committed":true}\n' "$BRANCH"
       - name: audit
         type: step.log
         config:
@@ -488,8 +474,8 @@ pipelines:
             branch: feat/gitops-demo
             committed: true
 
-  # ── GET /api/infra/drift ──────────────────────────────────────────────────
-  # Stub: DetectDrift always returns Drifted:false, supported:true.
+  # ── GET /api/infra/drift ────────────────────────────────────
+  # stub DetectDrift: always Drifted:false, supported:true.
   infra-drift:
     trigger:
       type: http
@@ -521,8 +507,8 @@ pipelines:
               drifted: 0
               in_sync: 0
 
-  # ── GET /api/infra/secrets ────────────────────────────────────────────────
-  # Metadata only — values NEVER returned.
+  # ── GET /api/infra/secrets ──────────────────────────────────
+  # Returns secret metadata (names + backends) — values never returned.
   infra-secrets-list:
     trigger:
       type: http
@@ -543,7 +529,7 @@ pipelines:
       - name: list-meta
         type: step.nosql_query
         config:
-          store: secrets-store
+          module: secrets-store
           key_prefix: "secret:"
       - name: respond
         type: step.json_response
@@ -553,9 +539,10 @@ pipelines:
             secrets: { _from: "steps.list-meta.items" }
             note: "values are never returned — metadata only"
 
-  # ── POST /api/infra/secrets ───────────────────────────────────────────────
+  # ── POST /api/infra/secrets ─────────────────────────────────
   # {name:"STRIPE_KEY", backend:"env"} — declares a secret name.
-  # Value is intentionally discarded (write-only in this demo).
+  # Value (if provided) is intentionally discarded in this demo.
+  # Real deployments would wire to secrets.aws / secrets.vault.
   infra-secrets-declare:
     trigger:
       type: http
@@ -574,18 +561,24 @@ pipelines:
           auth_module: auth
           token_source: steps.parse_request.headers.Authorization
           subject_field: subject
+      - name: require-bearer
+        type: step.set
+        config:
+          values:
+            bearer_present: true
       - name: store-meta
         type: step.nosql_put
         config:
-          store: secrets-store
-          key: "secret:demo"
+          module: secrets-store
+          key: "secret:{{.steps.parse_request.body.name}}"
           value:
-            name: demo
-            backend: env
+            name: "{{.steps.parse_request.body.name}}"
+            backend: "{{.steps.parse_request.body.backend}}"
       - name: respond
         type: step.json_response
         config:
           status: 200
           body:
             declared: true
+            name: { _from: "steps.parse_request.body.name" }
             note: "value is write-only and not stored in this demo"

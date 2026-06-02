@@ -1,12 +1,12 @@
 {
   "name": "stub-iac-provider",
-  "version": "0.0.1",
+  "version": "0.0.1-stub",
   "description": "Scenario-92 stub IaC provider — deterministic fake data, no cloud credentials",
   "author": "GoCodeAlone",
   "license": "MIT",
   "type": "external",
   "tier": "internal",
-  "minEngineVersion": "0.69.0",
+  "minEngineVersion": "0.70.0",
   "iacServices": [
     "workflow.plugin.external.iac.IaCProviderRequired",
     "workflow.plugin.external.iac.IaCProviderRegionLister",

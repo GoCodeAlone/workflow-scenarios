@@ -92,23 +92,6 @@ func main() {
 		logger.Info("loaded external plugin", "plugin", name)
 	}
 
-	// Register a custom HTTP pipeline trigger config wrapper that injects the
-	// router and server names. This ensures pipeline HTTP triggers (e.g.
-	// infra-catalog, infra-plan, etc.) bind to the workflow engine's http-router
-	// instead of the admin plugin's admin-router. Without this, the engine scans
-	// all services for the first HTTPRouter implementation — which is
-	// non-deterministic when both http-router and admin-router are present.
-	//
-	// The wrapper mirrors the default (from plugins/http/plugin.go) but adds
-	// router: "http-router" and server: "http" so ConfigureWorkflow uses the
-	// explicit names instead of falling back to the service scan.
-	// The custom HTTP trigger wrapper is no longer needed now that the router
-	// module is named "router" (a well-known name in HTTPTrigger.Configure's
-	// scan list: ["httpRouter", "api-router", "router"]). When the router is
-	// found by name, it reliably binds to our workflow server (port 8080)
-	// rather than the admin plugin's admin-router (port 8081).
-	// Wrapper left as a no-op for documentation purposes.
-
 	// Now apply the configuration (admin.dashboard + infra.admin + authz.local
 	// + stub-provider all registered).
 	if err := engine.BuildFromConfig(cfg); err != nil {

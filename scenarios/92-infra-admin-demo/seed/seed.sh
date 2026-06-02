@@ -101,15 +101,8 @@ else
   echo "WARN: workflow-plugin-authz-ui not found at $PLUGIN_AUTHZ_UI_REPO — skipping" >&2
 fi
 
-# workflow-plugin-infra provides infra.* abstract module types.
-# NOTE: These types are also built into the workflow engine v0.69.0 (plugins/infra).
-# Loading the external plugin would cause "already registered" errors. Skipped.
-# Build the binary for verification but do NOT include it in the plugin dir.
 if [ -f "$PLUGIN_INFRA_REPO/go.mod" ]; then
-  echo "Building workflow-plugin-infra (verification only — not loaded at runtime)..."
-  (cd "$PLUGIN_INFRA_REPO" && GOWORK=off GOOS=linux GOARCH=amd64 go build ./cmd/workflow-plugin-infra) || \
-    echo "WARN: workflow-plugin-infra build failed (non-fatal — not used at runtime)" >&2
-  rm -f "$PLUGIN_INFRA_REPO/workflow-plugin-infra"
+  build_plugin "$PLUGIN_INFRA_REPO"    "workflow-plugin-infra"    "./cmd/workflow-plugin-infra"
 else
   echo "WARN: workflow-plugin-infra not found at $PLUGIN_INFRA_REPO — skipping" >&2
 fi
@@ -186,31 +179,18 @@ rm -rf "$INIT_WORK"
 echo "Bare git repo ready at $GITREPO_DIR"
 
 # ── Build container image ──────────────────────────────────────────────────────
-# Substitute the absolute host-side gitrepo path into app.yaml for step.sandbox_exec.
-# step.sandbox_exec bind mounts reference HOST paths (Docker-in-Docker pattern).
-sed "s|\${GITREPO_HOST_PATH}|${GITREPO_DIR}|g" \
-  "$SCENARIO_DIR/config/app.yaml" > "$BUILD_DIR/app.yaml"
+cp "$SCENARIO_DIR/config/app.yaml" "$BUILD_DIR/app.yaml"
 
 cat > "$BUILD_DIR/Dockerfile" <<'DOCKERFILE'
-# Alpine-based image: provides git (for step.git_clone/commit/push) + sh.
-# The workflow server binary is a statically-linked CGO_ENABLED=0 Go binary
-# so it runs fine on alpine without glibc.
-FROM alpine:3.20
-RUN apk add --no-cache git ca-certificates && \
-    # Set a global git identity so step.git_commit works without user.email error.
-    # This is test-only; production deployments should configure git properly.
-    git config --global user.email "scenario-92@infra-admin.local" && \
-    git config --global user.name "Scenario 92 GitOps" && \
-    git config --global safe.directory '*'
-COPY server /usr/local/bin/server
-COPY plugins/ /home/app/plugins/
-COPY app.yaml /home/app/app.yaml
-COPY admin-ui/ /opt/workflow-admin-ui/
-COPY infra-spa/ /opt/infra-spa/
-RUN mkdir -p /home/app
-WORKDIR /home/app
-ENV WFCTL_PLUGIN_DIR=/home/app/plugins
-ENV HOME=/root
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --chown=nonroot:nonroot server /usr/local/bin/server
+COPY --chown=nonroot:nonroot plugins/ /home/nonroot/plugins/
+COPY --chown=nonroot:nonroot app.yaml /home/nonroot/app.yaml
+COPY --chown=nonroot:nonroot admin-ui/ /opt/workflow-admin-ui/
+COPY --chown=nonroot:nonroot infra-spa/ /opt/infra-spa/
+USER nonroot
+WORKDIR /home/nonroot
+ENV WFCTL_PLUGIN_DIR=/home/nonroot/plugins
 ENTRYPOINT ["/usr/local/bin/server"]
 DOCKERFILE
 
@@ -219,9 +199,6 @@ docker build -t "$IMAGE_TAG" "$BUILD_DIR"
 
 # ── Bring up the stack ─────────────────────────────────────────────────────────
 cd "$SCENARIO_DIR"
-# Export GITREPO_HOST_PATH as the absolute host-side path to the bare git repo.
-# step.sandbox_exec (Docker-in-Docker) bind mounts use HOST paths, not container paths.
-export GITREPO_HOST_PATH="$GITREPO_DIR"
 docker compose down --remove-orphans 2>/dev/null || true
 docker compose up -d
 
