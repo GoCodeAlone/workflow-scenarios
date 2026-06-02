@@ -65,10 +65,11 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
 
       - name: Create bump PR
+        id: create-pr
         if: steps.bump.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASES_TOKEN || github.token }}
           branch: automation/bump-workflow-${{ steps.bump.outputs.after }}
           delete-branch: true
           title: Bump workflow to ${{ steps.bump.outputs.after }}
@@ -80,3 +81,27 @@ jobs:
 
             ## Verification
             - `GOWORK=off go test ./...`
+
+      - name: Queue bump PR for auto-merge
+        if: steps.create-pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
+          PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
+        run: |
+          set -euo pipefail
+          gh pr edit "$PR_NUMBER" --add-reviewer copilot-pull-request-reviewer || true
+          gh pr merge "$PR_NUMBER" --squash --auto --delete-branch
+
+      - name: Close superseded workflow bump PRs
+        if: steps.create-pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
+          PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
+        run: |
+          set -euo pipefail
+          gh pr list --state open --search 'Bump workflow to in:title' --json number,headRefName \
+            --jq '.[] | select((.number|tostring) != env.PR_NUMBER) | select(.headRefName | startswith("automation/bump-workflow-")) | .number' |
+          while read -r old_pr; do
+            [ -n "$old_pr" ] || continue
+            gh pr close "$old_pr" --delete-branch --comment "Superseded by workflow bump PR #${PR_NUMBER}."
+          done
