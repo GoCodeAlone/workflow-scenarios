@@ -1,0 +1,38 @@
+name: Auth Admin Bootstrap (durable first-run)
+id: "101-auth-admin-bootstrap"
+category: C
+description: |
+  Boots a workflow admin stack — engine + workflow-plugin-auth (gRPC subprocess) +
+  Postgres (database.workflow) + auth.jwt session module — and exercises the durable
+  first-run admin bootstrap flow end-to-end:
+
+    1. Fresh DB (0 admin credentials) → GET /admin/bootstrap/status → {open:true}
+    2. POST /admin/bootstrap/redeem wrong code → 403 invalid_code
+    3. POST /admin/bootstrap/redeem correct code (AUTH_BOOTSTRAP_CODE) → 200 + bearer
+       token (step.auth_jwt_issue); super-admin user row created
+    4. Authenticated POST /admin/credentials/passkey/register/begin → 200 challenge;
+       no/invalid bearer → 401 (step.auth_validate server-side gate)
+    5. After a passkey credential exists → status {open:false}; re-redeem → 403
+       bootstrap_closed (durable-close invariant V-B4)
+
+  Proves the engine-mediated bootstrap pattern (workflow-plugin-auth v0.3.0):
+  step.auth_bootstrap_redeem (count-gated) + step.auth_jwt_issue (HS256 mint),
+  with persistence + session minting owned by the consumer pipeline.
+
+  curl smoke (test/run.sh) covers 1-5 deterministically. Playwright
+  (e2e/tests/scenario-101-auth-admin-bootstrap.spec.ts) drives the full passkey
+  ceremony with a CDP virtual authenticator. Exploratory QA findings in
+  test/EXPLORATORY.md.
+components:
+  - workflow (engine)
+  - workflow-plugin-auth (step.auth_bootstrap_redeem + step.auth_jwt_issue, gRPC subprocess)
+  - auth.jwt (session AuthProvider)
+  - database.workflow (postgres)
+status: testable
+tags:
+  - admin
+  - auth
+  - bootstrap
+  - passkey
+  - postgres
+  - playwright

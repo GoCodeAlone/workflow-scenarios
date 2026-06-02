@@ -1,0 +1,281 @@
+# ============================================================
+# Scenario 101 — Auth Admin Bootstrap
+#
+# Engine + workflow-plugin-auth (gRPC) + Postgres + auth.jwt.
+# Demonstrates the durable first-run bootstrap flow: the plugin steps
+# (step.auth_bootstrap_redeem, step.auth_jwt_issue) are stateless; this
+# config owns persistence (users/credentials) + routing + session minting.
+# ============================================================
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":8080"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  # Session AuthProvider: validates the bearer JWT minted by step.auth_jwt_issue
+  # (same HS256 secret via AUTH_JWT_SECRET).
+  - name: auth
+    type: auth.jwt
+    config:
+      secret: ${AUTH_JWT_SECRET}
+      issuer: workflow-plugin-auth
+      tokenExpiry: 1h
+    dependsOn: [router]
+
+  # WebAuthn relying-party config for the passkey steps.
+  - name: authcred
+    type: auth.credential
+    config:
+      rp_display_name: Scenario 101 Admin
+      rp_id: localhost
+      origin: http://localhost:18101
+    dependsOn: [router]
+
+  # In-memory JWT blacklist for logout (step.token_revoke).
+  - name: blacklist
+    type: auth.token-blacklist
+    config:
+      backend: memory
+    dependsOn: [router]
+
+  # Consumer-owned persistence (users + credentials tables, created by seed.sh).
+  - name: db
+    type: database.workflow
+    config:
+      # Engine bundles the pgx/v5 stdlib driver (registered as "pgx", not "postgres").
+      # The pgx driver accepts the standard postgres:// DSN.
+      driver: pgx
+      dsn: ${DATABASE_URL}
+    dependsOn: [router]
+
+workflows:
+  http:
+    server: server
+    router: router
+
+pipelines:
+  # ---------------------------------------------------------------- health
+  healthz:
+    trigger: { type: http, config: { path: /healthz, method: GET } }
+    steps:
+      - name: ok
+        type: step.json_response
+        config:
+          status: 200
+          body: { status: ok, scenario: "101-auth-admin-bootstrap" }
+
+  # ---------------------------------------------------------------- bootstrap status
+  # open ⟺ zero admin credentials exist.
+  bootstrap-status:
+    trigger: { type: http, config: { path: /admin/bootstrap/status, method: GET } }
+    steps:
+      - name: count_creds
+        type: step.db_query
+        config:
+          database: db
+          mode: single
+          query: "SELECT count(*) AS n FROM credentials WHERE kind IN ('passkey','google','facebook')"
+      # Route on the count so each response can emit a real JSON boolean for `open`
+      # (template-resolved values render as strings; literal YAML true/false stay typed).
+      - name: branch
+        type: step.conditional
+        config:
+          field: '{{ printf "%v" .steps.count_creds.row.n }}'
+          routes:
+            "0": respond_open
+          default: respond_closed
+      - name: respond_open
+        type: step.json_response
+        config:
+          status: 200
+          body: { open: true }
+      - name: respond_closed
+        type: step.json_response
+        config:
+          status: 200
+          body: { open: false }
+
+  # ---------------------------------------------------------------- bootstrap redeem
+  bootstrap-redeem:
+    trigger: { type: http, config: { path: /admin/bootstrap/redeem, method: POST } }
+    steps:
+      - name: parse
+        type: step.request_parse
+        config: { parse_body: true }
+      - name: count_creds
+        type: step.db_query
+        config:
+          database: db
+          mode: single
+          query: "SELECT count(*) AS n FROM credentials WHERE kind IN ('passkey','google','facebook')"
+      - name: prep
+        type: step.set
+        config:
+          values:
+            code: "{{ .steps.parse.body.code }}"
+            existing_admin_count: "{{ .steps.count_creds.row.n }}"
+      - name: redeem
+        type: step.auth_bootstrap_redeem
+        config:
+          super_admin_email: admin@scenario-101.test
+      - name: branch
+        type: step.conditional
+        config:
+          field: '{{ printf "%v" .steps.redeem.redeemed }}'
+          routes:
+            "true": grant_insert
+            "false": deny
+          default: deny
+      # --- deny branch (terminal) ---
+      - name: deny
+        type: step.json_response
+        config:
+          status: 403
+          body: { redeemed: false, reason: "{{ .steps.redeem.reason }}" }
+      # --- grant branch (reached only when redeemed=true) ---
+      - name: grant_insert
+        type: step.db_exec
+        config:
+          database: db
+          query: "INSERT INTO users(email, role) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING"
+          params:
+            - "{{ .steps.redeem.email }}"
+            - "{{ .steps.redeem.role }}"
+      - name: grant_prep
+        type: step.set
+        config:
+          values:
+            subject: "{{ .steps.redeem.email }}"
+            claims:
+              roles: ["{{ .steps.redeem.role }}"]
+              email: "{{ .steps.redeem.email }}"
+      - name: grant_mint
+        type: step.auth_jwt_issue
+        config:
+          issuer: workflow-plugin-auth
+          ttl_seconds: 3600
+      - name: grant_respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            redeemed: true
+            token: "{{ .steps.grant_mint.token }}"
+            expires_at: "{{ .steps.grant_mint.expires_at }}"
+            redirect: "/admin/credentials/passkey/register/begin"
+
+  # ---------------------------------------------------------------- passkey register (gated)
+  passkey-register-begin:
+    trigger: { type: http, config: { path: /admin/credentials/passkey/register/begin, method: POST } }
+    steps:
+      - name: parse_auth
+        type: step.request_parse
+        config: { parse_headers: [Authorization] }
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
+      - name: begin
+        type: step.auth_passkey_begin_register
+        config: { module: authcred }
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body: { options: "{{ .steps.begin.options }}", session_data: "{{ .steps.begin.session_data }}" }
+
+  passkey-register-finish:
+    trigger: { type: http, config: { path: /admin/credentials/passkey/register/finish, method: POST } }
+    steps:
+      - name: parse_auth
+        type: step.request_parse
+        config: { parse_headers: [Authorization], parse_body: true }
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
+      - name: finish
+        type: step.auth_passkey_finish_register
+        config: { module: authcred }
+      - name: store
+        type: step.db_exec
+        config:
+          database: db
+          query: "INSERT INTO credentials(user_email, kind, external_id, device_name) VALUES ($1, 'passkey', $2, 'passkey') ON CONFLICT (kind, external_id) DO NOTHING"
+          params:
+            - "{{ .steps.authenticate.subject }}"
+            - "{{ .steps.finish.credential_id }}"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body: { registered: true }
+
+  # ---------------------------------------------------------------- passkey login → session
+  passkey-login-begin:
+    trigger: { type: http, config: { path: /admin/login/passkey/begin, method: POST } }
+    steps:
+      - name: begin
+        type: step.auth_passkey_begin_login
+        config: { module: authcred }
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body: { options: "{{ .steps.begin.options }}", session_data: "{{ .steps.begin.session_data }}" }
+
+  passkey-login-finish:
+    trigger: { type: http, config: { path: /admin/login/passkey/finish, method: POST } }
+    steps:
+      - name: parse
+        type: step.request_parse
+        config: { parse_body: true }
+      - name: finish
+        type: step.auth_passkey_finish_login
+        config: { module: authcred }
+      - name: prep
+        type: step.set
+        config:
+          values:
+            subject: "{{ .steps.parse.body.email }}"
+            claims:
+              roles: ["super_admin"]
+      - name: mint
+        type: step.auth_jwt_issue
+        config: { issuer: workflow-plugin-auth, ttl_seconds: 3600 }
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body: { token: "{{ .steps.mint.token }}", expires_at: "{{ .steps.mint.expires_at }}" }
+
+  # ---------------------------------------------------------------- logout
+  logout:
+    trigger: { type: http, config: { path: /admin/logout, method: POST } }
+    steps:
+      - name: parse_auth
+        type: step.request_parse
+        config: { parse_headers: [Authorization] }
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse_auth.headers.Authorization
+          subject_field: subject
+      - name: revoke
+        type: step.token_revoke
+        config:
+          blacklist_module: blacklist
+          token_source: steps.parse_auth.headers.Authorization
+      - name: respond
+        type: step.json_response
+        config: { status: 200, body: { logged_out: true } }
