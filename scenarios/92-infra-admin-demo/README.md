@@ -9,8 +9,8 @@ The stub IaC provider is an **external gRPC plugin** built from
 `fixtures/stub-iac-provider/`. The engine's `WiringHook` registers it as
 service `"stub-iac-provider"` so `step.iac_provider_*` steps resolve it.
 
-**No `infra.admin` module type is used** — that was deleted from the engine.
-All IaC operations flow through the platform plugin's step types.
+**No engine-built-in `infra.admin` module is used** — that was deleted from the engine in v0.70.0. The `type: infra.admin` in `config/app.yaml` resolves to the **external `workflow-plugin-infra` plugin's** module type (the migrated admin SPA), discovered at runtime — not an engine built-in.
+All IaC operations flow through the platform plugin's `step.iac_provider_*` step types.
 
 ## API routes (step-based pipelines)
 

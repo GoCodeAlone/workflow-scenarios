@@ -181,9 +181,11 @@ pipelines:
 
   # ── plan (operator only) ───────────────────────────────────────────────────
   #
-  # Stub provider Status() returns empty → current=[] → desired=[] (no specs
-  # in config means empty desired) → desired_hash = sha256(json.Marshal([])) =
-  # 4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
+  # plan-exec passes a 1-spec desired set [{name: demo-db, type: stub.database}];
+  # the stub provider Status() returns the current state; step.iac_provider_plan
+  # computes desired_hash = DesiredStateHash(cfg, specs, current, env) over that
+  # spec array. The apply pipeline submits the SAME spec + hash, so the two-phase
+  # guard matches (hash recomputed at apply time from the same inputs).
   #
   # Use POST so auth_validate can read Authorization header from the request.
 

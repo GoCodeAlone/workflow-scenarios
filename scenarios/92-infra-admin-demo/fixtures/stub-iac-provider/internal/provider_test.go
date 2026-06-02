@@ -32,8 +32,8 @@ func TestVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Version: unexpected error: %v", err)
 	}
-	if got := resp.GetVersion(); got != "0.0.1-stub" {
-		t.Errorf("Version() = %q; want %q", got, "0.0.1-stub")
+	if got := resp.GetVersion(); got != "0.1.0" {
+		t.Errorf("Version() = %q; want %q", got, "0.1.0")
 	}
 }
 
