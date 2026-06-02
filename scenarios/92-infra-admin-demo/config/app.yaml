@@ -59,6 +59,16 @@ modules:
     config:
       backend: memory
 
+  # infra.admin module provided by workflow-plugin-infra (external gRPC plugin).
+  # It supplies InvokeMethod("AdminContribution") which returns the nav contribution
+  # for the Infrastructure Management SPA.  The plugin's ConfigFragment() injects a
+  # companion static.fileserver that serves the SPA assets at /admin/infra.
+  - name: infra-admin
+    type: infra.admin
+    config:
+      api_base_path: "/api/infra"
+      prefix: "/admin/infra"
+
 workflows:
   http:
     server: http
@@ -66,6 +76,11 @@ workflows:
 
 pipelines:
   # ── admin contributions ────────────────────────────────────────────────────
+  #
+  # This pipeline registers the infra contribution on every call (idempotent
+  # via contributionRegistry.register which deduplicates by id), then lists all
+  # registered contributions.  The infra.admin module (provided by the external
+  # workflow-plugin-infra plugin) defines the canonical contribution descriptor.
 
   list-admin-contributions:
     trigger:
@@ -74,6 +89,25 @@ pipelines:
         path: /api/admin/contributions
         method: GET
     steps:
+      # Inject the infra contribution descriptor into pc.Current so that the
+      # STRICT_PROTO step.admin_register_contribution reads it via TypedInput
+      # (RegisterContributionInput.contribution ← pc.Current["contribution"]).
+      # Using step.set avoids putting unknown keys in the AdminStepConfig config.
+      - name: set-infra-contribution
+        type: step.set
+        config:
+          values:
+            contribution:
+              id: infra-resources
+              title: Infrastructure
+              category: operations
+              path: /admin/infra
+              render_mode: iframe
+              app_context: app
+      - name: register-infra
+        type: step.admin_register_contribution
+        config:
+          module: admin
       - name: list
         type: step.admin_list_contributions
         config:
@@ -118,7 +152,12 @@ pipelines:
             types: { _from: "steps.catalog.types" }
             source: { _from: "steps.catalog.source" }
 
-  # ── list resources (read-only) ─────────────────────────────────────────────
+  # ── list resources (read-only, no auth required for demo SPA) ─────────────
+  #
+  # Auth is intentionally omitted: the infra admin SPA calls this endpoint
+  # without an Authorization header (it runs inside the admin panel which handles
+  # auth separately).  Omitting auth here allows the SPA's Promise.all([listResources,
+  # getCatalog]) to succeed so that the Type and Region dropdowns are populated.
 
   infra-list:
     trigger:
@@ -127,16 +166,6 @@ pipelines:
         path: /api/infra/resources
         method: GET
     steps:
-      - name: parse-auth
-        type: step.request_parse
-        config:
-          parse_headers: [Authorization]
-      - name: authenticate
-        type: step.auth_validate
-        config:
-          auth_module: auth
-          token_source: steps.parse-auth.headers.Authorization
-          subject_field: subject
       - name: list
         type: step.iac_provider_list
         config:
@@ -385,6 +414,46 @@ pipelines:
                 required: false
                 configured: false
             metadata_only: true
+
+  # ── SPA-compatible catalog endpoint: /api/infra/providers/{provider}/catalog ─
+  #
+  # The infra admin SPA (ResourceList.tsx) calls GET /api/infra/providers/{provider}/catalog
+  # to populate the region and resource-type dropdowns.  The SPA doesn't send
+  # Authorization headers; catalog is read-only metadata, so this route is
+  # intentionally unauthenticated for the demo.
+  #
+  # Note: the SPA also calls GET /api/infra/resources in the same Promise.all;
+  # the infra-list pipeline handles that route (no auth guard to allow the SPA
+  # to fetch resources for the dropdown context without auth headers).
+
+  infra-spa-catalog:
+    trigger:
+      type: http
+      config:
+        path: /api/infra/providers/{provider}/catalog
+        method: GET
+    steps:
+      - name: catalog
+        type: step.iac_provider_catalog
+        config:
+          provider: stub-iac-provider
+      # Transform types from [{resource_type: "stub.database", ...}] → ["stub.database", ...]
+      # so the SPA receives the string[] shape it expects (types.ts: types: string[]).
+      # Use steps.catalog.types path (step output namespace) to resolve the array.
+      - name: transform-types
+        type: step.jq
+        config:
+          input_from: steps.catalog.types
+          expression: "[.[] | .resource_type]"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            provider: { _from: "steps.catalog.provider" }
+            regions: { _from: "steps.catalog.regions" }
+            types: { _from: "steps.transform-types.result" }
+            source: { _from: "steps.catalog.source" }
 
   infra-secrets-declare:
     trigger:

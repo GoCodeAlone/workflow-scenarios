@@ -2,14 +2,20 @@
 // (infra-admin migration demo). It bootstraps the workflow engine with:
 //   - All default workflow plugins (auth, http, platform, etc.) — in-process
 //   - External gRPC plugins discovered from <data-dir>/plugins:
-//     stub-iac-provider: scenario fixture IaC provider (built from fixtures/stub-iac-provider)
+//     stub-iac-provider:     scenario fixture IaC provider (built from fixtures/stub-iac-provider)
 //     workflow-plugin-admin: admin.dashboard module
+//     workflow-plugin-infra: infra.admin module type + ConfigFragment (SPA at /admin/infra)
 //   - NO in-process test fixtures (migration: fixtures removed per ADR-0010)
 //
 // The stub-iac-provider is loaded as an EXTERNAL plugin. The engine's
 // WiringHook (ExternalPluginAdapter.WiringHooks) registers it as an
 // interfaces.IaCProvider service under the plugin name "stub-iac-provider"
 // so the step.iac_provider_* steps can resolve it via `provider: stub-iac-provider`.
+//
+// workflow-plugin-infra is loaded with LoadPluginWithOverride because the engine's
+// built-in infra plugin (plugins/infra) already registers infra.k8s_cluster etc.
+// LoadPluginWithOverride allows the external plugin to supersede those registrations
+// and add the new infra.admin module type + ConfigFragment SPA injection.
 package main
 
 import (
@@ -72,6 +78,15 @@ func main() {
 		nil,
 		log.Default(),
 	))
+	// infraOverridePlugins is the set of external plugins that must be loaded with
+	// LoadPluginWithOverride because the engine's built-in plugins already register
+	// the same module types and the external plugin is the authoritative source.
+	// workflow-plugin-infra adds infra.admin on top of (and supersedes) the built-in
+	// infra.* types from plugins/infra.
+	infraOverridePlugins := map[string]bool{
+		"workflow-plugin-infra": true,
+	}
+
 	discovered, discoverErr := extMgr.DiscoverPlugins()
 	if discoverErr != nil {
 		logger.Warn("failed to discover external plugins", "error", discoverErr)
@@ -82,8 +97,15 @@ func main() {
 			logger.Warn("failed to load external plugin", "plugin", name, "error", loadErr)
 			continue
 		}
-		if err := engine.LoadPlugin(adapter); err != nil {
-			logger.Warn("failed to register external plugin", "plugin", name, "error", err)
+		var regErr error
+		if infraOverridePlugins[name] {
+			// Use override to supersede built-in infra.* module type registrations.
+			regErr = engine.LoadPluginWithOverride(adapter)
+		} else {
+			regErr = engine.LoadPlugin(adapter)
+		}
+		if regErr != nil {
+			logger.Warn("failed to register external plugin", "plugin", name, "error", regErr)
 			continue
 		}
 		logger.Info("loaded external plugin", "plugin", name)

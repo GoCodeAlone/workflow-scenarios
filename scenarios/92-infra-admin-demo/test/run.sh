@@ -17,7 +17,10 @@
 #  10. Non-Bearer auth → 401 (CSRF gate)
 #  11. Viewer POST /api/infra/apply → 403 (server-side RBAC)
 #  12. GET /api/infra/secrets → metadata_only=true, values not exposed
-#  13. Playwright spec (catalog dropdowns + SPA loads)
+#  13. Bare git repo fixture present (gitops demo)
+#  14. GET /admin/infra → 200, SPA served (workflow-plugin-infra ConfigFragment)
+#  15. /api/admin/contributions includes infra-resources at /admin/infra
+#  16. Playwright spec (catalog dropdowns + SPA loads)
 #
 # Assumes seed.sh has already brought up the stack on port 18092.
 
@@ -364,7 +367,47 @@ else
   skip "Bare git repo not found at $BARE_REPO (seed.sh not run yet)"
 fi
 
-# --- 13. Playwright spec ------------------------------------------------------
+# --- 14. SPA served at /admin/infra (workflow-plugin-infra ConfigFragment) ----
+
+# Follow redirects: static.fileserver redirects /admin/infra → /admin/infra/
+SPA_CODE=$(curl -sL -o /dev/null -w '%{http_code}' "$BASE_URL/admin/infra" || echo "000")
+if [ "$SPA_CODE" = "200" ]; then
+  pass "GET /admin/infra returns 200 (following redirect, workflow-plugin-infra SPA served)"
+else
+  fail "GET /admin/infra returned $SPA_CODE after redirect (want 200 — workflow-plugin-infra ConfigFragment injection failed?)"
+fi
+
+# Follow redirects to get the actual SPA body
+SPA_BODY=$(curl -sL "$BASE_URL/admin/infra" || echo "")
+if printf '%s' "$SPA_BODY" | grep -q 'id="root"'; then
+  pass "GET /admin/infra response contains <div id=\"root\"> (React SPA entry point)"
+else
+  fail "GET /admin/infra response missing id=\"root\" (SPA index.html not served)"
+fi
+
+# --- 15. /api/admin/contributions includes infra-resources at /admin/infra ----
+
+CONTRIB_BODY=$(curl -s -H "Authorization: Bearer $OP_TOKEN" \
+  "$BASE_URL/api/admin/contributions" || echo '{}')
+
+if printf '%s' "$CONTRIB_BODY" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+contribs = d.get('contributions', [])
+infra = next((c for c in contribs if c.get('id') == 'infra-resources'), None)
+if infra and infra.get('path') == '/admin/infra':
+    sys.exit(0)
+sys.exit(1)
+" 2>/dev/null; then
+  pass "/api/admin/contributions includes infra-resources contribution at /admin/infra"
+else
+  CONTRIB_IDS=$(printf '%s' "$CONTRIB_BODY" | python3 -c \
+    'import sys,json; d=json.load(sys.stdin); print([c.get("id") for c in d.get("contributions",[])])' \
+    2>/dev/null || echo "parse error")
+  fail "/api/admin/contributions missing infra-resources (got ids: $CONTRIB_IDS)"
+fi
+
+# --- 17. Playwright spec -------------------------------------------------------
 
 PLAYWRIGHT_SPEC="$SCENARIOS_ROOT/e2e/tests/scenario-92-infra-admin.spec.ts"
 if [ -f "$PLAYWRIGHT_SPEC" ]; then

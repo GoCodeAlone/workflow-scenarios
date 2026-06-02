@@ -281,4 +281,144 @@ test.describe('Scenario 92: Infra Admin Migration Demo', () => {
       fullPage: true,
     });
   });
+
+  // ── infra SPA (workflow-plugin-infra ConfigFragment serves at /admin/infra) ─
+
+  test('@scenario-92 GET /admin/infra returns 200 (after redirect) with SPA root element', async ({ page }) => {
+    // The static.fileserver injected by workflow-plugin-infra ConfigFragment()
+    // serves the embedded React SPA at /admin/infra/.  A GET /admin/infra
+    // (no trailing slash) redirects to /admin/infra/ (307) — page.goto follows it.
+    const resp = await page.goto(`${BASE_URL}/admin/infra`);
+    // After redirect the final status should be 200.
+    expect(resp?.status()).toBe(200);
+    const content = await page.content();
+    // The embedded SPA's index.html wraps the React tree in <div id="root">.
+    expect(content).toContain('id="root"');
+    await page.screenshot({
+      path: 'test-results/scenario-92-infra-spa.png',
+      fullPage: true,
+    });
+  });
+
+  test('@scenario-92 GET /admin/infra/ (trailing slash) returns SPA directly', async ({ request }) => {
+    const resp = await request.get(`${BASE_URL}/admin/infra/`);
+    // Direct access with trailing slash: serves index.html (no redirect).
+    expect(resp.status()).toBe(200);
+    const text = await resp.text();
+    expect(text).toContain('id="root"');
+  });
+
+  test('@scenario-92 /admin/infra/assets served (SPA JS bundle present)', async ({ request }) => {
+    // Fetch the SPA index to extract the asset bundle URL.
+    const indexResp = await request.get(`${BASE_URL}/admin/infra`);
+    expect(indexResp.status()).toBe(200);
+    const html = await indexResp.text();
+    // index.html includes <script src="./assets/index-*.js">
+    const match = html.match(/src="\.\/assets\/(index-[^"]+\.js)"/);
+    expect(match, 'SPA index.html must reference an assets/index-*.js bundle').toBeTruthy();
+    if (match) {
+      const assetResp = await request.get(`${BASE_URL}/admin/infra/assets/${match[1]}`);
+      expect(assetResp.status()).toBe(200);
+    }
+  });
+
+  // ── infra contribution registered in admin.dashboard ────────────────────────
+
+  test('@scenario-92 /api/admin/contributions includes infra-resources', async ({ request }) => {
+    const resp = await request.get(`${BASE_URL}/api/admin/contributions`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}` },
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { contributions?: Array<{ id: string; path: string; title: string }> };
+    const contributions = body.contributions ?? [];
+    const infra = contributions.find(c => c.id === 'infra-resources');
+    expect(infra, 'infra-resources contribution must be registered in admin.dashboard').toBeTruthy();
+    if (infra) {
+      expect(infra.path).toBe('/admin/infra');
+      expect(infra.title).toBe('Infrastructure');
+    }
+  });
+
+  // ── SPA catalog dropdowns populated from live step.iac_provider_catalog ─────
+  //
+  // The React SPA (ResourceList.tsx) calls GET /api/infra/providers/{provider}/catalog
+  // on mount and populates the Region and Type <select> dropdowns with live data.
+  // The catalog endpoint is served by the infra-spa-catalog pipeline which routes
+  // all provider names to stub-iac-provider (the only provider in this scenario).
+  // The SPA doesn't send auth headers — the catalog route is intentionally open.
+
+  test('@scenario-92 SPA catalog endpoint returns stub regions for digitalocean provider', async ({ request }) => {
+    // Verify the SPA-compatible catalog endpoint returns stub provider data.
+    // The SPA's default provider is 'digitalocean', so this is the first real call.
+    // The pipeline transforms types to string[] (SPA expects string[], not object[]).
+    const resp = await request.get(`${BASE_URL}/api/infra/providers/digitalocean/catalog`);
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { regions?: string[]; types?: string[]; source?: string };
+    // Routed to stub-iac-provider → stub-east, stub-west, stub.database, stub.bucket
+    expect(body.regions ?? []).toContain('stub-east');
+    expect(body.regions ?? []).toContain('stub-west');
+    // types are transformed to strings by the infra-spa-catalog pipeline (step.jq)
+    expect(body.types ?? []).toContain('stub.database');
+    expect(body.types ?? []).toContain('stub.bucket');
+    expect(body.source).toBe('live');
+  });
+
+  test('@scenario-92 SPA region select populated from catalog (stub-east, stub-west)', async ({ page }) => {
+    // Navigate to the SPA.  The SPA calls /api/infra/providers/digitalocean/catalog
+    // (no auth header) which the infra-spa-catalog pipeline serves from stub-iac-provider.
+    const resp = await page.goto(`${BASE_URL}/admin/infra`);
+    expect(resp?.status()).toBe(200);
+
+    // Wait for the React app to mount and the catalog fetch to complete.
+    // ResourceList.tsx renders a Region <select> once catalog.regions is populated.
+    // Give it up to 10s for the React boot + gRPC catalog round-trip.
+    const regionSelect = page.locator('select').nth(1); // Provider is first, Region is second
+    await regionSelect.waitFor({ state: 'visible', timeout: 10000 });
+
+    // Wait for options to be populated (not just "— no catalog —")
+    await page.waitForFunction(
+      () => {
+        const selects = document.querySelectorAll('select');
+        for (const sel of Array.from(selects)) {
+          const opts = Array.from(sel.options).map(o => o.text);
+          if (opts.some(t => t.includes('stub-east'))) return true;
+        }
+        return false;
+      },
+      { timeout: 10000 },
+    );
+
+    const allOptions = await page.locator('select option').allTextContents();
+    const allText = allOptions.join(',');
+
+    // The stub IaCProvider's ListRegions returns stub-east and stub-west.
+    expect(allText, `region selects must include stub-east, got: ${allText}`).toContain('stub-east');
+    expect(allText, `region selects must include stub-west, got: ${allText}`).toContain('stub-west');
+
+    await page.screenshot({ path: 'test-results/scenario-92-infra-spa-catalog.png', fullPage: true });
+  });
+
+  test('@scenario-92 SPA resource-type select populated from catalog (stub.database, stub.bucket)', async ({ page }) => {
+    await page.goto(`${BASE_URL}/admin/infra`);
+
+    // Wait for ALL select elements to appear and for catalog to load.
+    await page.waitForFunction(
+      () => {
+        const selects = document.querySelectorAll('select');
+        for (const sel of Array.from(selects)) {
+          const opts = Array.from(sel.options).map(o => o.text);
+          if (opts.some(t => t.includes('stub.database'))) return true;
+        }
+        return false;
+      },
+      { timeout: 10000 },
+    );
+
+    const allOptions = await page.locator('select option').allTextContents();
+    const allText = allOptions.join(',');
+
+    // The stub Capabilities() returns stub.database and stub.bucket.
+    expect(allText).toContain('stub.database');
+    expect(allText).toContain('stub.bucket');
+  });
 });
