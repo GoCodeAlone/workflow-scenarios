@@ -80,7 +80,7 @@ if [ -n "$ACCESS_TOKEN" ]; then
     HDR=$(echo "$ACCESS_TOKEN" | cut -d. -f1 | python3 -c "
 import sys, base64, json
 raw = sys.stdin.read().strip()
-pad = raw + '=' * (4 - len(raw) % 4)
+pad = raw + '=' * (-len(raw) % 4)
 print(json.dumps(json.loads(base64.urlsafe_b64decode(pad))))
 " 2>/dev/null)
     echo "$HDR" | grep -q '"alg".*"ES256"' \
@@ -91,7 +91,7 @@ print(json.dumps(json.loads(base64.urlsafe_b64decode(pad))))
     PAY=$(echo "$ACCESS_TOKEN" | cut -d. -f2 | python3 -c "
 import sys, base64, json
 raw = sys.stdin.read().strip()
-pad = raw + '=' * (4 - len(raw) % 4)
+pad = raw + '=' * (-len(raw) % 4)
 print(json.dumps(json.loads(base64.urlsafe_b64decode(pad))))
 " 2>/dev/null)
     echo "$PAY" | grep -q '"iss".*"http://app-a:8080"' \

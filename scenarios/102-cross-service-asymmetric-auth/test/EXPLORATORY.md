@@ -63,7 +63,7 @@ App B holds only App A's public JWKS and rejects tokens signed by any other key.
 
 ## Findings
 
-- F1 (resolved): App A's `auth.m2m` module does not set CORS headers on
+- F1 (known limitation): App A's `auth.m2m` module does not set CORS headers on
   `/oauth/token`. The browser "Fetch Token" button therefore fails with CORS
   in the verification console when accessed cross-origin. Workaround: paste
   the token manually, or obtain it server-side. Playwright tests use the API

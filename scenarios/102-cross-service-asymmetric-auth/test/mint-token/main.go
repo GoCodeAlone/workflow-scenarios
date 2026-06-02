@@ -134,7 +134,7 @@ func jsonB64URL(v any) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
-// parseDuration extends time.ParseDuration to support a leading '-' for
+// parseDuration wraps time.ParseDuration (which already accepts a leading '-') for
 // negative offsets (e.g. "-1m" → token expired 1 minute ago).
 func parseDuration(s string) (time.Duration, error) {
 	neg := false

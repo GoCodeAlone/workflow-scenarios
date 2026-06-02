@@ -28,7 +28,7 @@ App A (auth.m2m, port 18102)          App B (sso.oidc, port 18112)
 # Build images and bring up the stack
 bash seed/seed.sh
 
-# Curl smoke (8 assertions)
+# Curl smoke (12 assertions)
 bash test/run.sh
 
 # Playwright e2e
@@ -50,7 +50,7 @@ cd ../../e2e && npx playwright test scenario-102
 | `config/app-b.yaml` | Engine config: `sso.oidc` jwksUri verifier + `/verify` pipeline |
 | `docker-compose.yml` | Two-service stack |
 | `seed/seed.sh` | Cross-compile + image bake + stack up |
-| `test/run.sh` | Curl smoke (8 assertions: accept + 4 reject cases) |
-| `test/mint-token/` | Stdlib-only ES256 JWT minter for deterministic negative cases |
+| `test/run.sh` | Curl smoke (12 assertions: 2 healthz + token issue + 3 claim checks + accept + wrong-key/aud/issuer/expired/garbage reject) |
+| `test/mint-token/` | Stdlib-only ES256 JWT minter for the negative cases (claims are configurable; ECDSA signatures are randomized per RFC 6979/nonce, but the reject *outcome* is deterministic) |
 | `ui/index.html` | Browser verification console served by App B |
 | `../../e2e/tests/scenario-102-cross-service-asymmetric.spec.ts` | Playwright spec |

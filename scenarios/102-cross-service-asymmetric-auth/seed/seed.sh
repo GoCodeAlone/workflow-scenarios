@@ -4,7 +4,7 @@
 # Image-bake pattern (mirrors scenario 101):
 #   1. Cross-compile the workflow server + workflow-plugin-sso (linux/amd64).
 #   2. Cross-compile the mint-token test helper (linux/amd64) into .build/mint-token.
-#   3. Bake two thin distroless images:
+#   3. Bake two thin Alpine images:
 #        auth-xservice-a:scenario-102  (server + sso plugin, no sso env needed)
 #        auth-xservice-b:scenario-102  (server + sso plugin)
 #      Both share the same binaries; the -config flag selects app-a.yaml / app-b.yaml.
@@ -62,7 +62,8 @@ echo "Building mint-token (native, for run.sh)..."
 # docker-compose can specify different -config flags independently.
 cat > "$BUILD_DIR/Dockerfile" <<'EOF'
 # Alpine provides busybox wget (required by the docker-compose healthcheck:
-# "wget -q -O- http://127.0.0.1:8080/healthz"). distroless has no shell/wget.
+# "wget -q -O- http://127.0.0.1:8080/healthz"). Alpine ships busybox wget;
+# plain distroless does not, which is why we base on alpine:3.20.
 FROM alpine:3.20
 RUN addgroup -S nonroot && adduser -S nonroot -G nonroot
 # WORKDIR /home/nonroot so ./data/plugins resolves correctly (nonroot home).

@@ -2,7 +2,7 @@
 # Scenario 102 — Cross-Service Asymmetric Auth docker-compose
 #
 # Two engine processes (App A issuer + App B verifier) using
-# one baked image (auth-xservice:scenario-102, built by seed.sh).
+# two Alpine images (auth-xservice-a / auth-xservice-b, built by seed.sh).
 # App B depends_on App A healthy (N2: issuer URL resolution).
 #
 # Port convention: 180<scenario-id> → 18102 (A), 18112 (B).

@@ -140,7 +140,7 @@
       1. Fetch a token from App A
       <span id="fetch-status" class="status-badge badge-idle">idle</span>
     </div>
-    <p class="help-text" style="margin-bottom:0.75rem">Fetches an ES256 access_token from App A's /oauth/token (client_credentials grant).</p>
+    <p class="help-text" style="margin-bottom:0.75rem">Fetches an ES256 access_token from App A's /oauth/token (client_credentials grant). <strong>Note:</strong> this is a cross-origin (App B → App A) request; a browser may block it via CORS (App A sets no CORS headers in this demo). If it fails, paste a token obtained from <code>curl app-a:18102/oauth/token</code> below — verification works the same.</p>
     <button id="btn-fetch">Fetch Token from App A</button>
 
     <!-- Step 2: Verify -->
@@ -271,7 +271,8 @@
   // Decode a JWT part (0=header, 1=payload) for display
   function decodeJWTPart(jwt, part) {
     try {
-      const b64 = jwt.split('.')[part].replace(/-/g,'+').replace(/_/g,'/');
+      let b64 = jwt.split('.')[part].replace(/-/g,'+').replace(/_/g,'/');
+      b64 += '='.repeat((4 - b64.length % 4) % 4); // pad to a multiple of 4 (atob needs padding)
       return JSON.stringify(JSON.parse(atob(b64)), null, 2);
     } catch { return '(parse error)'; }
   }
