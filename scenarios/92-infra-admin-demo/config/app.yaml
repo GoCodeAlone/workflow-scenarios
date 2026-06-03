@@ -23,12 +23,18 @@
 # Auth/RBAC:
 #   - step.auth_validate (Bearer JWT) on all mutation pipelines
 #   - step.conditional routing on JWT sub claim:
-#       operator → plan / apply / commit / reconcile allowed
+#       operator → plan / apply (commit-back runs INSIDE /apply) / reconcile allowed
 #       viewer   → 403 on mutations
 #       unauthenticated → 401 via auth_validate
+#   Public mutation endpoints: POST /api/infra/plan, /api/infra/apply,
+#   /api/infra/apply-remote, /api/infra/reconcile, /api/infra/sandbox-demo,
+#   POST /api/infra/secrets. There is NO standalone /api/infra/commit route —
+#   commit-back is step.iac_commit_back within the /apply pipeline.
 #
 # IMPORTANT git paths (mounted in docker-compose):
-#   bare repo:    /gitops/bare.git  (read-only; used as remote)
+#   bare repo:    /gitops/bare.git  (read-WRITE; the "origin" remote — commit-back's
+#                 `git push origin <branch>` writes objects + refs into it, so it
+#                 cannot be read-only)
 #   working clone: /gitops/workclone (writable; iac_commit_back and iac_provider_reconcile push here)
 #
 # NOTE: step.iac_secret_reachability uses "scenario-secrets" (a secrets.keychain module).

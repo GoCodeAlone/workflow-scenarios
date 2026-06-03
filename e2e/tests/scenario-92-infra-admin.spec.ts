@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { createHmac } from 'crypto';
 
-// Scenario 92 — Infra Admin Phase 2/3 Demo (workflow v0.72.0 / workflow-plugin-infra v1.2.0)
+// Scenario 92 — Infra Admin Phase 2/3 Demo (workflow v0.74.0 / workflow-plugin-infra v1.2.0)
 //
 // Phase 1 (migration): step.iac_provider_* pipeline architecture.
 // Phase 2/3 (this PR): DYNAMIC specs (specs_from body); step.iac_secret_reachability

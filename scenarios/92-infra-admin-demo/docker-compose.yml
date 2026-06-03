@@ -62,8 +62,10 @@ services:
   #   REAL production deployments MUST use --token / --tls-ca.
   # The sandbox-runner is reachable by the app container at host:port "sandbox-runner:50051"
   # (docker-compose internal DNS; NOT exposed to the host).
-  # Docker-in-Docker: the agent uses Docker to run sandbox commands; it needs the
-  # Docker socket from the host. The demo image runs docker:dind (with privileged).
+  # Docker engine: the agent launches sandbox containers by talking to a SEPARATE
+  # docker-dind service over TCP (DOCKER_HOST=tcp://docker-dind:2375). It does NOT
+  # mount the host Docker socket and is NOT itself a dind image — the privileged
+  # docker:dind daemon runs in the dedicated docker-dind service below.
   sandbox-runner:
     image: workflow-sandbox-runner:scenario-92
     container_name: workflow-scenario-92-sandbox-runner

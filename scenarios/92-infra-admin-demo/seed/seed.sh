@@ -239,8 +239,9 @@ echo "  remote:      /gitops/bare.git (container path, set in workclone)"
 # (writable by nonroot in the debian-slim image after mkdir/chown in Dockerfile).
 #
 # git is needed: step.iac_commit_back runs git checkout -b / git add / git commit / git push.
-# git config --global is set at container startup via ENTRYPOINT env so the
-# git identity is available even though the step doesn't set --global user.
+# The git identity (user.name/user.email) is written to a build-time global git
+# config file at /home/nonroot/.config/git/config in the Dockerfile below — the
+# step does not set --global user, so this file supplies it.
 
 cat > "$BUILD_DIR/Dockerfile" <<'EOF'
 FROM debian:12-slim
@@ -262,11 +263,14 @@ RUN mkdir -p /home/nonroot && chown 65532:65532 /home/nonroot
 
 # Global git config for the nonroot user:
 #   - User identity for git commit (needed by iac_commit_back).
-#   - safe.directory = * so docker-mounted volumes owned by a different UID
-#     don't trigger the "dubious ownership" git security error. This is safe
-#     in the hermetic demo container (no external git operations run here).
+#   - safe.directory entries scoped to ONLY the two docker-mounted repos that
+#     commit-back / reconcile touch (workclone + bare repo). These volumes are
+#     owned by a different host UID than the container's nonroot (65532), so git
+#     would otherwise reject them with "detected dubious ownership". We do NOT
+#     use safe.directory = * — narrowing avoids disabling the protection for every
+#     path in the container.
 RUN mkdir -p /home/nonroot/.config/git && \
-    printf '[user]\n\tname = Scenario 92 Demo\n\temail = scenario92@demo.local\n[safe]\n\tdirectory = *\n' \
+    printf '[user]\n\tname = Scenario 92 Demo\n\temail = scenario92@demo.local\n[safe]\n\tdirectory = /gitops/workclone\n\tdirectory = /gitops/bare.git\n' \
       > /home/nonroot/.config/git/config && \
     chown -R 65532:65532 /home/nonroot/.config
 
