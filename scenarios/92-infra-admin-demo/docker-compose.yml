@@ -1,17 +1,29 @@
 # ============================================================
-# Scenario 92 — Infra Admin MIGRATION Demo docker-compose
+# Scenario 92 — Infra Admin Phase 2/3 Demo docker-compose
+# workflow v0.74.0 (ResourceDriver wired) / workflow-plugin-infra v1.2.0
 #
-# Brings up the scenario-92 workflow server with external gRPC plugins
-# (stub-iac-provider + workflow-plugin-admin + workflow-plugin-infra) baked into the image.
+# Services:
+#   app            — workflow engine (scenario-92 server) on port 18092
+#   sandbox-runner — workflow-sandbox-runner agent on port 50051 (internal network only)
 #
-# The stub-iac-provider is loaded as an EXTERNAL plugin. The WiringHook
-# registers it as an IaCProvider service under name "stub-iac-provider".
-# The step.iac_provider_* steps resolve it via `provider: stub-iac-provider`.
+# Volumes mounted from the host build directory (.build/):
+#   gitops/bare.git   — bare git repo (the "origin" remote; mounted READ-WRITE so
+#                       step.iac_commit_back's `git push origin <branch>` can write
+#                       objects + refs into it).
+#   gitops/workclone  — working clone of bare.git (writable; iac_commit_back stages,
+#                       commits, and pushes from here).
+#
+# The app container mounts /gitops/workclone (writable) so step.iac_commit_back and
+# step.iac_provider_reconcile can write resources.yaml / reconcile-snapshot.yaml and
+# `git push` a branch. The bare repo MUST be read-write — a `git push` to it creates
+# temporary object directories + refs; a read-only mount fails with
+# "remote unpack failed: unable to create temporary object directory".
 #
 # Port 18092: no collision with other scenarios (convention: 180<scenario-id>).
 # ============================================================
 
 services:
+  # ── workflow engine ──────────────────────────────────────────────────────────
   app:
     image: workflow-admin:scenario-92
     container_name: workflow-scenario-92-app
@@ -19,11 +31,21 @@ services:
       - "127.0.0.1:18092:8080"
     volumes:
       - ./config:/etc/scenario-92:ro
+      # bare repo mounted READ-WRITE — `git push origin <branch>` writes objects +
+      # refs into it. A :ro mount fails with "remote unpack failed: unable to
+      # create temporary object directory".
+      - ./.build/gitrepo.git:/gitops/bare.git:rw
+      # working clone mounted writable — iac_commit_back writes resources.yaml here
+      # and runs git push → origin → /gitops/bare.git
+      - ./.build/workclone:/gitops/workclone:rw
     command:
       - "-config"
       - "/etc/scenario-92/app.yaml"
       - "-data-dir"
       - "/home/nonroot"
+    depends_on:
+      sandbox-runner:
+        condition: service_healthy
     healthcheck:
       test:
         - CMD
@@ -33,3 +55,59 @@ services:
       interval: 3s
       timeout: 2s
       retries: 30
+
+  # ── sandbox-runner agent ─────────────────────────────────────────────────────
+  # Runs the workflow-sandbox-runner binary (built from workflow v0.74.0 source).
+  # --allow-unauthenticated: hermetic demo; no mTLS certs generated for the demo.
+  #   REAL production deployments MUST use --token / --tls-ca.
+  # The sandbox-runner is reachable by the app container at host:port "sandbox-runner:50051"
+  # (docker-compose internal DNS; NOT exposed to the host).
+  # Docker engine: the agent launches sandbox containers by talking to a SEPARATE
+  # docker-dind service over TCP (DOCKER_HOST=tcp://docker-dind:2375). It does NOT
+  # mount the host Docker socket and is NOT itself a dind image — the privileged
+  # docker:dind daemon runs in the dedicated docker-dind service below.
+  sandbox-runner:
+    image: workflow-sandbox-runner:scenario-92
+    container_name: workflow-scenario-92-sandbox-runner
+    # NOT exposed to the host — only reachable from the app container via internal network
+    expose:
+      - "50051"
+    command:
+      - "--addr=:50051"
+      - "--allow-unauthenticated"
+      - "--secrets-backend=env"
+    environment:
+      DOCKER_HOST: tcp://docker-dind:2375
+    depends_on:
+      docker-dind:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - sh
+        - -c
+        - "nc -z 127.0.0.1 50051 || exit 1"
+      interval: 3s
+      timeout: 2s
+      retries: 20
+
+  # ── Docker-in-Docker ────────────────────────────────────────────────────────
+  # Required by the sandbox-runner to launch Alpine containers for step.sandbox_exec.
+  # --tls=false is safe for the hermetic docker-compose demo network (internal only).
+  docker-dind:
+    image: docker:27-dind
+    container_name: workflow-scenario-92-dind
+    privileged: true
+    command: ["dockerd", "--host=tcp://0.0.0.0:2375", "--tls=false"]
+    expose:
+      - "2375"
+    healthcheck:
+      test:
+        - CMD
+        - sh
+        - -c
+        - "DOCKER_HOST=tcp://127.0.0.1:2375 docker info >/dev/null 2>&1 || exit 1"
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 15s

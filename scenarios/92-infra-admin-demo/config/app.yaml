@@ -1,30 +1,45 @@
 # ============================================================
-# Scenario 92 — Infra Admin MIGRATION Demo (v2)
+# Scenario 92 — Infra Admin Phase 2/3 Demo (workflow v0.74.0 / workflow-plugin-infra v1.2.0)
 #
-# Demonstrates the migration away from the deleted engine module
-# to the new step-based IaC pipeline architecture (workflow v0.70.0).
+# Demonstrates the Phase-2/3 features:
+#   - DYNAMIC specs: plan/apply read specs from the POST body (specs_from), not static config
+#   - step.iac_secret_reachability: pre-flight gate (409 when remote exec_env + host-local secrets)
+#   - step.iac_commit_back: real git branch-push on the working clone mounted at /gitops/workclone
+#   - step.iac_provider_reconcile: drift → import → approximate YAML → draft branch
+#   - sandbox.remote_runners: named remote runner "remote" pointing at sandbox-runner agent
+#   - step.sandbox_exec with exec_env: remote: proof the agent container executes commands
+#   - /api/infra/exec-envs: static exec-env list (local-docker, remote)
 #
 # Architecture:
-#   - auth.jwt: JWT authentication (Bearer scheme)
-#   - http.server + http.router: HTTP layer
+#   - auth.jwt: JWT authentication (Bearer scheme; iss=scenario-92; sub=operator|viewer)
+#   - http.server + http.router: HTTP layer on :8080
 #   - health.checker: /healthz
-#   - admin.dashboard (external workflow-plugin-admin): admin shell
+#   - admin.dashboard (external workflow-plugin-admin): admin shell at /admin/
 #   - iac.state (memory): state store
-#   - HTTP pipelines using the NEW step.iac_provider_* steps from the
-#     platform plugin — these steps resolve the stub-iac-provider by its
-#     plugin name (the WiringHook registers it as service "stub-iac-provider")
+#   - infra.admin (external workflow-plugin-infra v1.2.0): SPA at /admin/infra
+#   - secrets.keychain (scenario-secrets): host-local secrets backend for reachability gate
+#   - sandbox.remote_runners (scenario-runners): named runner "remote" → sandbox-runner:50051
 #
 # Auth/RBAC:
-#   - step.auth_validate (Bearer JWT) on every mutation pipeline
-#   - step.conditional routing on JWT sub claim for RBAC:
-#     operator → allowed for the mutation pipelines wired here (plan/apply/commit)
-#     viewer   → 403 on mutations; allowed for read-only views (catalog/list/drift)
-#     unauthenticated → 401 via auth_validate
-#   (destroy is supported by step.iac_provider_destroy but no /api/infra/destroy
-#    route is wired in this demo — out of the v2 assertion scope.)
+#   - step.auth_validate (Bearer JWT) on all mutation pipelines
+#   - step.conditional routing on JWT sub claim:
+#       operator → plan / apply (commit-back runs INSIDE /apply) / reconcile allowed
+#       viewer   → 403 on mutations
+#       unauthenticated → 401 via auth_validate
+#   Public mutation endpoints: POST /api/infra/plan, /api/infra/apply,
+#   /api/infra/apply-remote, /api/infra/reconcile, /api/infra/sandbox-demo,
+#   POST /api/infra/secrets. There is NO standalone /api/infra/commit route —
+#   commit-back is step.iac_commit_back within the /apply pipeline.
 #
-# NOTE: "stub-iac-provider" is the provider service name because the
-#       WiringHook registers the external plugin under its plugin.json "name".
+# IMPORTANT git paths (mounted in docker-compose):
+#   bare repo:    /gitops/bare.git  (read-WRITE; the "origin" remote — commit-back's
+#                 `git push origin <branch>` writes objects + refs into it, so it
+#                 cannot be read-only)
+#   working clone: /gitops/workclone (writable; iac_commit_back and iac_provider_reconcile push here)
+#
+# NOTE: step.iac_secret_reachability uses "scenario-secrets" (a secrets.keychain module).
+# On the local exec_env (local-docker) host-local secrets ARE reachable.
+# With exec_env: remote (the named sandbox agent) host-local secrets are UNREACHABLE → 409.
 # ============================================================
 
 modules:
@@ -53,7 +68,7 @@ modules:
     type: admin.dashboard
     config:
       route_prefix: /admin
-      app_name: "Scenario 92 — Infra Admin Migration Demo"
+      app_name: "Scenario 92 — Infra Admin Phase 2/3 Demo"
       auth_module: auth
 
   - name: iac-state
@@ -71,6 +86,29 @@ modules:
       api_base_path: "/api/infra"
       prefix: "/admin/infra"
 
+  # secrets.keychain: host-local secrets backend used by step.iac_secret_reachability
+  # to gate applies when specs reference secret:// values that cannot be read from a
+  # remote exec_env (ADR 0017 fail-safe: host-local backend → unreachable from remote).
+  # In the distroless container there is no real keychain daemon — that is intentional:
+  # the reachability check uses a type-switch (not an actual keychain Get) to decide
+  # whether *KeychainProvider is reachable from the configured exec_env.
+  - name: scenario-secrets
+    type: secrets.keychain
+    config:
+      service: "scenario-92-demo"
+
+  # sandbox.remote_runners: registers named remote sandbox agent "remote".
+  # The agent is the workflow-sandbox-runner running in the sandbox-runner container
+  # (docker-compose service). allow_insecure: true because the hermetic demo does
+  # not use mTLS certificates (documented dev-mode path per ADR 0019).
+  - name: scenario-runners
+    type: sandbox.remote_runners
+    config:
+      remote_runners:
+        - name: remote
+          address: "sandbox-runner:50051"
+          allow_insecure: true
+
 workflows:
   http:
     server: http
@@ -78,11 +116,6 @@ workflows:
 
 pipelines:
   # ── admin contributions ────────────────────────────────────────────────────
-  #
-  # This pipeline registers the infra contribution on every call (idempotent
-  # via contributionRegistry.register which deduplicates by id), then lists all
-  # registered contributions.  The infra.admin module (provided by the external
-  # workflow-plugin-infra plugin) defines the canonical contribution descriptor.
 
   list-admin-contributions:
     trigger:
@@ -91,10 +124,6 @@ pipelines:
         path: /api/admin/contributions
         method: GET
     steps:
-      # Inject the infra contribution descriptor into pc.Current so that the
-      # STRICT_PROTO step.admin_register_contribution reads it via TypedInput
-      # (RegisterContributionInput.contribution ← pc.Current["contribution"]).
-      # Using step.set avoids putting unknown keys in the AdminStepConfig config.
       - name: set-infra-contribution
         type: step.set
         config:
@@ -121,10 +150,7 @@ pipelines:
           body:
             contributions: { _from: "steps.list.contributions" }
 
-  # ── catalog (operator-authed view; step.auth_validate gates it) ────────────
-  # NOTE: the SPA's dropdowns use the SEPARATE unauthenticated
-  #       GET /api/infra/providers/{provider}/catalog (infra-spa-catalog); this
-  #       /api/infra/catalog pipeline is the authed operator view.
+  # ── catalog (operator-authed view) ────────────────────────────────────────
 
   infra-catalog:
     trigger:
@@ -158,11 +184,6 @@ pipelines:
             source: { _from: "steps.catalog.source" }
 
   # ── list resources (read-only, no auth required for demo SPA) ─────────────
-  #
-  # Auth is intentionally omitted: the infra admin SPA calls this endpoint
-  # without an Authorization header (it runs inside the admin panel which handles
-  # auth separately).  Omitting auth here allows the SPA's Promise.all([listResources,
-  # getCatalog]) to succeed so that the Type and Region dropdowns are populated.
 
   infra-list:
     trigger:
@@ -184,15 +205,16 @@ pipelines:
             resources: { _from: "steps.list.resources" }
             count: { _from: "steps.list.count" }
 
-  # ── plan (operator only) ───────────────────────────────────────────────────
+  # ── plan (operator only, DYNAMIC specs from POST body) ─────────────────────
   #
-  # plan-exec passes a 1-spec desired set [{name: demo-db, type: stub.database}];
-  # the stub provider Status() returns the current state; step.iac_provider_plan
-  # computes desired_hash = DesiredStateHash(cfg, specs, current, env) over that
-  # spec array. The apply pipeline submits the SAME spec + hash, so the two-phase
-  # guard matches (hash recomputed at apply time from the same inputs).
+  # Phase-2 change: specs are read from the POST body (specs_from), NOT baked in
+  # static config. The SPA (api.ts) posts { provider, specs } to /plan; the
+  # operator edits specs before submit. The stub provider treats every spec as
+  # a "create" action.
   #
-  # Use POST so auth_validate can read Authorization header from the request.
+  # Body shape expected: { "specs": [ { "name": "...", "type": "...", "config": {...} } ] }
+  # The desired_hash returned reflects the operator-supplied specs — it changes
+  # when the operator changes specs (demonstrating the dynamic two-phase guard).
 
   infra-plan:
     trigger:
@@ -201,15 +223,16 @@ pipelines:
         path: /api/infra/plan
         method: POST
     steps:
-      - name: parse-auth
+      - name: parse-request
         type: step.request_parse
         config:
           parse_headers: [Authorization]
+          parse_body: true
       - name: authenticate
         type: step.auth_validate
         config:
           auth_module: auth
-          token_source: steps.parse-auth.headers.Authorization
+          token_source: steps.parse-request.headers.Authorization
           subject_field: subject
       - name: rbac-check
         type: step.conditional
@@ -222,12 +245,10 @@ pipelines:
         type: step.iac_provider_plan
         config:
           provider: stub-iac-provider
-          specs:
-            - name: demo-db
-              type: stub.database
-              config:
-                engine: postgres
-                version: "15"
+          # specs_from resolves the operator-supplied spec list from the POST body.
+          # The operator MUST include at least one spec; the step rejects empty specs
+          # to prevent the destroy-everything footgun.
+          specs_from: steps.parse-request.body.specs
       - name: respond-plan
         type: step.json_response
         config:
@@ -243,18 +264,295 @@ pipelines:
           body:
             error: "forbidden: operator role required for plan"
 
-  # ── apply (operator only, two-phase hash guard) ────────────────────────────
+  # ── apply (operator only, DYNAMIC specs + hash + reachability pre-flight) ──
   #
-  # The apply step reads desired_hash from config (static). Since the stub
-  # provider always returns Status()=[], the recomputed hash always equals
-  # the precomputed hash of the same specs (sha256 of sorted resolved specs).
-  # This demonstrates the two-phase TOCTOU guard passing end-to-end.
+  # Phase-2 change:
+  #   1. step.iac_secret_reachability: pre-flight — checks whether the
+  #      secret:// refs in the posted specs are reachable from the LOCAL exec_env
+  #      (exec_env: "" = local-docker path). For host-local secrets.keychain +
+  #      local exec_env → reachable → proceed.
+  #   2. step.iac_provider_apply: specs_from + desired_hash_from both read
+  #      from the POST body (not static config). The two-phase hash guard
+  #      recomputes the hash at apply time against live state; mismatch → error.
+  #   3. step.iac_commit_back: pushes a branch to the working clone mounted at
+  #      /gitops/workclone. The working clone's "origin" remote points to the
+  #      bare repo at /gitops/bare.git. secret:// refs survive verbatim in the
+  #      committed resources.yaml (specgen.SpecToYAML does NOT resolve them).
+  #
+  # Body shape expected:
+  #   {
+  #     "specs": [ { "name": "...", "type": "...", "config": { "api_key": "secret://scenario/api_key" } } ],
+  #     "desired_hash": "<64-char hex from /plan response>"
+  #   }
+  #
+  # For the 409 pre-flight demo (remote exec_env → unreachable), use POST /api/infra/apply-remote.
 
   infra-apply:
+    timeout: 120s
     trigger:
       type: http
       config:
         path: /api/infra/apply
+        method: POST
+    steps:
+      - name: parse-request
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+          parse_body: true
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse-request.headers.Authorization
+          subject_field: subject
+      - name: rbac-check
+        type: step.conditional
+        config:
+          field: 'steps.authenticate.subject'
+          routes:
+            operator: reachability-check
+          default: deny-apply
+      # Pre-flight: verify secret:// refs in specs are reachable from LOCAL exec_env.
+      # exec_env: "" = local-docker path → host-local secrets.keychain IS reachable.
+      - name: reachability-check
+        type: step.iac_secret_reachability
+        config:
+          provider: scenario-secrets
+          specs_from: steps.parse-request.body.specs
+          exec_env: ""
+      - name: check-reachability
+        type: step.conditional
+        config:
+          field: 'steps.reachability-check.all_reachable'
+          routes:
+            "true": apply-exec
+          default: deny-reachability
+      - name: deny-reachability
+        type: step.json_response
+        config:
+          status: 409
+          body:
+            error: "secret references in specs are not reachable from the exec_env"
+            secrets: { _from: "steps.reachability-check.secrets" }
+      - name: apply-exec
+        type: step.iac_provider_apply
+        config:
+          provider: stub-iac-provider
+          specs_from: steps.parse-request.body.specs
+          desired_hash_from: steps.parse-request.body.desired_hash
+      # Commit the applied specs back to the working clone (branch-push).
+      # repo_dir is the working clone mounted from the host at /gitops/workclone.
+      # specs_from mirrors the apply step's specs so the same operator-edited
+      # specs (including any secret:// refs) are serialised to resources.yaml.
+      # The secret:// refs are written VERBATIM (specgen.SpecToYAML does not resolve
+      # them — this is the Phase-2 assertion: refs survive round-trip).
+      - name: commit-back
+        type: step.iac_commit_back
+        config:
+          specs_from: steps.parse-request.body.specs
+          apply_result_from: steps.apply-exec.apply_result
+          branch: "gitops/infra-apply-demo"
+          message: "feat(infra): apply stub-iac-provider plan (scenario-92 demo)"
+          target: branch-push
+          repo_dir: /gitops/workclone
+      - name: respond-apply
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            apply_result: { _from: "steps.apply-exec.apply_result" }
+            desired_hash: { _from: "steps.apply-exec.desired_hash" }
+            provider: { _from: "steps.apply-exec.provider" }
+            action_count: { _from: "steps.apply-exec.action_count" }
+            committed: { _from: "steps.commit-back.committed" }
+            ref: { _from: "steps.commit-back.ref" }
+            state_diverged: { _from: "steps.commit-back.state_diverged" }
+      - name: deny-apply
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            error: "forbidden: operator role required for apply"
+
+  # ── apply-remote: 409 demo (remote exec_env → host-local secrets unreachable) ─
+  #
+  # Phase-2 assertion (b): demonstrates the reachability pre-flight returning 409.
+  # This dedicated endpoint hard-codes exec_env: remote so the reachability check
+  # always fails for specs containing secret:// refs (host-local secrets.keychain
+  # backend is unreachable from a remote exec_env per ADR 0017 fail-safe).
+  #
+  # In production the plan/apply route would read exec_env from the request body;
+  # for the hermetic demo a separate route with static exec_env: remote is the
+  # correct approach (step.iac_secret_reachability exec_env is static in config).
+
+  infra-apply-remote:
+    timeout: 30s
+    trigger:
+      type: http
+      config:
+        path: /api/infra/apply-remote
+        method: POST
+    steps:
+      - name: parse-request
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+          parse_body: true
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse-request.headers.Authorization
+          subject_field: subject
+      - name: rbac-check
+        type: step.conditional
+        config:
+          field: 'steps.authenticate.subject'
+          routes:
+            operator: reachability-check-remote
+          default: deny-apply-remote
+      # Pre-flight with exec_env: remote → host-local secrets.keychain UNREACHABLE → 409.
+      - name: reachability-check-remote
+        type: step.iac_secret_reachability
+        config:
+          provider: scenario-secrets
+          specs_from: steps.parse-request.body.specs
+          exec_env: remote
+      - name: check-reachability-remote
+        type: step.conditional
+        config:
+          field: 'steps.reachability-check-remote.all_reachable'
+          routes:
+            "true": apply-exec-remote
+          default: deny-reachability-remote
+      - name: deny-reachability-remote
+        type: step.json_response
+        config:
+          status: 409
+          body:
+            error: "secret references in specs are not reachable from remote exec_env (host-local backend unreachable from remote runner — ADR 0017 fail-safe)"
+            secrets: { _from: "steps.reachability-check-remote.secrets" }
+      - name: apply-exec-remote
+        type: step.iac_provider_apply
+        config:
+          provider: stub-iac-provider
+          specs_from: steps.parse-request.body.specs
+          desired_hash_from: steps.parse-request.body.desired_hash
+      - name: respond-apply-remote
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            apply_result: { _from: "steps.apply-exec-remote.apply_result" }
+            desired_hash: { _from: "steps.apply-exec-remote.desired_hash" }
+      - name: deny-apply-remote
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            error: "forbidden: operator role required for apply-remote"
+
+  # ── reconcile (operator only) ──────────────────────────────────────────────
+  #
+  # Phase-3: drift → import → approximate YAML → draft branch-push.
+  # The stub DetectDrift returns Drifted:false for all refs → count=0 → no commit.
+  # To get a non-zero count in the hermetic stack the test uses a spec whose
+  # name is not in the current Status() list (Status returns []) — all specs
+  # are "drifted" from the perspective of the reconcile step since they don't
+  # exist in the live state. But DetectDrift itself returns Drifted:false for
+  # every ref, so count will always be 0 (no drift). Response: draft=false, count=0.
+  # The test asserts the reconcileWarning field is present (even when count=0
+  # it is returned as empty string — the assertion checks the response shape).
+  #
+  # Body shape: {}  (no parameters needed for the hermetic demo)
+
+  infra-reconcile:
+    timeout: 120s
+    trigger:
+      type: http
+      config:
+        path: /api/infra/reconcile
+        method: POST
+    steps:
+      - name: parse-request
+        type: step.request_parse
+        config:
+          parse_headers: [Authorization]
+          parse_body: true
+      - name: authenticate
+        type: step.auth_validate
+        config:
+          auth_module: auth
+          token_source: steps.parse-request.headers.Authorization
+          subject_field: subject
+      - name: rbac-check
+        type: step.conditional
+        config:
+          field: 'steps.authenticate.subject'
+          routes:
+            operator: reconcile-exec
+          default: deny-reconcile
+      - name: reconcile-exec
+        type: step.iac_provider_reconcile
+        config:
+          provider: stub-iac-provider
+          branch: "infra/reconcile-demo"
+          target: branch-push
+          repo_dir: /gitops/workclone
+      - name: respond-reconcile
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            draft: { _from: "steps.reconcile-exec.draft" }
+            ref: { _from: "steps.reconcile-exec.ref" }
+            warning: { _from: "steps.reconcile-exec.warning" }
+            count: { _from: "steps.reconcile-exec.count" }
+      - name: deny-reconcile
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            error: "forbidden: operator role required for reconcile"
+
+  # ── exec-envs (static list of configured exec environments) ─────────────────
+  #
+  # Returns the configured execution environments for the SPA's exec_env selector.
+  # "local-docker" is always available (local Docker daemon on the engine host).
+  # "remote" is the named sandbox-runner agent registered in scenario-runners module.
+  # "ephemeral" (Argo) is NOT configured in the hermetic demo — omitted.
+
+  infra-exec-envs:
+    trigger:
+      type: http
+      config:
+        path: /api/infra/exec-envs
+        method: GET
+    steps:
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            exec_envs:
+              - local-docker
+              - remote
+
+  # ── sandbox-exec demo route (proves the remote agent executes commands) ─────
+  #
+  # POST /api/infra/sandbox-demo runs a command on the "remote" sandbox agent.
+  # The command writes a MARKER file to stdout (echo) which the test captures.
+  # security_profile: permissive → clamped to standard by the agent (ADR 0019).
+  # The agent logs: "sandbox-runner: clamped requested profile requested=permissive effective=standard"
+  # The test asserts: marker in stdout AND the agent's clamp log line via docker logs.
+
+  infra-sandbox-demo:
+    timeout: 60s
+    trigger:
+      type: http
+      config:
+        path: /api/infra/sandbox-demo
         method: POST
     steps:
       - name: parse-auth
@@ -272,39 +570,33 @@ pipelines:
         config:
           field: 'steps.authenticate.subject'
           routes:
-            operator: apply-exec
-          default: deny-apply
-      - name: apply-exec
-        type: step.iac_provider_apply
+            operator: sandbox-exec
+          default: deny-sandbox
+      - name: sandbox-exec
+        type: step.sandbox_exec
         config:
-          provider: stub-iac-provider
-          # desired_hash = sha256(json.Marshal(sorted resolved specs)) with
-          # Status()=[] → current=[] → specs unchanged (no $VAR refs).
-          # JSON: [{"name":"demo-db","type":"stub.database","config":{"engine":"postgres","version":"15"}}]
-          # sha256 = 54a7b4f71c8e4d43536f9f1cf4009115b915ea8351f821b1f95f89bc7e03985c
-          # Verified with standalone Go program against v0.70.0 algorithm.
-          desired_hash: "54a7b4f71c8e4d43536f9f1cf4009115b915ea8351f821b1f95f89bc7e03985c"
-          specs:
-            - name: demo-db
-              type: stub.database
-              config:
-                engine: postgres
-                version: "15"
-      - name: respond-apply
+          exec_env: remote
+          image: "alpine:3.19"
+          security_profile: permissive
+          command:
+            - sh
+            - -c
+            - "echo SCENARIO92_REMOTE_AGENT_MARKER && echo 'remote agent executed' >&2"
+          fail_on_error: true
+      - name: respond
         type: step.json_response
         config:
           status: 200
           body:
-            apply_result: { _from: "steps.apply-exec.apply_result" }
-            desired_hash: { _from: "steps.apply-exec.desired_hash" }
-            provider: { _from: "steps.apply-exec.provider" }
-            action_count: { _from: "steps.apply-exec.action_count" }
-      - name: deny-apply
+            stdout: { _from: "steps.sandbox-exec.stdout" }
+            stderr: { _from: "steps.sandbox-exec.stderr" }
+            exit_code: { _from: "steps.sandbox-exec.exit_code" }
+      - name: deny-sandbox
         type: step.json_response
         config:
           status: 403
           body:
-            error: "forbidden: operator role required for apply"
+            error: "forbidden: operator role required for sandbox demo"
 
   # ── drift check (read-only) ────────────────────────────────────────────────
 
@@ -340,54 +632,7 @@ pipelines:
             drifts: { _from: "steps.drift.drifts" }
             count: { _from: "steps.drift.count" }
 
-  # ── commit (gitops demo) ───────────────────────────────────────────────────
-  #
-  # Simulates committing the current desired state to a gitops repo.
-  # Returns a static fixture response — the real git operations happen in
-  # the bare-repo fixture initialized by seed.sh (verified shell-side in run.sh).
-
-  infra-commit:
-    trigger:
-      type: http
-      config:
-        path: /api/infra/commit
-        method: POST
-    steps:
-      - name: parse-auth
-        type: step.request_parse
-        config:
-          parse_headers: [Authorization]
-      - name: authenticate
-        type: step.auth_validate
-        config:
-          auth_module: auth
-          token_source: steps.parse-auth.headers.Authorization
-          subject_field: subject
-      - name: rbac-check
-        type: step.conditional
-        config:
-          field: 'steps.authenticate.subject'
-          routes:
-            operator: respond-commit
-          default: deny-commit
-      - name: respond-commit
-        type: step.json_response
-        config:
-          status: 200
-          body:
-            committed: true
-            branch: "gitops/infra-demo"
-            message: "feat(infra): apply stub-iac-provider plan (demo)"
-            provider: "stub-iac-provider"
-      - name: deny-commit
-        type: step.json_response
-        config:
-          status: 403
-          body:
-            error: "forbidden: operator role required for commit"
-
   # ── secrets metadata (read-only) ───────────────────────────────────────────
-  # Returns metadata only; values are never echoed.
 
   infra-secrets-list:
     trigger:
@@ -413,7 +658,7 @@ pipelines:
           body:
             secrets:
               - name: STUB_IAC_PROVIDER_API_KEY
-                description: "API key for stub IaC provider"
+                description: "API key for stub IaC provider (use secret://scenario/api_key)"
                 required: true
                 configured: false
               - name: STUB_IAC_PROVIDER_REGION_ACCESS
@@ -422,16 +667,7 @@ pipelines:
                 configured: false
             metadata_only: true
 
-  # ── SPA-compatible catalog endpoint: /api/infra/providers/{provider}/catalog ─
-  #
-  # The infra admin SPA (ResourceList.tsx) calls GET /api/infra/providers/{provider}/catalog
-  # to populate the region and resource-type dropdowns.  The SPA doesn't send
-  # Authorization headers; catalog is read-only metadata, so this route is
-  # intentionally unauthenticated for the demo.
-  #
-  # Note: the SPA also calls GET /api/infra/resources in the same Promise.all;
-  # the infra-list pipeline handles that route (no auth guard to allow the SPA
-  # to fetch resources for the dropdown context without auth headers).
+  # ── SPA-compatible catalog endpoint ──────────────────────────────────────
 
   infra-spa-catalog:
     trigger:
@@ -444,9 +680,6 @@ pipelines:
         type: step.iac_provider_catalog
         config:
           provider: stub-iac-provider
-      # Transform types from [{resource_type: "stub.database", ...}] → ["stub.database", ...]
-      # so the SPA receives the string[] shape it expects (types.ts: types: string[]).
-      # Use steps.catalog.types path (step output namespace) to resolve the array.
       - name: transform-types
         type: step.jq
         config:
@@ -461,6 +694,8 @@ pipelines:
             regions: { _from: "steps.catalog.regions" }
             types: { _from: "steps.transform-types.result" }
             source: { _from: "steps.catalog.source" }
+
+  # ── secrets declare (mutation, operator only) ─────────────────────────────
 
   infra-secrets-declare:
     trigger:
