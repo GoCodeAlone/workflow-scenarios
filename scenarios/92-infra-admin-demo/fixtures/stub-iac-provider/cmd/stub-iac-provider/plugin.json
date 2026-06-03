@@ -10,7 +10,8 @@
   "iacServices": [
     "workflow.plugin.external.iac.IaCProviderRequired",
     "workflow.plugin.external.iac.IaCProviderRegionLister",
-    "workflow.plugin.external.iac.IaCProviderDriftDetector"
+    "workflow.plugin.external.iac.IaCProviderDriftDetector",
+    "workflow.plugin.external.iac.ResourceDriver"
   ],
   "capabilities": {
     "configProvider": false,

@@ -1,18 +1,24 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { createHmac } from 'crypto';
 
-// Scenario 92 — Infra Admin MIGRATION Demo (v2: step-based IaC pipelines)
+// Scenario 92 — Infra Admin Phase 2/3 Demo (workflow v0.72.0 / workflow-plugin-infra v1.2.0)
 //
-// Tests the migration from the deleted infra.admin engine module to the new
-// step.iac_provider_* pipeline architecture (workflow v0.70.0).
+// Phase 1 (migration): step.iac_provider_* pipeline architecture.
+// Phase 2/3 (this PR): DYNAMIC specs (specs_from body); step.iac_secret_reachability
+//   (409 pre-flight); step.iac_commit_back (branch-push); step.iac_provider_reconcile;
+//   sandbox.remote_runners + sandbox-runner agent; step.sandbox_exec (exec_env:remote).
 //
 // The stub-iac-provider is loaded as an EXTERNAL gRPC plugin. The WiringHook
 // registers it as service "stub-iac-provider". Pipelines use:
-//   step.iac_provider_catalog  → catalog with live regions from RegionLister
-//   step.iac_provider_list     → list resources
-//   step.iac_provider_plan     → plan (returns desired_hash)
-//   step.iac_provider_apply    → apply (validates hash guard)
-//   step.iac_provider_drift    → drift detection (DriftDetector)
+//   step.iac_provider_catalog      → catalog with live regions from RegionLister
+//   step.iac_provider_list         → list resources
+//   step.iac_provider_plan         → plan (DYNAMIC specs_from body)
+//   step.iac_provider_apply        → apply (DYNAMIC specs_from + hash_from body)
+//   step.iac_secret_reachability   → 409 pre-flight (remote exec_env + host-local secrets)
+//   step.iac_commit_back           → branch-push (resources.yaml with secret:// refs)
+//   step.iac_provider_reconcile    → drift → approximate YAML → draft branch
+//   step.iac_provider_drift        → drift detection (DriftDetector)
+//   step.sandbox_exec(exec_env:remote) → remote agent execution
 //
 // SCENARIO_URL points at the running stack (default http://127.0.0.1:18092).
 
@@ -124,9 +130,11 @@ test.describe('Scenario 92: Infra Admin Migration Demo', () => {
   // ── plan ────────────────────────────────────────────────────────────────────
 
   test('@scenario-92 plan returns 64-char hex desired_hash and create action', async ({ request }) => {
+    // Phase-2: /plan requires specs in the body (specs_from reads from body.specs).
+    const specs = [{ name: 'demo-db', type: 'stub.database', config: { engine: 'postgres', version: '15' } }];
     const resp = await request.post(`${BASE_URL}/api/infra/plan`, {
       headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
-      data: {},
+      data: { specs },
     });
     expect(resp.status()).toBe(200);
     const body = await resp.json() as {
@@ -144,9 +152,10 @@ test.describe('Scenario 92: Infra Admin Migration Demo', () => {
   });
 
   test('@scenario-92 viewer cannot plan → 403', async ({ request }) => {
+    const specs = [{ name: 'demo-db', type: 'stub.database', config: { engine: 'postgres' } }];
     const resp = await request.post(`${BASE_URL}/api/infra/plan`, {
       headers: { Authorization: `Bearer ${VIEWER_TOKEN}`, 'Content-Type': 'application/json' },
-      data: {},
+      data: { specs },
     });
     expect(resp.status()).toBe(403);
   });
@@ -154,46 +163,80 @@ test.describe('Scenario 92: Infra Admin Migration Demo', () => {
   // ── apply ───────────────────────────────────────────────────────────────────
 
   test('@scenario-92 apply with operator JWT succeeds (hash guard passes)', async ({ request }) => {
+    // Phase-2: /apply requires specs + desired_hash in the body.
+    // First plan to get the dynamic desired_hash.
+    const specs = [{ name: 'demo-db', type: 'stub.database', config: { engine: 'postgres', version: '15' } }];
+    const planResp = await request.post(`${BASE_URL}/api/infra/plan`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
+      data: { specs },
+    });
+    expect(planResp.status()).toBe(200);
+    const planBody = await planResp.json() as { desired_hash?: string };
+    const desiredHash = planBody.desired_hash ?? '';
+    expect(desiredHash).toMatch(/^[0-9a-f]{64}$/);
+
     const resp = await request.post(`${BASE_URL}/api/infra/apply`, {
       headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
-      data: {},
+      data: { specs, desired_hash: desiredHash },
     });
     expect(resp.status()).toBe(200);
     const body = await resp.json() as { error?: string; desired_hash?: string };
     // No top-level error means the two-phase hash guard passed.
     expect(body.error ?? '').toBe('');
-    // desired_hash in response matches the precomputed value.
+    // desired_hash in response matches the plan value.
     expect(body.desired_hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
   test('@scenario-92 viewer cannot apply → 403 (server-side RBAC)', async ({ request }) => {
+    const specs = [{ name: 'demo-db', type: 'stub.database', config: { engine: 'postgres' } }];
     const resp = await request.post(`${BASE_URL}/api/infra/apply`, {
       headers: { Authorization: `Bearer ${VIEWER_TOKEN}`, 'Content-Type': 'application/json' },
-      data: {},
+      data: { specs, desired_hash: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef' },
     });
     // Proves RBAC is server-authoritative: viewer JWT → 403 regardless of body.
     expect(resp.status()).toBe(403);
   });
 
-  // ── commit ──────────────────────────────────────────────────────────────────
+  // ── commit (Phase 2/3: commit-back is part of apply, not a separate route) ──
+  //
+  // The /api/infra/commit route was removed in Phase 2. commit-back is now
+  // integrated into the /apply pipeline via step.iac_commit_back.
+  // The apply response carries committed=true|false + ref.
+  //
+  // On workflow v0.74.0 (ResourceDriver wired) the apply CREATEs and commit-back
+  // commits a branch. This test only asserts the committed FIELD is present (a
+  // boolean) — the run.sh headline assertion (a) does the strict committed=true +
+  // bare-repo-branch + secret://-survives check on a fresh workclone. (Playwright
+  // runs after run.sh's single apply, so the static commit-back branch already
+  // exists in the workclone here; committed may be false/state_diverged on this
+  // repeat apply — hence only the field-presence assertion.)
 
-  test('@scenario-92 commit with operator JWT returns committed=true', async ({ request }) => {
+  test('@scenario-92 Phase-2 apply response carries committed field (commit-back integrated)', async ({ request }) => {
+    const specs = [{ name: 'demo-db', type: 'stub.database', config: { engine: 'postgres', version: '15' } }];
+    const planResp = await request.post(`${BASE_URL}/api/infra/plan`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
+      data: { specs },
+    });
+    const planBody = await planResp.json() as { desired_hash?: string };
+    const desiredHash = planBody.desired_hash ?? '';
+
+    const resp = await request.post(`${BASE_URL}/api/infra/apply`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
+      data: { specs, desired_hash: desiredHash },
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { committed?: boolean };
+    // committed field must be present (true = branch pushed; false = repeat-apply state_diverged)
+    expect(typeof body.committed).toBe('boolean');
+  });
+
+  test('@scenario-92 /api/infra/commit removed (Phase 2 — commit integrated in apply)', async ({ request }) => {
+    // The /api/infra/commit route was removed in Phase 2/3. It should return 404.
     const resp = await request.post(`${BASE_URL}/api/infra/commit`, {
       headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
       data: {},
     });
-    expect(resp.status()).toBe(200);
-    const body = await resp.json() as { committed?: boolean; branch?: string };
-    expect(body.committed).toBe(true);
-    expect(body.branch).toBeTruthy();
-  });
-
-  test('@scenario-92 viewer cannot commit → 403', async ({ request }) => {
-    const resp = await request.post(`${BASE_URL}/api/infra/commit`, {
-      headers: { Authorization: `Bearer ${VIEWER_TOKEN}`, 'Content-Type': 'application/json' },
-      data: {},
-    });
-    expect(resp.status()).toBe(403);
+    expect(resp.status()).toBe(404);
   });
 
   // ── drift ───────────────────────────────────────────────────────────────────
@@ -213,23 +256,26 @@ test.describe('Scenario 92: Infra Admin Migration Demo', () => {
   // ── auth/CSRF gates ─────────────────────────────────────────────────────────
 
   test('@scenario-92 unauthenticated mutation routes → 401', async ({ request }) => {
-    for (const endpoint of ['/api/infra/plan', '/api/infra/apply', '/api/infra/commit']) {
+    // Phase 2/3: /commit removed; /reconcile added. Test plan, apply, reconcile.
+    const specs = [{ name: 'demo-db', type: 'stub.database', config: {} }];
+    for (const endpoint of ['/api/infra/plan', '/api/infra/apply', '/api/infra/reconcile']) {
       const resp = await request.post(`${BASE_URL}${endpoint}`, {
         headers: { 'Content-Type': 'application/json' },
-        data: {},
+        data: { specs },
       });
       expect(resp.status(), `${endpoint} unauthenticated`).toBe(401);
     }
   });
 
   test('@scenario-92 non-Bearer Authorization → 401 (CSRF guard)', async ({ request }) => {
+    const specs = [{ name: 'demo-db', type: 'stub.database', config: {} }];
     for (const endpoint of ['/api/infra/plan', '/api/infra/apply']) {
       const resp = await request.post(`${BASE_URL}${endpoint}`, {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Token ${OP_TOKEN}`,
         },
-        data: {},
+        data: { specs },
       });
       // step.auth_validate strips "Bearer " prefix; "Token " is not Bearer → 401.
       expect(resp.status(), `${endpoint} Token scheme`).toBe(401);
@@ -420,5 +466,147 @@ test.describe('Scenario 92: Infra Admin Migration Demo', () => {
     // The stub Capabilities() returns stub.database and stub.bucket.
     expect(allText).toContain('stub.database');
     expect(allText).toContain('stub.bucket');
+  });
+
+  // ── Phase 2/3: dynamic plan → apply with edited specs ──────────────────────
+
+  test('@scenario-92 Phase-2 dynamic plan: POST with operator-edited specs returns desired_hash', async ({ request }) => {
+    const specs = [
+      {
+        name: 'demo-db',
+        type: 'stub.database',
+        config: { engine: 'postgres', version: '15', api_key: 'secret://scenario/stub_api_key' },
+      },
+    ];
+    const resp = await request.post(`${BASE_URL}/api/infra/plan`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
+      data: { specs },
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { desired_hash?: string; plan?: { actions?: unknown[] } };
+    // Phase-2: desired_hash is computed from the operator-supplied dynamic specs.
+    expect(body.desired_hash).toMatch(/^[0-9a-f]{64}$/);
+    // Plan must have at least one action (stub returns "create" per spec).
+    const actions = body.plan?.actions ?? [];
+    expect(Array.isArray(actions)).toBe(true);
+    expect(actions.length).toBeGreaterThan(0);
+  });
+
+  test('@scenario-92 Phase-2 apply: dynamic specs + desired_hash → 200 + committed', async ({ request }) => {
+    const specs = [
+      {
+        name: 'playwright-db',
+        type: 'stub.database',
+        config: { engine: 'postgres', version: '15', api_key: 'secret://scenario/stub_api_key' },
+      },
+    ];
+    // First: plan to get the dynamic desired_hash.
+    const planResp = await request.post(`${BASE_URL}/api/infra/plan`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
+      data: { specs },
+    });
+    expect(planResp.status()).toBe(200);
+    const planBody = await planResp.json() as { desired_hash?: string };
+    const desiredHash = planBody.desired_hash ?? '';
+    expect(desiredHash).toMatch(/^[0-9a-f]{64}$/);
+
+    // Then: apply with the same specs + desired_hash (empty exec_env = local-docker path).
+    const applyResp = await request.post(`${BASE_URL}/api/infra/apply`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
+      data: { specs, desired_hash: desiredHash },
+    });
+    expect(applyResp.status()).toBe(200);
+    const applyBody = await applyResp.json() as {
+      apply_result?: unknown;
+      desired_hash?: string;
+      committed?: boolean;
+    };
+    // No top-level error → two-phase hash guard passed.
+    expect(applyBody.desired_hash).toMatch(/^[0-9a-f]{64}$/);
+    // committed field must be present (true = branch pushed; false = state_diverged path).
+    expect(typeof applyBody.committed).toBe('boolean');
+  });
+
+  test('@scenario-92 Phase-2 reachability 409: secret:// ref → /apply-remote → 409', async ({ request }) => {
+    const specs = [
+      {
+        name: 'demo-db',
+        type: 'stub.database',
+        config: { api_key: 'secret://scenario/stub_api_key' },
+      },
+    ];
+    // Plan first to get a hash.
+    const planResp = await request.post(`${BASE_URL}/api/infra/plan`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
+      data: { specs },
+    });
+    const planBody = await planResp.json() as { desired_hash?: string };
+    const desiredHash = planBody.desired_hash ?? 'deadbeef'.repeat(8);
+
+    // POST /api/infra/apply-remote → exec_env: remote (static in step config) →
+    // reachability pre-flight → 409 (host-local secrets.keychain unreachable from remote, ADR 0017)
+    const resp = await request.post(`${BASE_URL}/api/infra/apply-remote`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
+      data: { specs, desired_hash: desiredHash },
+    });
+    expect(resp.status()).toBe(409);
+    const body = await resp.json() as { error?: string };
+    expect(body.error).toBeTruthy();
+  });
+
+  // ── Phase 3: reconcile ──────────────────────────────────────────────────────
+
+  test('@scenario-92 Phase-3 reconcile: POST returns 200 with {draft,warning,count} shape', async ({ request }) => {
+    const resp = await request.post(`${BASE_URL}/api/infra/reconcile`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
+      data: {},
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as {
+      draft?: boolean;
+      warning?: string;
+      count?: number;
+      ref?: string;
+    };
+    // All three required fields must be present (ref is optional when draft=false).
+    expect(typeof body.draft).toBe('boolean');
+    expect(typeof body.warning).toBe('string');
+    expect(typeof body.count).toBe('number');
+    // stub DetectDrift always returns Drifted:false → count must be 0 → draft must be false.
+    expect(body.count).toBe(0);
+    expect(body.draft).toBe(false);
+  });
+
+  test('@scenario-92 Phase-3 viewer cannot reconcile → 403', async ({ request }) => {
+    const resp = await request.post(`${BASE_URL}/api/infra/reconcile`, {
+      headers: { Authorization: `Bearer ${VIEWER_TOKEN}`, 'Content-Type': 'application/json' },
+      data: {},
+    });
+    expect(resp.status()).toBe(403);
+  });
+
+  // ── Phase 3: exec-envs endpoint ─────────────────────────────────────────────
+
+  test('@scenario-92 Phase-3 exec-envs: GET returns local-docker and remote', async ({ request }) => {
+    const resp = await request.get(`${BASE_URL}/api/infra/exec-envs`);
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { exec_envs?: string[] };
+    expect(body.exec_envs).toContain('local-docker');
+    expect(body.exec_envs).toContain('remote');
+  });
+
+  // ── Phase 3: remote runner sandbox-demo ────────────────────────────────────
+
+  test('@scenario-92 Phase-3 sandbox-demo: remote agent executes command + MARKER in stdout', async ({ request }) => {
+    const resp = await request.post(`${BASE_URL}/api/infra/sandbox-demo`, {
+      headers: { Authorization: `Bearer ${OP_TOKEN}`, 'Content-Type': 'application/json' },
+      data: {},
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { stdout?: string; exit_code?: number };
+    // The remote agent ran the echo command — MARKER must appear in stdout.
+    expect(body.stdout).toContain('SCENARIO92_REMOTE_AGENT_MARKER');
+    // Clean exit from the echo command.
+    expect(body.exit_code).toBe(0);
   });
 });

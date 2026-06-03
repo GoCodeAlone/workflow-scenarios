@@ -1,49 +1,74 @@
-name: Infra Admin Migration Demo (step-based IaC)
+name: Infra Admin Phase 2/3 Demo (dynamic specs + remote runner + commit-back)
 id: "92-infra-admin-demo"
 category: C
 description: |
-  Demonstrates the migration from the deleted engine module to the new
-  step.iac_provider_* pipeline architecture (workflow v0.70.0).
+  Demonstrates the Phase-2/3 infra-admin features against the REAL released stack
+  (workflow v0.74.0 [ResourceDriver wired] + workflow-plugin-infra v1.2.0 +
+  workflow-sandbox-runner agent).
 
-  The stub IaC provider is an EXTERNAL gRPC plugin. The engine's WiringHook
-  registers it as service "stub-iac-provider" so step.iac_provider_* steps
-  resolve it at runtime.
+  Phase 1 (shipped v0.70.0/v1.1.0): step.iac_provider_* pipeline architecture migration.
+  Phase 2 (this PR): DYNAMIC specs (specs_from from POST body); step.iac_secret_reachability
+    pre-flight (409 when host-local secrets + remote exec_env); step.iac_commit_back
+    (real git branch-push on working clone mounted at /gitops/workclone); secret:// refs
+    survive commit-back verbatim (specgen.SpecToYAML does NOT resolve them).
+  Phase 3 (this PR): step.iac_provider_reconcile (drift → import → approximate YAML →
+    draft branch-push); sandbox.remote_runners module + workflow-sandbox-runner agent
+    container; step.sandbox_exec with exec_env: remote (MARKER file asserted in test);
+    permissive profile clamped to standard by the agent (ADR 0019).
 
-  The engine-built-in infra.admin module was deleted; the SPA is now the
-  external workflow-plugin-infra plugin's infra.admin module type, served at
-  /admin/infra. IaC operations flow through step.iac_provider_* pipelines:
-    - GET /api/infra/catalog → step.iac_provider_catalog (live regions via RegionLister)
-    - GET /api/infra/resources → step.iac_provider_list
-    - POST /api/infra/plan → step.iac_provider_plan (desired_hash, 1 create action)
-    - POST /api/infra/apply → step.iac_provider_apply (two-phase hash guard)
-    - GET /api/infra/drift → step.iac_provider_drift (DriftDetector, no drift)
-    - POST /api/infra/commit → gitops commit response
-    - GET /api/infra/secrets → metadata-only (no values)
+  Routes:
+    GET  /api/infra/catalog                     → step.iac_provider_catalog (live RegionLister)
+    GET  /api/infra/resources                   → step.iac_provider_list
+    POST /api/infra/plan                        → step.iac_provider_plan (dynamic specs_from body)
+    POST /api/infra/apply                       → step.iac_secret_reachability + step.iac_provider_apply
+                                                  + step.iac_commit_back (branch-push)
+    POST /api/infra/reconcile                   → step.iac_provider_reconcile (branch-push)
+    GET  /api/infra/exec-envs                   → static {exec_envs: ["local-docker","remote"]}
+    POST /api/infra/sandbox-demo                → step.sandbox_exec (exec_env: remote)
+    GET  /api/infra/drift                       → step.iac_provider_drift
+    GET  /api/infra/secrets                     → metadata-only (no values)
+    POST /api/infra/secrets                     → declare (operator only)
 
   Auth/RBAC via step.auth_validate + step.conditional (JWT sub claim):
-    operator → plan/apply/commit allowed
-    viewer → read-only (catalog, list, drift); plan/apply/commit → 403
+    operator → plan/apply/reconcile/commit/sandbox-demo allowed
+    viewer   → read-only (catalog, list, drift, secrets-get); mutations → 403
     unauthenticated → 401
 
-  Playwright spec at e2e/tests/scenario-92-infra-admin.spec.ts covers:
-    - catalog returns stub-east/stub-west regions + stub.database/stub.bucket types
-    - plan returns desired_hash (64-char hex) + create action
-    - apply with operator JWT succeeds (hash guard passes)
-    - viewer cannot apply (403 RBAC)
-    - unauthenticated mutations return 401
-    - secrets metadata-only (no values)
+  Assertions (run.sh):
+    Original 16 (Phase 1) + 7 new Phase 2/3 assertions:
+    (a) Dynamic apply: operator POSTs operator-edited specs (not static) →
+        /plan then /apply → 200, resources CREATED (ResourceDriver wired in
+        v0.74.0) → commit-back commits a branch to the bare repo carrying the
+        AUTHORED secret:// ref (grep resources.yaml, assert literal ref survives).
+    (b) Reachability 409: spec with secret:// ref + exec_env=remote → 409.
+    (c) Reconcile: stub reports no drift → POST /reconcile → 200 (draft=false, count=0).
+    (d) Remote runner: sandbox-demo → 200 + MARKER in stdout; agent clamp log line.
+    (e) Subject-RBAC: viewer POST /apply → 403 (existing assertion, kept).
+    (f) 207 state_diverged: documented (not feasible in hermetic stack without breaking workclone).
+    (g) Argo: SCENARIO_92_ARGO-gated t.Skip.
+
+  Playwright spec extended: exec-env dropdown, plan→apply with edited specs,
+    reconcile warning shown in response.
 components:
-  - workflow v0.70.0 (step.iac_provider_* from platform plugin)
+  - workflow v0.74.0 (step.iac_provider_* + step.iac_commit_back + step.iac_provider_reconcile
+      + step.iac_secret_reachability + step.sandbox_exec + sandbox.remote_runners)
   - stub-iac-provider (external gRPC plugin, fixture)
   - workflow-plugin-admin (external gRPC plugin)
-  - workflow-plugin-infra v1.1.0 (external plugin — infra.admin SPA at /admin/infra)
+  - workflow-plugin-infra v1.2.0 (external plugin — infra.admin SPA at /admin/infra)
+  - workflow-sandbox-runner agent (docker-compose service; exec_env: remote)
   - iac.state (memory)
 status: testable
 tags:
   - admin
   - iac
-  - migration
-  - step-based
+  - dynamic-specs
+  - commit-back
+  - reconcile
+  - secret-reachability
+  - remote-runner
+  - sandbox
   - external-plugin
   - playwright
   - iac_provider
+  - phase2
+  - phase3

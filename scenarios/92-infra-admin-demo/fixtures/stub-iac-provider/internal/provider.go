@@ -26,13 +26,18 @@ import (
 	pb "github.com/GoCodeAlone/workflow/plugin/external/proto"
 )
 
-// StubIaCServer implements the required + two optional IaC gRPC services.
-// Embed the Unimplemented stubs for forward-compat; override only the methods
-// needed by scenario 92 assertions.
+// StubIaCServer implements the required + optional IaC gRPC services needed
+// for scenario 92 Phase 2/3 assertions.
+//
+// Phase 1 services: IaCProviderRequired + IaCProviderRegionLister + IaCProviderDriftDetector.
+// Phase 2/3 addition: ResourceDriver — required for ApplyPlanWithHooks (v2 compute plan).
+//   Create: returns a minimal ResourceOutput so commit-back isFullSuccess() passes.
+//   All other ResourceDriver methods: use the unimplemented stubs (not called in the demo).
 type StubIaCServer struct {
 	pb.UnimplementedIaCProviderRequiredServer
 	pb.UnimplementedIaCProviderRegionListerServer
 	pb.UnimplementedIaCProviderDriftDetectorServer
+	pb.UnimplementedResourceDriverServer
 }
 
 // Compile-time assertions: StubIaCServer must satisfy every gRPC server
@@ -42,6 +47,7 @@ var (
 	_ pb.IaCProviderRequiredServer      = (*StubIaCServer)(nil)
 	_ pb.IaCProviderRegionListerServer  = (*StubIaCServer)(nil)
 	_ pb.IaCProviderDriftDetectorServer = (*StubIaCServer)(nil)
+	_ pb.ResourceDriverServer           = (*StubIaCServer)(nil)
 )
 
 // ── IaCProviderRequired ───────────────────────────────────────────────────────
@@ -191,4 +197,35 @@ func (s *StubIaCServer) DetectDriftWithSpecs(_ context.Context, req *pb.DetectDr
 		})
 	}
 	return &pb.DetectDriftWithSpecsResponse{Drifts: drifts}, nil
+}
+
+// ── ResourceDriver (Phase 2/3) ────────────────────────────────────────────────
+//
+// ResourceDriver is required by ApplyPlanWithHooks (compute_plan_version: "v2").
+// The stub implements Create to return a minimal ResourceOutput so the apply
+// pipeline's isFullSuccess() check passes and commit-back proceeds.
+// All other ResourceDriver methods use the UnimplementedResourceDriverServer stubs
+// (they are never called in the scenario 92 hermetic demo).
+
+// Create records a "create" cloud-side action and returns a minimal ResourceOutput.
+// The stub does not call any real cloud API — it echoes the resource name/type
+// back so the apply result has a non-empty output and isFullSuccess() passes.
+func (s *StubIaCServer) Create(_ context.Context, req *pb.ResourceCreateRequest) (*pb.ResourceCreateResponse, error) {
+	spec := req.GetSpec()
+	name := ""
+	resourceType := req.GetResourceType()
+	if spec != nil {
+		name = spec.GetName()
+		if resourceType == "" {
+			resourceType = spec.GetType()
+		}
+	}
+	return &pb.ResourceCreateResponse{
+		Output: &pb.ResourceOutput{
+			Name:       name,
+			Type:       resourceType,
+			ProviderId: name + "-stub-id",
+			Status:     "running",
+		},
+	}, nil
 }
