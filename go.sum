@@ -28,8 +28,8 @@ github.com/GoCodeAlone/modular/modules/jsonschema v1.17.0 h1:zoWioqUvuNNDfnjHA1s
 github.com/GoCodeAlone/modular/modules/jsonschema v1.17.0/go.mod h1:GDU/jsD6AddmXKedj0wZwieUIaQsTBSGMzuj+XHXMrw=
 github.com/GoCodeAlone/modular/modules/reverseproxy/v2 v2.10.0 h1:+2M/ecyCxDiXfJM4ibcERuu/BBeIbLTQNcVgRsllR64=
 github.com/GoCodeAlone/modular/modules/reverseproxy/v2 v2.10.0/go.mod h1:tlVH1mA5yuU8CB7R7+HXIRaBixZoNid6h+5tew5u3FU=
-github.com/GoCodeAlone/workflow v0.75.6 h1:+Ony6c+WPHTb4zkqG7pckcZfXv4Ysh50UlWnXVtusXY=
-github.com/GoCodeAlone/workflow v0.75.6/go.mod h1:9+AVRwdbWuBaWEePRl5Oyk5CZ9zpFX+XI4O2+wKaGfs=
+github.com/GoCodeAlone/workflow v0.75.7 h1:uvmhUGxpMPs6HxWwq9u5F6j554J3/RXx2J7w1vHE6RE=
+github.com/GoCodeAlone/workflow v0.75.7/go.mod h1:9+AVRwdbWuBaWEePRl5Oyk5CZ9zpFX+XI4O2+wKaGfs=
 github.com/GoCodeAlone/workflow-plugin-data-engineering v0.3.1 h1:NPdPpSc3PjYJ5Xzu0YKitMPqrnLB3DW5/pvKFXNHxTM=
 github.com/GoCodeAlone/workflow-plugin-data-engineering v0.3.1/go.mod h1:vEqwFF4T/U9OVxbW8gfFFvkA3cMOqX918FBXAx3QaFY=
 github.com/GoCodeAlone/yaegi v0.17.2 h1:WK6Y6e0t1a6U7r+S2dN3CGWW1PizYD3zO0zneToZPxM=
