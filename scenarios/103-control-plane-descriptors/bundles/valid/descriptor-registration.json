@@ -1,0 +1,20 @@
+{
+  "kind": "descriptor_registration",
+  "payload": {
+    "protocolVersion": "control-plane.v1alpha1",
+    "descriptorDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "schemaDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "pluginId": "workflow-plugin-product-capture",
+    "pluginVersion": "v0.1.18",
+    "pluginPackageDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "signingRootRef": "trustroot://workflow-scenarios/103/control-plane",
+    "provenanceSource": "provenance://github/release/workflow-plugin-product-capture",
+    "allowlistEpoch": 3,
+    "downgradeFloorVersion": "v0.1.18",
+    "revocationFreshUntilUnixNano": 9000,
+    "fetchedAtUnixNano": 1000,
+    "validatedAtUnixNano": 2000,
+    "parserCompatibilityVersion": "v1",
+    "trustRootGeneration": 2
+  }
+}
