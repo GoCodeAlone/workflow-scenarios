@@ -5,6 +5,7 @@ go 1.26.4
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/GoCodeAlone/workflow v0.80.2
+	github.com/GoCodeAlone/workflow-plugin-control-plane v0.1.0
 	github.com/GoCodeAlone/workflow-plugin-data-engineering v0.3.1
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	gopkg.in/yaml.v3 v3.0.1
@@ -23,7 +24,6 @@ require (
 	github.com/GoCodeAlone/modular/modules/eventbus/v2 v2.10.0 // indirect
 	github.com/GoCodeAlone/modular/modules/jsonschema v1.17.0 // indirect
 	github.com/GoCodeAlone/modular/modules/reverseproxy/v2 v2.10.0 // indirect
-	github.com/GoCodeAlone/workflow-plugin-control-plane v0.1.0 // indirect
 	github.com/GoCodeAlone/yaegi v0.17.2 // indirect
 	github.com/IBM/sarama v1.47.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect

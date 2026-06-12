@@ -22,4 +22,4 @@ tags:
   - control-plane
   - descriptors
   - plugin-boundary
-  - local
+  - local-only
