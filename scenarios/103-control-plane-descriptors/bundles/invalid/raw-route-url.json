@@ -1,0 +1,12 @@
+{
+  "kind": "route_action_descriptor",
+  "payload": {
+    "protocolVersion": "control-plane.v1alpha1",
+    "descriptorId": "descriptor.bad.raw.route",
+    "operationId": "bad_route",
+    "routeHandle": "https://workflow-compute.example.test/admin",
+    "authClassRef": "authclass://workflow-scenarios/103/operator",
+    "auditClassRef": "auditclass://workflow-scenarios/103/workload-submit",
+    "inputSchemaDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}

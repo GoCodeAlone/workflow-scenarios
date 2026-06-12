@@ -1,0 +1,25 @@
+name: Control Plane Descriptor Bundles
+id: "103-control-plane-descriptors"
+category: C
+description: |
+  Local-only proof that product-neutral control-plane descriptor artifacts cross
+  the plugin-to-host boundary through real public contracts.
+
+  The scenario stores descriptor, audit envelope, and descriptor-registration
+  artifacts as JSON protobuf payloads. The validator imports released
+  workflow-plugin-control-plane packages, unmarshals the fixture artifacts into
+  generated protobuf messages, and calls the public descriptor/envelope/registry
+  validators.
+
+  Valid fixtures must pass, while invalid fixtures with raw network URLs,
+  secret refs, raw actor identifiers, and stale provenance must be rejected.
+  This intentionally proves descriptor bundle shape without creating a new
+  Workflow runtime endpoint or copying schema checks into the scenario.
+components:
+  - workflow-plugin-control-plane (descriptors/envelopes/registry validators)
+status: testable
+tags:
+  - control-plane
+  - descriptors
+  - plugin-boundary
+  - local-only

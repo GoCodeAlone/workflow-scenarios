@@ -1222,6 +1222,20 @@
       "passCount": 0,
       "failCount": 0,
       "blockers": []
+    },
+    "103-control-plane-descriptors": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "lastTested": "2026-06-12T20:32:38.850782Z",
+      "lastResult": "pass",
+      "testCount": 8,
+      "passCount": 8,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Validates committed control-plane descriptor, audit envelope, and registration artifacts through released workflow-plugin-control-plane protobuf validators; rejects raw URL, secret ref, raw actor identifier, and stale provenance fixtures without introducing a runtime endpoint.",
+      "blockers": []
     }
-  }
+  },
+  "lastUpdated": "2026-06-12T20:32:38.850782Z"
 }

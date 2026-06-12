@@ -1,0 +1,31 @@
+{
+  "kind": "route_action_descriptor",
+  "payload": {
+    "protocolVersion": "control-plane.v1alpha1",
+    "descriptorId": "descriptor.wfcompute.product.capture",
+    "operationId": "product_capture_submit",
+    "routeHandle": "route://workflow-scenarios/103/product-capture/submit",
+    "authClassRef": "authclass://workflow-scenarios/103/operator",
+    "auditClassRef": "auditclass://workflow-scenarios/103/workload-submit",
+    "inputSchemaDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "outputSchemaDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "presentationRef": "render://workflow-scenarios/103/admin/product-capture",
+    "providerHandoff": {
+      "providerPluginId": "workflow-plugin-product-capture",
+      "providerPluginVersion": "v0.1.18",
+      "capabilityId": "product-capture-browser",
+      "capabilityVersion": "v1",
+      "inputSchemaDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "actionNonce": "scenario-103-nonce",
+      "idempotencyKey": "scenario-103-idem"
+    },
+    "admin": {
+      "resourceRef": "resource://workflow-scenarios/103/product-capture",
+      "actionClassRef": "actionclass://workflow-scenarios/103/submit",
+      "riskRef": "risk://workflow-scenarios/103/provider-workload",
+      "severityRef": "severity://workflow-scenarios/103/standard",
+      "permissionExplanationTemplateRef": "template://workflow-scenarios/103/operator-permission",
+      "renderRef": "render://workflow-scenarios/103/form/product-capture"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "kind": "audit_envelope",
+  "payload": {
+    "protocolVersion": "control-plane.v1alpha1",
+    "envelopeId": "evt-scenario-103-accepted",
+    "kind": "audit",
+    "tenantHandle": "opaque-tenant-s103",
+    "actorHandle": "opaque-actor-operator",
+    "resourceHandle": "opaque-resource-workload",
+    "correlationId": "corr-scenario-103",
+    "occurredAtUnixNano": 1000,
+    "observedAtUnixNano": 2000,
+    "retention": {
+      "redactionState": "active",
+      "retentionExpiresAtUnixNano": 9000,
+      "correlationRekeyId": "rekey-scenario-103"
+    }
+  }
+}
