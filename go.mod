@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/GoCodeAlone/workflow v0.80.23
+	github.com/GoCodeAlone/workflow v0.80.24
 	github.com/GoCodeAlone/workflow-plugin-control-plane v0.1.0
 	github.com/GoCodeAlone/workflow-plugin-data-engineering v0.3.1
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
