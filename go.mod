@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/GoCodeAlone/workflow v0.83.3
+	github.com/GoCodeAlone/workflow v0.84.0
 	github.com/GoCodeAlone/workflow-plugin-control-plane v0.1.0
 	github.com/GoCodeAlone/workflow-plugin-data-engineering v0.3.1
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
@@ -123,7 +123,7 @@ require (
 	github.com/itchyny/timefmt-go v0.1.8 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/pgx/v5 v5.9.2 // indirect
+	github.com/jackc/pgx/v5 v5.10.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
 	github.com/jcmturner/dnsutils/v2 v2.0.0 // indirect
