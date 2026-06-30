@@ -27,8 +27,8 @@ github.com/GoCodeAlone/modular/modules/jsonschema v1.17.0 h1:zoWioqUvuNNDfnjHA1s
 github.com/GoCodeAlone/modular/modules/jsonschema v1.17.0/go.mod h1:GDU/jsD6AddmXKedj0wZwieUIaQsTBSGMzuj+XHXMrw=
 github.com/GoCodeAlone/modular/modules/reverseproxy/v2 v2.10.0 h1:+2M/ecyCxDiXfJM4ibcERuu/BBeIbLTQNcVgRsllR64=
 github.com/GoCodeAlone/modular/modules/reverseproxy/v2 v2.10.0/go.mod h1:tlVH1mA5yuU8CB7R7+HXIRaBixZoNid6h+5tew5u3FU=
-github.com/GoCodeAlone/workflow v0.83.3 h1:/NRJTKZpk+klAIRf73OlfGr5Qh2zni3ckW1oCAGJi7A=
-github.com/GoCodeAlone/workflow v0.83.3/go.mod h1:TwoyS460Mo0Bj3oYu1AWTuBmSTF9R1BIim2L9EZF/rE=
+github.com/GoCodeAlone/workflow v0.84.0 h1:JJX91+h7QaZ9xUJEBcTrlhvebCVI+/9/2kLn1emckzs=
+github.com/GoCodeAlone/workflow v0.84.0/go.mod h1:vBi/HkWBt8LrZ/J3E61bx/Q4MSh15ieXy8sIEqK5lNU=
 github.com/GoCodeAlone/workflow-plugin-control-plane v0.1.0 h1:XtogtQXVBING2iu5jQGzfubi9rOes/erVWH5uwiPsok=
 github.com/GoCodeAlone/workflow-plugin-control-plane v0.1.0/go.mod h1:2c3Ow7rncEZttzq3XddC+mTD0x5CBE4TdPdvbnH4iYk=
 github.com/GoCodeAlone/workflow-plugin-data-engineering v0.3.1 h1:NPdPpSc3PjYJ5Xzu0YKitMPqrnLB3DW5/pvKFXNHxTM=
@@ -355,8 +355,8 @@ github.com/jackc/pgpassfile v1.0.0 h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsI
 github.com/jackc/pgpassfile v1.0.0/go.mod h1:CEx0iS5ambNFdcRtxPj5JhEz+xB6uRky5eyVu/W2HEg=
 github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 h1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=
 github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761/go.mod h1:5TJZWKEWniPve33vlWYSoGYefn3gLQRzjfDlhSJ9ZKM=
-github.com/jackc/pgx/v5 v5.9.2 h1:3ZhOzMWnR4yJ+RW1XImIPsD1aNSz4T4fyP7zlQb56hw=
-github.com/jackc/pgx/v5 v5.9.2/go.mod h1:mal1tBGAFfLHvZzaYh77YS/eC6IX9OWbRV1QIIM0Jn4=
+github.com/jackc/pgx/v5 v5.10.0 h1:VhSvgU2jSli8o3AqIEOTJr7rZwAEUVo4E4XhR94Zfr0=
+github.com/jackc/pgx/v5 v5.10.0/go.mod h1:mal1tBGAFfLHvZzaYh77YS/eC6IX9OWbRV1QIIM0Jn4=
 github.com/jackc/puddle/v2 v2.2.2 h1:PR8nw+E/1w0GLuRFSmiioY6UooMp6KJv0/61nB7icHo=
 github.com/jackc/puddle/v2 v2.2.2/go.mod h1:vriiEXHvEE654aYKXXjOvZM39qJ0q+azkZFrfEOc3H4=
 github.com/jcmturner/aescts/v2 v2.0.0 h1:9YKLH6ey7H4eDBXW8khjYslgyqG2xZikXP0EQFKrle8=
