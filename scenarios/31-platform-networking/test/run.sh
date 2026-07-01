@@ -242,6 +242,8 @@ NETWORK_REFS="$(jq -n \
     {name: $db, type: "infra.firewall"}
   ]')"
 PLAN_PAYLOAD="$(jq -n --argjson specs "$NETWORK_SPECS" '{specs: $specs}')"
+PLAN=""
+DESIRED_HASH=""
 
 if PLAN="$(post_json /api/v1/networks/plan "$PLAN_PAYLOAD")"; then
   pass "client planned caller-supplied network specs through Workflow API"
@@ -254,17 +256,23 @@ else
   fail "network plan API failed"
 fi
 
-DESIRED_HASH="$(printf '%s' "$PLAN" | jq -r '.desired_hash // empty')"
-APPLY_PAYLOAD="$(jq -n --argjson specs "$NETWORK_SPECS" --arg desired_hash "$DESIRED_HASH" '{specs: $specs, desired_hash: $desired_hash}')"
-if APPLIED="$(post_json /api/v1/networks/apply "$APPLY_PAYLOAD")"; then
-  pass "client applied network specs with returned desired_hash"
-  if printf '%s' "$APPLIED" | jq -e --arg vpc "$VPC_NAME" --arg web "$WEB_FIREWALL_NAME" --arg db "$DB_FIREWALL_NAME" '.provider == "aws-provider" and .action_count == 3 and (.desired_hash | type == "string" and length > 0) and (.apply_result.resources[] | select(.name == $vpc and .type == "infra.vpc" and .status == "running" and .outputs.cidr == "10.20.0.0/16")) and (.apply_result.resources[] | select(.name == $web and .type == "infra.firewall" and .status == "running")) and (.apply_result.resources[] | select(.name == $db and .type == "infra.firewall" and .status == "running"))' >/dev/null 2>&1; then
-    pass "apply response showed running mock VPC and firewalls"
+if [ -n "$PLAN" ]; then
+  DESIRED_HASH="$(printf '%s' "$PLAN" | jq -r '.desired_hash // empty')"
+fi
+if [ -n "$DESIRED_HASH" ]; then
+  APPLY_PAYLOAD="$(jq -n --argjson specs "$NETWORK_SPECS" --arg desired_hash "$DESIRED_HASH" '{specs: $specs, desired_hash: $desired_hash}')"
+  if APPLIED="$(post_json /api/v1/networks/apply "$APPLY_PAYLOAD")"; then
+    pass "client applied network specs with returned desired_hash"
+    if printf '%s' "$APPLIED" | jq -e --arg vpc "$VPC_NAME" --arg web "$WEB_FIREWALL_NAME" --arg db "$DB_FIREWALL_NAME" '.provider == "aws-provider" and .action_count == 3 and (.desired_hash | type == "string" and length > 0) and (.apply_result.resources[] | select(.name == $vpc and .type == "infra.vpc" and .status == "running" and .outputs.cidr == "10.20.0.0/16")) and (.apply_result.resources[] | select(.name == $web and .type == "infra.firewall" and .status == "running")) and (.apply_result.resources[] | select(.name == $db and .type == "infra.firewall" and .status == "running"))' >/dev/null 2>&1; then
+      pass "apply response showed running mock VPC and firewalls"
+    else
+      fail "apply response mismatch: $APPLIED"
+    fi
   else
-    fail "apply response mismatch: $APPLIED"
+    fail "network apply API failed"
   fi
 else
-  fail "network apply API failed"
+  fail "network apply skipped because plan did not return desired_hash"
 fi
 
 STATUS_PAYLOAD="$(jq -n --argjson refs "$NETWORK_REFS" '{refs: $refs}')"
