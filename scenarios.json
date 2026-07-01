@@ -6,7 +6,7 @@
       "deployed": true,
       "lastTested": "2026-03-28T22:17:10.518840Z",
       "lastResult": "pass",
-      "testCount": 6,
+      "testCount": 7,
       "passCount": 7,
       "failCount": 0,
       "blockers": []
@@ -1060,7 +1060,7 @@
       "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "testCount": 7,
+      "testCount": 6,
       "passCount": 6,
       "failCount": 0,
       "localOnly": true,
