@@ -418,12 +418,12 @@
       "status": "passed",
       "namespace": "wf-scenario-33",
       "deployed": true,
-      "lastTested": "2026-03-28T22:22:35.108209Z",
+      "lastTested": "2026-07-01T23:05:33.128257Z",
       "lastResult": "pass",
-      "testCount": 30,
-      "passCount": 30,
+      "testCount": 40,
+      "passCount": 40,
       "failCount": 0,
-      "notes": "API Gateway provisioning (routes, CORS, rate limiting) and autoscaling policies (target tracking, step, scheduled). Mock backends.",
+      "notes": "Workflow app-boundary proof for API Gateway and autoscaling. Starts workflow-server, installs workflow-plugin-aws in mock mode, and drives caller-supplied infra.api_gateway and infra.autoscaling_group specs/refs through plan/apply/status/destroy HTTP APIs without live AWS credentials.",
       "blockers": []
     },
     "34-app-container": {
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T22:46:14.634586Z"
+  "lastUpdated": "2026-07-01T23:05:33.128257Z"
 }
