@@ -2,7 +2,7 @@ modules:
   - name: server
     type: http.server
     config:
-      address: ":8080"
+      address: ":18130"
 
   - name: router
     type: http.router
@@ -11,8 +11,8 @@ modules:
   - name: aws-provider
     type: iac.provider
     config:
-      provider: aws
-      credentials: env
+      plugin: workflow-plugin-aws
+      mode: mock
       region: us-east-1
 
   - name: iac-state
@@ -30,10 +30,10 @@ modules:
       region: us-east-1
       launchType: fargate
       replicas: 2
-      vpc_subnets:
+      subnet_ids:
         - subnet-abc123
         - subnet-def456
-      security_groups:
+      security_group_ids:
         - sg-0123456789
 
 workflows:
@@ -66,16 +66,16 @@ pipelines:
         method: POST
     steps:
       - name: plan
-        type: step.iac_plan
+        type: step.iac_provider_plan
         config:
-          platform: staging-ecs
-          resource_id: staging-ecs
-          state_store: iac-state
+          provider: aws-provider
+          resources:
+            - staging-ecs
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: "steps.plan"
 
   ecs-apply:
     trigger:
@@ -84,17 +84,24 @@ pipelines:
         path: /api/v1/services/apply
         method: POST
     steps:
-      - name: apply
-        type: step.iac_apply
+      - name: plan
+        type: step.iac_provider_plan
         config:
-          platform: staging-ecs
-          resource_id: staging-ecs
-          state_store: iac-state
+          provider: aws-provider
+          resources:
+            - staging-ecs
+      - name: apply
+        type: step.iac_provider_apply
+        config:
+          provider: aws-provider
+          resources:
+            - staging-ecs
+          desired_hash_from: steps.plan.desired_hash
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: "steps.apply"
 
   ecs-status:
     trigger:
@@ -104,16 +111,16 @@ pipelines:
         method: GET
     steps:
       - name: status
-        type: step.iac_status
+        type: step.iac_provider_list
         config:
-          platform: staging-ecs
-          resource_id: staging-ecs
-          state_store: iac-state
+          provider: aws-provider
+          resources:
+            - staging-ecs
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: "steps.status"
 
   ecs-destroy:
     trigger:
@@ -123,13 +130,13 @@ pipelines:
         method: DELETE
     steps:
       - name: destroy
-        type: step.iac_destroy
+        type: step.iac_provider_destroy
         config:
-          platform: staging-ecs
-          resource_id: staging-ecs
-          state_store: iac-state
+          provider: aws-provider
+          resources:
+            - staging-ecs
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: "steps.destroy"
