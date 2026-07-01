@@ -4,6 +4,7 @@
 #          ./scripts/upgrade.sh workflow-cloud latest
 #          ./scripts/upgrade.sh workflow-plugin-admin v1.1.0
 #          ./scripts/upgrade.sh workflow-plugin-bento v1.1.0
+#          ./scripts/upgrade.sh workflow-plugin-aws v0.1.0
 set -euo pipefail
 
 COMPONENT="${1:-}"
@@ -12,7 +13,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 if [ -z "$COMPONENT" ]; then
     echo "Usage: ./scripts/upgrade.sh <component> <version>"
-    echo "Supported components: workflow, workflow-cloud, workflow-plugin-admin, workflow-plugin-bento"
+    echo "Supported components: workflow, workflow-cloud, workflow-plugin-admin, workflow-plugin-bento, workflow-plugin-aws"
     exit 1
 fi
 
@@ -197,9 +198,48 @@ DOCEOF
         echo "Image workflow-server-bento:local built."
         ;;
 
+    workflow-plugin-aws)
+        AWS_REPO="${AWS_REPO:-${WORKFLOW_PLUGIN_AWS_REPO:-/Users/jon/workspace/workflow-plugin-aws}}"
+        WORKFLOW_REPO="${WORKFLOW_REPO:-/Users/jon/workspace/workflow}"
+        echo "Cross-compiling workflow-plugin-aws binary (linux/arm64)..."
+        GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build \
+            -ldflags="-s -w" \
+            -o /tmp/workflow-plugin-aws-bin \
+            "${AWS_REPO}/cmd/workflow-plugin-aws"
+
+        echo "Cross-compiling workflow server binary (linux/arm64)..."
+        GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build \
+            -ldflags="-s -w" \
+            -o /tmp/workflow-server-bin \
+            "${WORKFLOW_REPO}/cmd/server"
+
+        echo "Building workflow-server-aws:local image in minikube..."
+        TMPCTX=$(mktemp -d)
+        mkdir -p "$TMPCTX/data/plugins/workflow-plugin-aws"
+        cp /tmp/workflow-server-bin "$TMPCTX/server"
+        cp /tmp/workflow-plugin-aws-bin "$TMPCTX/data/plugins/workflow-plugin-aws/workflow-plugin-aws"
+        cp "${AWS_REPO}/plugin.json" "$TMPCTX/data/plugins/workflow-plugin-aws/"
+        cp "${AWS_REPO}/plugin.contracts.json" "$TMPCTX/data/plugins/workflow-plugin-aws/"
+        cat > "$TMPCTX/Dockerfile" <<'DOCEOF'
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates tzdata \
+    && adduser -D -u 65532 nonroot
+WORKDIR /app
+COPY server /server
+COPY data /data
+RUN chown -R nonroot:nonroot /data
+USER nonroot
+EXPOSE 18133
+ENTRYPOINT ["/server"]
+DOCEOF
+        minikube image build -t workflow-server-aws:local "$TMPCTX"
+        rm -rf "$TMPCTX"
+        echo "Image workflow-server-aws:local built."
+        ;;
+
     *)
         echo "ERROR: Unknown component: $COMPONENT"
-        echo "Supported: workflow, workflow-cloud, workflow-plugin-admin, workflow-plugin-bento"
+        echo "Supported: workflow, workflow-cloud, workflow-plugin-admin, workflow-plugin-bento, workflow-plugin-aws"
         exit 1
         ;;
 esac
@@ -255,6 +295,19 @@ for name, s in d['scenarios'].items():
         else
             echo "  08-data-pipeline is not deployed, skipping restart."
         fi
+        ;;
+
+    workflow-plugin-aws)
+        for name in 30-ecs-fargate 31-platform-networking 33-apigateway-autoscaling; do
+            NS=$(python3 -c "import json; d=json.load(open('scenarios.json')); print(d['scenarios'].get('$name',{}).get('namespace',''))")
+            DEPLOYED_FLAG=$(python3 -c "import json; d=json.load(open('scenarios.json')); print(d['scenarios'].get('$name',{}).get('deployed',False))")
+            if [ -n "$NS" ] && [ "$DEPLOYED_FLAG" = "True" ]; then
+                echo "  Restarting workflow-server in $name (ns: $NS)..."
+                kubectl rollout restart deployment/workflow-server -n "$NS" 2>/dev/null || true
+            else
+                echo "  $name is not deployed, skipping restart."
+            fi
+        done
         ;;
 esac
 

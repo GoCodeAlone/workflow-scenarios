@@ -17,15 +17,15 @@ spec:
     spec:
       containers:
         - name: workflow-server
-          image: workflow-server:local
+          image: workflow-server-aws:local
           imagePullPolicy: Never
-          args: ["-config", "/config/app.yaml", "-data-dir", "/tmp"]
+          args: ["-config", "/config/app.yaml", "-data-dir", "/data"]
           ports:
-            - containerPort: 8080
+            - containerPort: 18133
           readinessProbe:
             httpGet:
               path: /healthz
-              port: 8080
+              port: 18133
             initialDelaySeconds: 3
             periodSeconds: 3
             failureThreshold: 20
@@ -39,10 +39,14 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+            - name: data
+              mountPath: /data
       volumes:
         - name: config
           configMap:
             name: app
+        - name: data
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -53,5 +57,5 @@ spec:
   selector:
     app: workflow-server
   ports:
-    - port: 8080
-      targetPort: 8080
+    - port: 18133
+      targetPort: 18133

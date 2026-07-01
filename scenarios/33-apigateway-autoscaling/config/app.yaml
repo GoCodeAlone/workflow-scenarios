@@ -2,7 +2,7 @@ modules:
   - name: server
     type: http.server
     config:
-      address: ":8080"
+      address: ":18133"
 
   - name: router
     type: http.router
@@ -11,53 +11,9 @@ modules:
   - name: aws-provider
     type: iac.provider
     config:
-      provider: aws
-      credentials: env
+      plugin: workflow-plugin-aws
+      mode: mock
       region: us-east-1
-
-  - name: iac-state
-    type: iac.state
-    config:
-      backend: memory
-
-  - name: production-gateway
-    type: infra.api_gateway
-    dependsOn: [aws-provider]
-    config:
-      provider: aws-provider
-      name: my-api
-      stage: prod
-      cors:
-        allow_origins: ["*"]
-        allow_methods: ["GET", "POST", "PUT", "DELETE"]
-      routes:
-        - path: /api/v1/users
-          method: "*"
-          target: "http://users-service:8080"
-          rate_limit: 100
-        - path: /api/v1/orders
-          method: "*"
-          target: "http://orders-service:8080"
-          auth_type: jwt
-
-  - name: my-scaling
-    type: infra.autoscaling_group
-    dependsOn: [aws-provider]
-    config:
-      provider: aws-provider
-      policies:
-        - name: cpu-target
-          type: target_tracking
-          target_resource: staging-ecs
-          min_capacity: 2
-          max_capacity: 20
-          metric_name: CPUUtilization
-          target_value: 70
-        - name: night-scale-down
-          type: scheduled
-          target_resource: staging-ecs
-          schedule: "cron(0 22 * * ? *)"
-          desired_capacity: 1
 
 workflows:
   http:
@@ -88,17 +44,20 @@ pipelines:
         path: /api/v1/gateway/plan
         method: POST
     steps:
-      - name: plan
-        type: step.iac_plan
+      - name: parse-request
+        type: step.request_parse
         config:
-          platform: production-gateway
-          resource_id: production-gateway
-          state_store: iac-state
+          format: json
+      - name: plan
+        type: step.iac_provider_plan
+        config:
+          provider: aws-provider
+          specs_from: steps.parse-request.body.specs
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.plan
 
   gateway-apply:
     trigger:
@@ -107,55 +66,65 @@ pipelines:
         path: /api/v1/gateway/apply
         method: POST
     steps:
-      - name: apply
-        type: step.iac_apply
+      - name: parse-request
+        type: step.request_parse
         config:
-          platform: production-gateway
-          resource_id: production-gateway
-          state_store: iac-state
+          format: json
+      - name: apply
+        type: step.iac_provider_apply
+        config:
+          provider: aws-provider
+          specs_from: steps.parse-request.body.specs
+          desired_hash_from: steps.parse-request.body.desired_hash
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.apply
 
   gateway-status:
     trigger:
       type: http
       config:
         path: /api/v1/gateway/status
-        method: GET
+        method: POST
     steps:
-      - name: status
-        type: step.iac_status
+      - name: parse-request
+        type: step.request_parse
         config:
-          platform: production-gateway
-          resource_id: production-gateway
-          state_store: iac-state
+          format: json
+      - name: status
+        type: step.iac_provider_list
+        config:
+          provider: aws-provider
+          refs_from: steps.parse-request.body.refs
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.status
 
   gateway-destroy:
     trigger:
       type: http
       config:
-        path: /api/v1/gateway
-        method: DELETE
+        path: /api/v1/gateway/destroy
+        method: POST
     steps:
-      - name: destroy
-        type: step.iac_destroy
+      - name: parse-request
+        type: step.request_parse
         config:
-          platform: production-gateway
-          resource_id: production-gateway
-          state_store: iac-state
+          format: json
+      - name: destroy
+        type: step.iac_provider_destroy
+        config:
+          provider: aws-provider
+          refs_from: steps.parse-request.body.refs
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.destroy
 
   scaling-plan:
     trigger:
@@ -164,17 +133,20 @@ pipelines:
         path: /api/v1/scaling/plan
         method: POST
     steps:
-      - name: plan
-        type: step.iac_plan
+      - name: parse-request
+        type: step.request_parse
         config:
-          platform: my-scaling
-          resource_id: my-scaling
-          state_store: iac-state
+          format: json
+      - name: plan
+        type: step.iac_provider_plan
+        config:
+          provider: aws-provider
+          specs_from: steps.parse-request.body.specs
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.plan
 
   scaling-apply:
     trigger:
@@ -183,52 +155,62 @@ pipelines:
         path: /api/v1/scaling/apply
         method: POST
     steps:
-      - name: apply
-        type: step.iac_apply
+      - name: parse-request
+        type: step.request_parse
         config:
-          platform: my-scaling
-          resource_id: my-scaling
-          state_store: iac-state
+          format: json
+      - name: apply
+        type: step.iac_provider_apply
+        config:
+          provider: aws-provider
+          specs_from: steps.parse-request.body.specs
+          desired_hash_from: steps.parse-request.body.desired_hash
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.apply
 
   scaling-status:
     trigger:
       type: http
       config:
         path: /api/v1/scaling/status
-        method: GET
+        method: POST
     steps:
-      - name: status
-        type: step.iac_status
+      - name: parse-request
+        type: step.request_parse
         config:
-          platform: my-scaling
-          resource_id: my-scaling
-          state_store: iac-state
+          format: json
+      - name: status
+        type: step.iac_provider_list
+        config:
+          provider: aws-provider
+          refs_from: steps.parse-request.body.refs
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.status
 
   scaling-destroy:
     trigger:
       type: http
       config:
-        path: /api/v1/scaling
-        method: DELETE
+        path: /api/v1/scaling/destroy
+        method: POST
     steps:
-      - name: destroy
-        type: step.iac_destroy
+      - name: parse-request
+        type: step.request_parse
         config:
-          platform: my-scaling
-          resource_id: my-scaling
-          state_store: iac-state
+          format: json
+      - name: destroy
+        type: step.iac_provider_destroy
+        config:
+          provider: aws-provider
+          refs_from: steps.parse-request.body.refs
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.destroy

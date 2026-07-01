@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Seed script for Scenario 33: API Gateway and Autoscaling
-# No database seeding required — all state is tracked in-memory.
+# No database seeding required; the scenario proves app-boundary behavior by
+# starting workflow-server with workflow-plugin-aws and sending runtime specs.
 set -euo pipefail
 
-echo "Scenario 33 seed: infra.api_gateway and infra.autoscaling_group use IaC state, no seeding needed."
-echo "Gateway 'production-gateway' starts in 'pending' status."
-echo "Scaling resource 'my-scaling' starts in 'pending' status."
+echo "Scenario 33 seed: no static AWS resources are preloaded."
+echo "test/run.sh supplies gateway and autoscaling specs through the Workflow HTTP API."
+echo "The workflow-plugin-aws provider runs in local mock mode and stores state in the app data dir."
 echo "Done."
