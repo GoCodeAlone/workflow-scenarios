@@ -394,12 +394,12 @@
       "status": "passed",
       "namespace": "wf-scenario-31",
       "deployed": true,
-      "lastTested": "2026-03-28T22:22:26.089134Z",
+      "lastTested": "2026-07-01T22:04:12.415609Z",
       "lastResult": "pass",
-      "testCount": 20,
-      "passCount": 20,
+      "testCount": 31,
+      "passCount": 31,
       "failCount": 0,
-      "notes": "Platform networking module for VPC/subnet/NAT/security group management. Mock and AWS stub backends.",
+      "notes": "Workflow app-boundary proof for platform networking. Builds/installs workflow-plugin-aws as an external plugin, starts workflow-server, and drives caller-supplied VPC/firewall specs and refs through plan/apply/status/destroy HTTP APIs with AWS mock mode and no live credentials.",
       "blockers": []
     },
     "32-platform-dns": {
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T20:44:09.757462Z"
+  "lastUpdated": "2026-07-01T22:04:12.415609Z"
 }

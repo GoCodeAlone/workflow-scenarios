@@ -2,7 +2,7 @@ modules:
   - name: server
     type: http.server
     config:
-      address: ":8080"
+      address: ":18131"
 
   - name: router
     type: http.router
@@ -11,59 +11,9 @@ modules:
   - name: aws-provider
     type: iac.provider
     config:
-      provider: aws
-      credentials: env
+      plugin: workflow-plugin-aws
+      mode: mock
       region: us-east-1
-
-  - name: iac-state
-    type: iac.state
-    config:
-      backend: memory
-
-  - name: prod-vpc
-    type: infra.vpc
-    config:
-      provider: aws-provider
-      cidr: "10.0.0.0/16"
-      name: prod-vpc
-      subnets:
-        - name: public-a
-          cidr: "10.0.1.0/24"
-          az: us-east-1a
-          public: true
-        - name: public-b
-          cidr: "10.0.2.0/24"
-          az: us-east-1b
-          public: true
-        - name: private-a
-          cidr: "10.0.10.0/24"
-          az: us-east-1a
-          public: false
-        - name: private-b
-          cidr: "10.0.11.0/24"
-          az: us-east-1b
-          public: false
-      nat_gateway: true
-
-  - name: prod-firewall
-    type: infra.firewall
-    config:
-      provider: aws-provider
-      vpc: prod-vpc
-      security_groups:
-        - name: web
-          rules:
-            - protocol: tcp
-              port: 443
-              source: "0.0.0.0/0"
-            - protocol: tcp
-              port: 80
-              source: "0.0.0.0/0"
-        - name: internal
-          rules:
-            - protocol: tcp
-              port: 5432
-              source: "10.0.0.0/16"
 
 workflows:
   http:
@@ -94,23 +44,20 @@ pipelines:
         path: /api/v1/networks/plan
         method: POST
     steps:
-      - name: plan_vpc
-        type: step.iac_plan
+      - name: parse-request
+        type: step.request_parse
         config:
-          platform: prod-vpc
-          resource_id: prod-vpc
-          state_store: iac-state
-      - name: plan_firewall
-        type: step.iac_plan
+          format: json
+      - name: plan
+        type: step.iac_provider_plan
         config:
-          platform: prod-firewall
-          resource_id: prod-firewall
-          state_store: iac-state
+          provider: aws-provider
+          specs_from: steps.parse-request.body.specs
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.plan
 
   network-apply:
     trigger:
@@ -119,45 +66,62 @@ pipelines:
         path: /api/v1/networks/apply
         method: POST
     steps:
-      - name: apply_vpc
-        type: step.iac_apply
+      - name: parse-request
+        type: step.request_parse
         config:
-          platform: prod-vpc
-          resource_id: prod-vpc
-          state_store: iac-state
-      - name: apply_firewall
-        type: step.iac_apply
+          format: json
+      - name: apply
+        type: step.iac_provider_apply
         config:
-          platform: prod-firewall
-          resource_id: prod-firewall
-          state_store: iac-state
+          provider: aws-provider
+          specs_from: steps.parse-request.body.specs
+          desired_hash_from: steps.parse-request.body.desired_hash
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.apply
 
   network-status:
     trigger:
       type: http
       config:
         path: /api/v1/networks/status
-        method: GET
+        method: POST
     steps:
-      - name: status_vpc
-        type: step.iac_status
+      - name: parse-request
+        type: step.request_parse
         config:
-          platform: prod-vpc
-          resource_id: prod-vpc
-          state_store: iac-state
-      - name: status_firewall
-        type: step.iac_status
+          format: json
+      - name: status
+        type: step.iac_provider_list
         config:
-          platform: prod-firewall
-          resource_id: prod-firewall
-          state_store: iac-state
+          provider: aws-provider
+          refs_from: steps.parse-request.body.refs
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.status
+
+  network-destroy:
+    trigger:
+      type: http
+      config:
+        path: /api/v1/networks/destroy
+        method: POST
+    steps:
+      - name: parse-request
+        type: step.request_parse
+        config:
+          format: json
+      - name: destroy
+        type: step.iac_provider_destroy
+        config:
+          provider: aws-provider
+          refs_from: steps.parse-request.body.refs
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: steps.destroy
