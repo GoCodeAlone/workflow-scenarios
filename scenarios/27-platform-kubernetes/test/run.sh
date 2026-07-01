@@ -65,11 +65,14 @@ resolve_server() {
 wait_for_server() {
   local url="$1"
   local i
+  local health
   for i in $(seq 1 80); do
-    curl -fs "$url/healthz" >/dev/null 2>&1 && return 0
     if [ -n "$SERVER_PID" ] && ! kill -0 "$SERVER_PID" >/dev/null 2>&1; then
       return 1
     fi
+    health="$(curl -fs "$url/healthz" 2>/dev/null)" \
+      && printf '%s' "$health" | jq -e '.status == "ok" and .scenario == "27-platform-kubernetes"' >/dev/null 2>&1 \
+      && return 0
     sleep 0.25
   done
   return 1
