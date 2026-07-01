@@ -80,7 +80,11 @@ else
   exit 1
 fi
 
-PLUGIN_DIR="$(mktemp -d)"
+if ! PLUGIN_DIR="$(mktemp -d)"; then
+  fail "could not create temporary plugin directory"
+  finish
+  exit 1
+fi
 trap 'rm -rf "$PLUGIN_DIR"' EXIT
 
 if build_plugin "$PLUGIN_DIR"; then
