@@ -1235,7 +1235,33 @@
       "localOnly": true,
       "notes": "Validates committed control-plane descriptor, audit envelope, and registration artifacts through released workflow-plugin-control-plane protobuf validators; rejects raw URL, secret ref, raw actor identifier, and stale provenance fixtures without introducing a runtime endpoint.",
       "blockers": []
+    },
+    "104-signal-e2e-encryption": {
+      "status": "testable",
+      "namespace": "local",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 4,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Runs released workflow-plugin-signal v0.9.0 focused typed-step tests for session prepare -> encrypt -> decrypt and unauthorized principal denial. Proves ciphertext/plaintext separation and authz denial through real plugin code with no official Signal service egress.",
+      "blockers": []
+    },
+    "105-encrypted-spaces-proof-workflow": {
+      "status": "testable",
+      "namespace": "local",
+      "deployed": false,
+      "lastTested": null,
+      "lastResult": null,
+      "testCount": 6,
+      "passCount": 0,
+      "failCount": 0,
+      "localOnly": true,
+      "notes": "Runs released workflow-plugin-encrypted-spaces v0.4.0 focused typed-step tests for vector-backed append verification, tamper rejection, proof-evidence redaction, and required-domain coverage.",
+      "blockers": []
     }
   },
-  "lastUpdated": "2026-06-12T20:32:38.850782Z"
+  "lastUpdated": "2026-07-01T06:58:22Z"
 }
