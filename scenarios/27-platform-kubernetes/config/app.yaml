@@ -2,7 +2,7 @@ modules:
   - name: server
     type: http.server
     config:
-      address: ":8080"
+      address: ":18127"
 
   - name: router
     type: http.router
