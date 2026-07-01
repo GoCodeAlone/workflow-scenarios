@@ -11,10 +11,11 @@ Command sketch:
 ```sh
 for f in scenarios/*/test/run.sh; do
   scenario=${f#scenarios/}; scenario=${scenario%%/*}
+  api=0 workflow=0 gotest=0 static=0
   rg -q "curl|kubectl port-forward|workflow-server|BASE_URL" "$f" && api=1
   rg -q "wfctl|workflow-server" "$f" && workflow=1
   rg -q "go test" "$f" && gotest=1
-  rg -q "grep -q .*\\$CONFIG|grep -q .*config" "$f" && static=1
+  rg -q 'grep -q .*\\$CONFIG|grep -q .*config' "$f" && static=1
   # Bucket by observed boundary markers.
 done
 ```
