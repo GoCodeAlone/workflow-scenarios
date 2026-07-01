@@ -19,7 +19,12 @@ echo ""
 echo "=== Scenario 104 — Signal E2E Encryption ==="
 echo ""
 
-WORKDIR="$(mktemp -d)"
+if ! WORKDIR="$(mktemp -d)"; then
+  fail "could not create temporary module workspace"
+  echo ""
+  echo "Results: $PASS passed, $FAIL failed"
+  exit 1
+fi
 trap 'rm -rf "$WORKDIR"' EXIT
 
 (

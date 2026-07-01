@@ -22,4 +22,4 @@ proof-evidence redaction.
 bash scenarios/105-encrypted-spaces-proof-workflow/test/run.sh
 ```
 
-No live Signal service egress is used.
+No live external service egress is used.

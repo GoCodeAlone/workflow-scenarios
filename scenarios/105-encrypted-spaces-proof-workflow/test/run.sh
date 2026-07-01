@@ -19,7 +19,12 @@ echo ""
 echo "=== Scenario 105 — Encrypted Spaces Proof Workflow ==="
 echo ""
 
-WORKDIR="$(mktemp -d)"
+if ! WORKDIR="$(mktemp -d)"; then
+  fail "could not create temporary module workspace"
+  echo ""
+  echo "Results: $PASS passed, $FAIL failed"
+  exit 1
+fi
 trap 'rm -rf "$WORKDIR"' EXIT
 
 (
