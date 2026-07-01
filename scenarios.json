@@ -406,12 +406,12 @@
       "status": "passed",
       "namespace": "wf-scenario-32",
       "deployed": true,
-      "lastTested": "2026-03-28T22:22:30.555204Z",
+      "lastTested": "2026-07-01T22:46:14.634586Z",
       "lastResult": "pass",
       "testCount": 23,
       "passCount": 23,
       "failCount": 0,
-      "notes": "Platform DNS module for zone and record management. Mock and Route53 stub backends. A/CNAME/MX record types.",
+      "notes": "Workflow app-boundary proof for platform DNS. Starts workflow-server, drives mock platform.dns plan/apply/status through HTTP APIs, and asserts DNS zone and record state without live provider credentials.",
       "blockers": []
     },
     "33-apigateway-autoscaling": {
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T22:04:12.415609Z"
+  "lastUpdated": "2026-07-01T22:46:14.634586Z"
 }

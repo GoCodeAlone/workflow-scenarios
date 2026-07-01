@@ -1,7 +1,7 @@
 # Scenario Proof Quality Backlog
 
 This backlog tracks scenarios whose tests do not yet meet the repository proof
-standard. The audit was refreshed after scenarios 23-31 and 104-105 were
+standard. The audit was refreshed after scenarios 23-32 and 104-105 were
 converted to real Workflow app/API proofs.
 
 ## Audit Method
@@ -18,9 +18,9 @@ without HTTP if the scenario is explicitly a `wfctl`/CLI/tooling contract.
 ## Summary
 
 - 102 scenarios have `test/run.sh` scripts.
-- 62 scenarios currently exercise an API/application-style boundary.
-- 88 scenarios exercise a Workflow host or `wfctl` boundary.
-- 4 scenarios are package-test-only despite describing Workflow app or plugin
+- 63 scenarios currently exercise an API/application-style boundary.
+- 89 scenarios exercise a Workflow host or `wfctl` boundary.
+- 3 scenarios are package-test-only despite describing Workflow app or plugin
   behavior.
 - 0 scenarios were classified as static-only without a Workflow/API marker.
 - 3 scenarios have no first-pass proof marker and need manual classification.
@@ -34,12 +34,11 @@ reclassified as package-test support fixtures.
 
 | Scenario | Current Test Shape | Expected Remediation |
 |---|---|---|
-| `32-platform-dns` | `go test ./module -run TestPlatformDNS|TestDNS...` | Drive DNS plan/apply/status through the scenario config and assert record state. |
 | `33-apigateway-autoscaling` | `go test ./module -run TestAPIGateway|TestAutoscaling...` | Drive gateway/autoscaling plan/apply/status through the scenario config and assert state transitions. |
 | `34-app-container` | `go test ./module -run TestAppContainer` | Drive deploy/status/rollback through the scenario config. |
 | `35-multi-cloud-accounts` | `go test ./module -run TestCloudAccount` | Drive multi-cloud account validation through Workflow using mock/inline credentials. |
 
-Already remediated: scenarios 23-31 now launch real Workflow app paths and
+Already remediated: scenarios 23-32 now launch real Workflow app paths and
 drive HTTP/API boundaries against local mocks or fixtures.
 
 ## No-Marker Scenarios To Classify

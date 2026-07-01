@@ -2,7 +2,7 @@ modules:
   - name: server
     type: http.server
     config:
-      address: ":8080"
+      address: ":18132"
 
   - name: router
     type: http.router
@@ -73,7 +73,7 @@ pipelines:
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.plan
 
   dns-apply:
     trigger:
@@ -90,7 +90,7 @@ pipelines:
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.apply
 
   dns-status:
     trigger:
@@ -107,4 +107,4 @@ pipelines:
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.status
