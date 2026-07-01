@@ -6,10 +6,12 @@ description: |
   steps (step.iac_plan, step.iac_apply, step.iac_status, step.iac_destroy,
   step.iac_drift_detect).
 
-  Infrastructure state is tracked by the iac.state module (filesystem backend,
-  persisted in a k8s volume) and lifecycle operations are exposed via HTTP
-  pipelines. The platform provider is platform.kubernetes (kind backend), so no
-  real cluster is created — all state transitions happen in memory/on disk.
+  The test starts a real Workflow server from the scenario app config and drives
+  lifecycle operations through HTTP pipelines. Infrastructure state is tracked by
+  the iac.state module using the filesystem backend; the runner supplies a
+  temporary state directory through config environment expansion. The platform
+  provider is platform.kubernetes (kind backend), so no real cluster is created
+  — all state transitions happen in memory/on disk.
 
   This scenario validates the full IaC lifecycle:
     plan → verify planned → apply → verify active → status → drift detect → destroy → verify destroyed
