@@ -100,5 +100,6 @@ pipelines:
               _from: steps.append_verified.reports
             evidence:
               _from: steps.proof_evidence.evidence
-            json: "{{ .steps.proof_evidence.json }}"
+            json:
+              _from: steps.proof_evidence.evidence
     on_error: stop
