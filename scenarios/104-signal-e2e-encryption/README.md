@@ -1,12 +1,19 @@
 # Scenario 104 - Signal E2E Encryption
 
 Local-only Workflow app proof that the Signal Workflow plugin can perform an
-end-to-end encrypted message exchange through `wfctl pipeline run`.
+end-to-end encrypted message exchange through a running Workflow API.
 
 The scenario builds `workflow-plugin-signal`, loads it as an external Workflow
-plugin, and runs `config/app.yaml` with the Workflow engine. The app prepares a
-Bob pre-key bundle, encrypts a base64 message as Alice, decrypts as Bob, and
-asserts that the decrypted plaintext appears in Workflow pipeline output.
+plugin under a temporary `data/plugins` directory, launches the real Workflow
+server, and drives participant-parametric HTTP routes:
+
+- client B publishes a pre-key bundle via `POST /participants/{id}/session`
+- client A encrypts a message via `POST /participants/{id}/messages`
+- client B decrypts the envelope via `POST /participants/{id}/messages/decrypt`
+
+The app config contains a small local identity pool, but the workflows take
+participant IDs and message content from HTTP route params and request bodies.
+They do not hard-code an Alice/Bob conversation.
 
 ## Running
 
@@ -14,8 +21,8 @@ asserts that the decrypted plaintext appears in Workflow pipeline output.
 bash scenarios/104-signal-e2e-encryption/test/run.sh
 ```
 
-Set `WFCTL`, `WORKFLOW_REPO`, or `SIGNAL_PLUGIN_REPO` when running outside the
-standard workspace layout.
+Set `WORKFLOW_SERVER`, `WORKFLOW_REPO`, or `SIGNAL_PLUGIN_REPO` when running
+outside the standard workspace layout.
 
 No official Signal service endpoint, account, phone number, or production
 transport is used.

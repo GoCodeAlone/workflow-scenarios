@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 # Scenario 105 - Encrypted Spaces Proof Workflow.
 #
-# Demonstration-fidelity: this executes a Workflow app pipeline with the real
-# workflow-plugin-encrypted-spaces subprocess loaded through wfctl's external
-# plugin path. Storage is an in-memory plugin module, not S3.
+# Demonstration-fidelity: this starts the real Workflow server, loads the real
+# workflow-plugin-encrypted-spaces subprocess from data/plugins, and drives a
+# space/member API through separate HTTP calls. Storage is an in-memory plugin
+# module, not S3.
 set -uo pipefail
 
 PLUGIN_NAME="workflow-plugin-encrypted-spaces"
+BASE_URL="${BASE_URL:-http://127.0.0.1:18105}"
+SPACE_ID="${SPACE_ID:-space-1}"
+MEMBER_ID="${MEMBER_ID:-member-1}"
+DEVICE_ID="${DEVICE_ID:-device-1}"
+OPERATION_ID="${OPERATION_ID:-verified-op}"
+MEMBERSHIP_DIGEST="sha256:2f99cb90ee710be078aaf1b8cb9a22942c10f5965e5e39c1607a930fd6df7874"
+CHECKPOINT_DIGEST="sha256:479338417f33b12df048fbe2180f58638636b2618d90ac6f807ed436ff881d8c"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCENARIO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -15,6 +23,8 @@ CONFIG="$SCENARIO_DIR/config/app.yaml"
 
 PASS=0
 FAIL=0
+SERVER_PID=""
+DATA_DIR=""
 pass() { echo "PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
 finish() {
@@ -22,6 +32,14 @@ finish() {
   echo "Results: $PASS passed, $FAIL failed"
   [ "$FAIL" -eq 0 ]
 }
+cleanup() {
+  if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" >/dev/null 2>&1; then
+    kill "$SERVER_PID" >/dev/null 2>&1 || true
+    wait "$SERVER_PID" >/dev/null 2>&1 || true
+  fi
+  [ -n "$DATA_DIR" ] && rm -rf "$DATA_DIR"
+}
+trap cleanup EXIT
 
 find_repo() {
   local env_value="$1"
@@ -40,17 +58,17 @@ find_repo() {
   return 1
 }
 
-resolve_wfctl() {
-  if [ -n "${WFCTL:-}" ]; then
-    [ -x "$WFCTL" ] && printf '%s\n' "$WFCTL" && return 0
+resolve_server() {
+  if [ -n "${WORKFLOW_SERVER:-}" ]; then
+    [ -x "$WORKFLOW_SERVER" ] && printf '%s\n' "$WORKFLOW_SERVER" && return 0
     return 1
   fi
 
   local workflow_repo
-  workflow_repo="$(find_repo "${WORKFLOW_REPO:-}" "$REPO_ROOT/../workflow" "$REPO_ROOT/../../../workflow")" || return 1
+  workflow_repo="$(find_repo "${WORKFLOW_REPO:-${WORKFLOW_DIR:-}}" "$REPO_ROOT/../workflow" "$REPO_ROOT/../../../workflow")" || return 1
   mkdir -p "$workflow_repo/bin" || return 1
-  (cd "$workflow_repo" && GOWORK=off go build -o bin/wfctl ./cmd/wfctl) >/dev/null 2>&1 || return 1
-  printf '%s\n' "$workflow_repo/bin/wfctl"
+  (cd "$workflow_repo" && GOWORK=off go build -o bin/workflow-server ./cmd/server) >/dev/null 2>&1 || return 1
+  printf '%s\n' "$workflow_repo/bin/workflow-server"
 }
 
 build_plugin() {
@@ -65,28 +83,41 @@ build_plugin() {
     -o "$plugin_dir/$PLUGIN_NAME/$PLUGIN_NAME" ./cmd/workflow-plugin-encrypted-spaces) >/dev/null 2>&1 || return 1
 }
 
+wait_for_server() {
+  local url="$1"
+  local i
+  for i in $(seq 1 80); do
+    curl -fs "$url/healthz" >/dev/null 2>&1 && return 0
+    if [ -n "$SERVER_PID" ] && ! kill -0 "$SERVER_PID" >/dev/null 2>&1; then
+      return 1
+    fi
+    sleep 0.25
+  done
+  return 1
+}
+
 echo ""
 echo "=== Scenario 105 - Encrypted Spaces Proof Workflow ==="
 echo ""
 
 [ -f "$CONFIG" ] && pass "Workflow app config exists" || fail "Workflow app config missing"
-
-WFCTL_BIN="$(resolve_wfctl)"
-if [ "$?" -eq 0 ]; then
-  pass "wfctl binary is available"
+if grep -q 'operation_id: verified-op' "$CONFIG"; then
+  fail "Workflow pipelines should not hard-code the scenario operation id"
 else
-  fail "wfctl binary unavailable; set WFCTL or WORKFLOW_REPO"
+  pass "Workflow API accepts operation/proof inputs from clients"
+fi
+
+SERVER_BIN="$(resolve_server)"
+if [ "$?" -eq 0 ]; then
+  pass "workflow server binary is available"
+else
+  fail "workflow server unavailable; set WORKFLOW_SERVER or WORKFLOW_REPO"
   finish
   exit 1
 fi
 
-if ! PLUGIN_DIR="$(mktemp -d)"; then
-  fail "could not create temporary plugin directory"
-  finish
-  exit 1
-fi
-trap 'rm -rf "$PLUGIN_DIR"' EXIT
-
+DATA_DIR="$(mktemp -d)"
+PLUGIN_DIR="$DATA_DIR/plugins"
 if build_plugin "$PLUGIN_DIR"; then
   pass "built workflow-plugin-encrypted-spaces external plugin"
 else
@@ -95,35 +126,69 @@ else
   exit 1
 fi
 
-OUTPUT="$("$WFCTL_BIN" pipeline run -c "$CONFIG" -p encrypted-space-proof --plugin-dir "$PLUGIN_DIR" --verbose 2>&1)"
-STATUS=$?
-echo "$OUTPUT"
+SERVER_LOG="$SCRIPT_DIR/artifacts/last-server.log"
+mkdir -p "$(dirname "$SERVER_LOG")"
+"$SERVER_BIN" -config "$CONFIG" -data-dir "$DATA_DIR" >"$SERVER_LOG" 2>&1 &
+SERVER_PID=$!
 
-if [ "$STATUS" -eq 0 ]; then
-  pass "wfctl pipeline run completed"
+if wait_for_server "$BASE_URL"; then
+  pass "workflow server started and served /healthz"
 else
-  fail "wfctl pipeline run failed"
+  fail "workflow server did not become ready; see $SERVER_LOG"
+  finish
+  exit 1
 fi
 
-echo "$OUTPUT" | grep -q 'Pipeline completed successfully' \
-  && pass "Workflow engine reported successful pipeline completion" \
-  || fail "Workflow engine did not report successful completion"
+OPERATION="$(jq -cn \
+  --arg space "$SPACE_ID" \
+  --arg member "$MEMBER_ID" \
+  --arg device "$DEVICE_ID" \
+  --arg operation "$OPERATION_ID" \
+  '{operation:{space_id:$space,member_id:$member,device_id:$device,operation_id:$operation,key_epoch:1,membership_epoch:1,ciphertext:"c2VhbGVkLWNvbGxhYi1wYXlsb2Fk",nonce:"bm9uY2UtMTIzNDU2Nzg5MDEy",associated_data:"c3BhY2UtMS9yb29tLTE=",created_at_unix_nano:1783000000000000000}}')" || OPERATION=""
+APPENDED="$(curl -fsS -X POST "$BASE_URL/spaces/$SPACE_ID/operations" -H 'Content-Type: application/json' -d "$OPERATION")" \
+  && pass "client appended an encrypted operation through Workflow API" \
+  || fail "operation append API failed"
 
-echo "$OUTPUT" | grep -q 'Step 4/6: append_verified' \
-  && pass "verified append step executed through plugin" \
-  || fail "verified append step was not observed"
+COMMITMENT="$(printf '%s' "$APPENDED" | jq -c '.commitment // empty' 2>/dev/null)"
+if [ -n "$COMMITMENT" ] && [ "$COMMITMENT" != "null" ]; then
+  pass "append response contained an operation commitment"
+else
+  fail "append response did not contain a commitment: $APPENDED"
+fi
 
-echo "$OUTPUT" | grep -q 'Step 6/6: proof_evidence' \
-  && pass "proof evidence step executed through plugin" \
-  || fail "proof evidence step was not observed"
+PROOF_REQUEST="$(jq -cn \
+  --argjson operation "$(printf '%s' "$OPERATION" | jq -c '.operation')" \
+  --argjson expected_commitment "$COMMITMENT" \
+  --arg member "$MEMBER_ID" \
+  --arg membership_digest "$MEMBERSHIP_DIGEST" \
+  --arg checkpoint_digest "$CHECKPOINT_DIGEST" \
+  '{operation:$operation,expected_commitment:$expected_commitment,membership:{group_id:"space-1",member_id:$member,issuer:"issuer-1",expires_at:1893456000,proof_digest:$membership_digest,upstream_path:"java/shared/java/org/signal/libsignal/zkgroup/groups"},checkpoint:{checkpoint_id:"checkpoint-1",tree_head:"tree-head-1",tree_size:42,proof_digest:$checkpoint_digest,upstream_path:"rust/keytrans/src/verify.rs",previous_tree_size:0}}')" || PROOF_REQUEST=""
+PROOF="$(curl -fsS -X POST "$BASE_URL/spaces/$SPACE_ID/proof" -H 'Content-Type: application/json' -d "$PROOF_REQUEST")" \
+  && pass "proof client verified the operation through Workflow API" \
+  || fail "proof verification API failed"
 
-echo "$OUTPUT" | awk '
-  /Step 6\/6: proof_evidence/ { in_step = 1; next }
-  /^Pipeline completed successfully/ { in_step = 0 }
-  in_step && /operationlog\.commitment/ { found = 1 }
-  END { exit found ? 0 : 1 }
-' \
-  && pass "proof report domains flowed through Workflow output" \
-  || fail "proof report domains were not observed"
+if printf '%s' "$PROOF" | jq -e '.reports[] | select(.domain=="operationlog.commitment" and .accepted==true)' >/dev/null 2>&1; then
+  pass "proof response contains accepted operationlog commitment report"
+else
+  fail "proof response missing accepted operationlog report: $PROOF"
+fi
+
+if printf '%s' "$PROOF" | jq -e '.reports[] | select(.domain=="zkgroup.membership" and .production_ready==true)' >/dev/null 2>&1; then
+  pass "proof response contains vector-backed membership report"
+else
+  fail "proof response missing vector-backed membership report: $PROOF"
+fi
+
+if printf '%s' "$PROOF" | jq -e '.json.reports[] | select(.domain=="operationlog.commitment")' >/dev/null 2>&1; then
+  pass "redacted proof evidence JSON was returned by the app"
+else
+  fail "proof evidence JSON missing operationlog domain: $PROOF"
+fi
+
+if printf '%s' "$PROOF" | grep -q 'c2VhbGVkLWNvbGxhYi1wYXlsb2Fk'; then
+  fail "proof response leaked ciphertext payload"
+else
+  pass "proof response did not leak ciphertext payload"
+fi
 
 finish

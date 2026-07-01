@@ -3,16 +3,18 @@ id: "104-signal-e2e-encryption"
 category: C
 description: |
   Local-only Workflow app proof that the Signal Workflow plugin performs a real
-  end-to-end encrypted message exchange through wfctl pipeline run.
+  end-to-end encrypted message exchange through a running Workflow API.
 
   The scenario builds workflow-plugin-signal as an external plugin, loads it
-  through wfctl, and runs config/app.yaml with the Workflow engine. The pipeline
-  prepares a Bob bundle, encrypts as Alice, decrypts as Bob, and asserts the
-  decrypted plaintext from Workflow output. It does not contact the official
-  Signal service.
+  through the Workflow server's data/plugins path, and starts config/app.yaml
+  with HTTP routes for participant session prep, message encryption, and message
+  decryption. The test chooses two participants from the app's local identity
+  pool and exchanges a message through separate API calls. It does not contact
+  the official Signal service.
 components:
   - workflow-plugin-signal
-  - wfctl pipeline run
+  - workflow-server
+  - HTTP trigger routes
   - Workflow external plugin loader
   - libsignal-go session/pre-key primitives
   - step.signal_session_prepare

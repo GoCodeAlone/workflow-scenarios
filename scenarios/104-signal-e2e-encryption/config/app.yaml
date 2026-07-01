@@ -1,66 +1,119 @@
 modules:
-  - name: alice_identity
+  - name: server
+    type: http.server
+    config:
+      address: ":18104"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: participant_a_identity
     type: signal.identity_store
     config:
-      identity_ref: alice
-      local_id: alice@example.test
+      identity_ref: user-a
+      local_id: user-a@example.test
       device_id: 1
       registration_id: 1001
-  - name: bob_identity
+
+  - name: participant_b_identity
     type: signal.identity_store
     config:
-      identity_ref: bob
-      local_id: bob@example.test
+      identity_ref: user-b
+      local_id: user-b@example.test
       device_id: 1
       registration_id: 2002
 
+workflows:
+  http:
+    server: server
+    router: router
+
 pipelines:
-  signal-e2e:
+  healthz:
+    trigger: { type: http, config: { path: /healthz, method: GET } }
     steps:
-      - name: prepare_bob
+      - name: ok
+        type: step.json_response
+        config:
+          status: 200
+          body: { status: ok, scenario: "104-signal-e2e-encryption" }
+
+  prepare-session:
+    trigger:
+      type: http
+      config:
+        path: /participants/{participant}/session
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [participant]
+      - name: prepare
         type: step.signal_session_prepare
         config:
-          identity_ref: bob
-      - name: encrypt_input
-        type: step.set
+          identity_ref: '{{ index .steps "parse" "path_params" "participant" }}'
+      - name: respond
+        type: step.json_response
         config:
-          values:
-            remote_id: bob@example.test
-            remote_device_id: 1
-            plaintext: cHJpdmF0ZSB3b3JrZmxvdyBtZXNzYWdl
-            remote_bundle:
-              identity_ref: "{{ index .steps \"prepare_bob\" \"bundle\" \"identity_ref\" }}"
-              local_id: "{{ index .steps \"prepare_bob\" \"bundle\" \"local_id\" }}"
-              device_id: "{{ index .steps \"prepare_bob\" \"bundle\" \"device_id\" }}"
-              registration_id: "{{ index .steps \"prepare_bob\" \"bundle\" \"registration_id\" }}"
-              pre_key_id: "{{ index .steps \"prepare_bob\" \"bundle\" \"pre_key_id\" }}"
-              pre_key: "{{ index .steps \"prepare_bob\" \"bundle\" \"pre_key\" }}"
-              signed_pre_key_id: "{{ index .steps \"prepare_bob\" \"bundle\" \"signed_pre_key_id\" }}"
-              signed_pre_key: "{{ index .steps \"prepare_bob\" \"bundle\" \"signed_pre_key\" }}"
-              signed_pre_key_signature: "{{ index .steps \"prepare_bob\" \"bundle\" \"signed_pre_key_signature\" }}"
-              kyber_pre_key_id: "{{ index .steps \"prepare_bob\" \"bundle\" \"kyber_pre_key_id\" }}"
-              kyber_pre_key: "{{ index .steps \"prepare_bob\" \"bundle\" \"kyber_pre_key\" }}"
-              kyber_pre_key_signature: "{{ index .steps \"prepare_bob\" \"bundle\" \"kyber_pre_key_signature\" }}"
-              identity_key: "{{ index .steps \"prepare_bob\" \"bundle\" \"identity_key\" }}"
+          status: 200
+          body:
+            participant: '{{ index .steps "parse" "path_params" "participant" }}'
+            bundle:
+              _from: steps.prepare.bundle
+    on_error: stop
+
+  encrypt-message:
+    trigger:
+      type: http
+      config:
+        path: /participants/{sender}/messages
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [sender]
+          parse_body: true
+          merge_body: true
       - name: encrypt
         type: step.signal_encrypt
         config:
-          identity_ref: alice
-      - name: decrypt_input
-        type: step.set
+          identity_ref: '{{ index .steps "parse" "path_params" "sender" }}'
+      - name: respond
+        type: step.json_response
         config:
-          values:
-            principal: bob-user
+          status: 200
+          body:
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
             envelope:
-              sender_id: "{{ index .steps \"encrypt\" \"envelope\" \"sender_id\" }}"
-              sender_device_id: "{{ index .steps \"encrypt\" \"envelope\" \"sender_device_id\" }}"
-              recipient_id: "{{ index .steps \"encrypt\" \"envelope\" \"recipient_id\" }}"
-              recipient_device_id: "{{ index .steps \"encrypt\" \"envelope\" \"recipient_device_id\" }}"
-              message_type: "{{ index .steps \"encrypt\" \"envelope\" \"message_type\" }}"
-              ciphertext: "{{ index .steps \"encrypt\" \"envelope\" \"ciphertext\" }}"
+              _from: steps.encrypt.envelope
+    on_error: stop
+
+  decrypt-message:
+    trigger:
+      type: http
+      config:
+        path: /participants/{recipient}/messages/decrypt
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [recipient]
+          parse_body: true
+          merge_body: true
       - name: decrypt
         type: step.signal_decrypt
         config:
-          identity_ref: bob
-          required_principal: bob-user
+          identity_ref: '{{ index .steps "parse" "path_params" "recipient" }}'
+          required_principal: "{{ .principal }}"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            plaintext: "{{ .steps.decrypt.plaintext }}"
     on_error: stop

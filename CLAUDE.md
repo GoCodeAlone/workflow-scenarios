@@ -43,10 +43,13 @@ PVCs persist across upgrades/teardowns for data durability.
 5. Write tests in `scenarios/<id>-<name>/test/run.sh` using `PASS:` / `FAIL:` prefixes
 6. Add entry to `scenarios.json`
 
-Scenario tests must exercise a Workflow application path. Prefer `wfctl
-pipeline run`, `wfctl test`, a deployed `workflow-server`, or another path that
-builds a Workflow engine from scenario configuration and executes modules,
-triggers, or pipeline steps. Package tests, library unit tests, schema
+Scenario tests must exercise a Workflow application path. Prefer a deployed
+`workflow-server` or another path that builds a Workflow engine from scenario
+configuration and drives the app through its real API, trigger, CLI, or event
+boundary. `wfctl pipeline run` and `wfctl test` are acceptable when the
+scenario itself is a pipeline/tooling contract; they are not sufficient for
+scenarios that claim multi-client communication, collaboration, auth, storage,
+or other application behavior. Package tests, library unit tests, schema
 validation, and generated fixture checks are supporting evidence only; they are
 not sufficient by themselves for a `workflow-scenarios` entry.
 
@@ -55,3 +58,8 @@ plugin mechanism and execute it from `config/app.yaml`. For external services
 or storage providers, use committed mocks, fakes, local emulators, or an
 explicitly approved live environment, and document that boundary in the
 scenario README and test script.
+
+Application scenario workflows should be actor/resource-parametric. A config may
+declare a pool of known local identities, tenants, stores, or fixtures, but
+pipelines should take participant/resource IDs from route params, request
+bodies, events, or CLI inputs instead of hard-coding a single demo interaction.

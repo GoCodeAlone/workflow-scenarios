@@ -3,16 +3,19 @@ id: "105-encrypted-spaces-proof-workflow"
 category: C
 description: |
   Local-only Workflow app proof that the Encrypted Spaces Workflow plugin
-  verifies a proof-gated append flow and emits redacted proof evidence.
+  verifies a proof-gated append flow and emits redacted proof evidence through
+  a running Workflow API.
 
   The scenario builds workflow-plugin-encrypted-spaces as an external plugin,
-  loads it through wfctl, and runs config/app.yaml with the Workflow engine. The
-  app uses an in-memory encrypted-space store, verifies a commitment with
-  membership and key-transparency vector evidence, and emits proof evidence. It
-  does not use S3 or live external services.
+  loads it through the Workflow server's data/plugins path, and starts
+  config/app.yaml with HTTP routes for appending encrypted operations and
+  verifying proof evidence. Operation IDs, member IDs, commitments, and vector
+  proof material are request inputs. It does not use S3 or live external
+  services.
 components:
   - workflow-plugin-encrypted-spaces
-  - wfctl pipeline run
+  - workflow-server
+  - HTTP trigger routes
   - Workflow external plugin loader
   - encrypted-spaces-go proof policy
   - encrypted_space.store memory backend

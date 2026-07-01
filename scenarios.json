@@ -1240,28 +1240,28 @@
       "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "lastTested": "2026-07-01T13:57:29.803200Z",
+      "lastTested": "2026-07-01T14:21:40.882137Z",
       "lastResult": "pass",
-      "testCount": 7,
-      "passCount": 7,
+      "testCount": 12,
+      "passCount": 12,
       "failCount": 0,
       "localOnly": true,
-      "notes": "Builds workflow-plugin-signal as an external plugin, loads it through wfctl pipeline run, and executes a Workflow app pipeline for session prepare -> encrypt -> decrypt. Proves decrypted plaintext reaches Workflow output with no official Signal service egress.",
+      "notes": "Builds workflow-plugin-signal as an external plugin, launches workflow-server, and drives participant-parametric HTTP APIs for session prepare -> encrypt -> decrypt. Proves two clients exchange an encrypted message through the running Workflow app with no official Signal service egress.",
       "blockers": []
     },
     "105-encrypted-spaces-proof-workflow": {
       "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "lastTested": "2026-07-01T13:57:32.970765Z",
+      "lastTested": "2026-07-01T14:21:51.610316Z",
       "lastResult": "pass",
-      "testCount": 8,
-      "passCount": 8,
+      "testCount": 12,
+      "passCount": 12,
       "failCount": 0,
       "localOnly": true,
-      "notes": "Builds workflow-plugin-encrypted-spaces as an external plugin, loads it through wfctl pipeline run, and executes a Workflow app pipeline for in-memory encrypted-space append, verified commitment, and proof evidence. No S3 or live external service egress.",
+      "notes": "Builds workflow-plugin-encrypted-spaces as an external plugin, launches workflow-server, and drives space-parametric HTTP APIs for operation append, verified commitment, and proof evidence. Uses an in-memory store fixture with no S3 or live external service egress.",
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T13:57:32.970765Z"
+  "lastUpdated": "2026-07-01T14:21:51.610316Z"
 }
