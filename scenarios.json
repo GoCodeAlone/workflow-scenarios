@@ -298,10 +298,10 @@
       "status": "passed",
       "namespace": "wf-scenario-23",
       "deployed": true,
-      "lastTested": "2026-03-28T22:21:48.135584Z",
+      "lastTested": "2026-07-01T15:11:57.695283Z",
       "lastResult": "pass",
-      "testCount": 7,
-      "passCount": 7,
+      "testCount": 15,
+      "passCount": 15,
       "failCount": 0,
       "notes": "NoSQL data store modules (DynamoDB, MongoDB, Redis) with mock backends. CRUD lifecycle via pipeline steps.",
       "blockers": []
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T14:54:36.688040Z"
+  "lastUpdated": "2026-07-01T15:11:57.695283Z"
 }
