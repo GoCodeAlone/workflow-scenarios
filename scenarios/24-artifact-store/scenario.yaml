@@ -7,16 +7,15 @@ description: |
   step.artifact_delete pipeline steps.
 
   Endpoints:
-    POST   /api/v1/artifacts/upload        — upload artifact (multipart or JSON+base64)
-    GET    /api/v1/artifacts/{key}         — download artifact (key in query param)
-    GET    /api/v1/artifacts               — list artifacts (optional ?prefix=)
-    DELETE /api/v1/artifacts/{key}         — delete artifact (key in query param)
+    POST   /api/artifacts                  — upload artifact JSON+base64
+    POST   /api/artifacts/download         — download artifact JSON+base64
+    POST   /api/artifacts/list             — list artifacts by prefix
+    POST   /api/artifacts/delete           — delete artifact by key
     GET    /healthz                        — health check
 
 components:
   - workflow (engine)
   - storage.artifact module (filesystem backend)
-  - PVC for artifact data
 
 tags:
   - cicd
@@ -26,6 +25,6 @@ tags:
 
 status: pending
 notes: |
-  Port-forward uses 18024.
-  Artifacts stored at /data/artifacts inside the container (PVC-mounted).
-  Key is passed as query param ?key=<path> due to pipeline path-param constraints.
+  Local app proof uses port 18124.
+  Artifacts are stored under a temp server working directory during the test.
+  The runner supplies caller-selected artifact keys, content, owner, and version.
