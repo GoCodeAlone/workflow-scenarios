@@ -322,10 +322,10 @@
       "status": "passed",
       "namespace": "wf-scenario-25",
       "deployed": true,
-      "lastTested": "2026-03-28T22:21:57.399460Z",
+      "lastTested": "2026-07-01T16:51:25.738110Z",
       "lastResult": "pass",
-      "testCount": 22,
-      "passCount": 22,
+      "testCount": 13,
+      "passCount": 13,
       "failCount": 0,
       "notes": "Cloud account credential resolution for AWS with mock backend. Validates credential retrieval via pipeline step.",
       "blockers": []
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T15:51:02.537835Z"
+  "lastUpdated": "2026-07-01T16:51:25.738110Z"
 }
