@@ -1,23 +1,15 @@
 # Scenario Proof Quality Backlog
 
 This backlog tracks scenarios whose tests do not yet meet the repository proof
-standard. The audit was run after scenarios 104 and 105 were converted to real
-Workflow app/API proofs.
+standard. The audit was refreshed after scenarios 23-30 and 104-105 were
+converted to real Workflow app/API proofs.
 
 ## Audit Method
 
-Command sketch:
+Run:
 
 ```sh
-for f in scenarios/*/test/run.sh; do
-  scenario=${f#scenarios/}; scenario=${scenario%%/*}
-  api=0 workflow=0 gotest=0 static=0
-  rg -q "curl|kubectl port-forward|workflow-server|BASE_URL" "$f" && api=1
-  rg -q "wfctl|workflow-server" "$f" && workflow=1
-  rg -q "go test" "$f" && gotest=1
-  rg -q 'grep -q .*\\$CONFIG|grep -q .*config' "$f" && static=1
-  # Bucket by observed boundary markers.
-done
+scripts/audit-scenario-proof-quality.sh
 ```
 
 This is a triage heuristic, not a final proof judgment. Scenarios can be valid
@@ -25,12 +17,13 @@ without HTTP if the scenario is explicitly a `wfctl`/CLI/tooling contract.
 
 ## Summary
 
-- 54 scenarios currently exercise an API/application-style boundary.
-- 33 scenarios exercise a Workflow CLI/tooling boundary without an API boundary.
-- 12 scenarios are package-test-only despite describing Workflow app or plugin
+- 102 scenarios have `test/run.sh` scripts.
+- 61 scenarios currently exercise an API/application-style boundary.
+- 87 scenarios exercise a Workflow host or `wfctl` boundary.
+- 5 scenarios are package-test-only despite describing Workflow app or plugin
   behavior.
-- 0 scenarios were classified as static-only without a Workflow/API marker by
-  the first-pass heuristic.
+- 0 scenarios were classified as static-only without a Workflow/API marker.
+- 3 scenarios have no first-pass proof marker and need manual classification.
 
 ## Highest Priority: Package-Test-Only Scenarios
 
@@ -41,25 +34,31 @@ reclassified as package-test support fixtures.
 
 | Scenario | Current Test Shape | Expected Remediation |
 |---|---|---|
-| `23-nosql-datastore` | `go test ./module -run TestNoSQL` | Launch a Workflow app with `nosql.memory`; drive create/list/get/delete via HTTP or `wfctl pipeline run` only if reframed as a pipeline contract. |
-| `24-artifact-store` | `go test ./module -run TestArtifact` | Launch the artifact API described in the scenario and upload/download/list/delete through the app boundary. |
-| `25-cloud-account` | `go test ./module -run TestCloudAccount|TestCloudValidateStep` | Drive configured mock cloud accounts through a Workflow route or CLI scenario that validates account selection and redaction. |
-| `26-config-to-binary` | `go test ./module -run TestBuildBinaryStep` | Submit config to the scenario app or run `wfctl` build/generate behavior and validate the produced project artifacts. |
-| `27-platform-kubernetes` | `go test ./module -run TestK8s|TestPlatformKubernetes` | Drive plan/apply/status/destroy through the configured app with the in-memory/kind backend. |
-| `28-iac-pipeline` | `go test ./module -run TestIaC` | Drive the full plan/apply/status/drift/destroy lifecycle through Workflow config and assert state transitions. |
-| `29-gitlab-ci` | `go test ./module -run TestGitLab` | Load the GitLab mock client/webhook app and submit webhook/API requests through Workflow. |
-| `30-ecs-fargate` | `go test ./module -run TestECS|TestPlatformECS` | Drive the ECS/Fargate-style plan/apply/status/destroy app boundary against the mock provider. |
 | `31-platform-networking` | `go test ./module -run TestPlatformNetworking|TestNetwork...` | Drive VPC/firewall plan/apply/status through the scenario config. |
 | `32-platform-dns` | `go test ./module -run TestPlatformDNS|TestDNS...` | Drive DNS plan/apply/status through the scenario config and assert record state. |
+| `33-apigateway-autoscaling` | `go test ./module -run TestAPIGateway|TestAutoscaling...` | Drive gateway/autoscaling plan/apply/status through the scenario config and assert state transitions. |
 | `34-app-container` | `go test ./module -run TestAppContainer` | Drive deploy/status/rollback through the scenario config. |
 | `35-multi-cloud-accounts` | `go test ./module -run TestCloudAccount` | Drive multi-cloud account validation through Workflow using mock/inline credentials. |
 
+Already remediated: scenarios 23-30 now launch real Workflow app paths and
+drive HTTP/API boundaries against local mocks or fixtures.
+
+## No-Marker Scenarios To Classify
+
+The audit script found three scenarios whose scripts do not contain the
+first-pass API, Workflow, package-test, or static markers:
+
+| Scenario | Notes |
+|---|---|
+| `45-agent-operator-mode` | Appears to be manual QA only; either add an executable proof or mark explicitly as manual/out-of-band. |
+| `88-iac-dns-replay-migration` | Review whether the DNS replay command path is still current and whether the script should expose a `wfctl`/Workflow marker. |
+| `103-control-plane-descriptors` | Validator-based descriptor proof may be valid, but the README/scenario should state this is a released-contract artifact proof rather than an application scenario. |
+
 ## CLI/Tooling Boundary Scenarios To Review
 
-The first-pass audit found 33 scenarios that use `wfctl` without an HTTP/API
-boundary. Many are likely valid because their subject is `wfctl` generation,
-validation, registry, secret setup, or IaC planning. Review these for two
-things before changing them:
+Many scenarios use `wfctl` without an HTTP/API boundary. Several are likely
+valid because their subject is `wfctl` generation, validation, registry, secret
+setup, or IaC planning. Review these for two things before changing them:
 
 - The README/scenario description should claim a CLI/tooling contract, not an
   app behavior contract.
