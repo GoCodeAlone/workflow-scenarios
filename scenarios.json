@@ -1240,7 +1240,7 @@
       "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "lastTested": "2026-07-01T14:54:36.684390Z",
+      "lastTested": "2026-07-01T20:32:36.278483Z",
       "lastResult": "pass",
       "testCount": 12,
       "passCount": 12,
@@ -1253,7 +1253,7 @@
       "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "lastTested": "2026-07-01T14:54:36.688040Z",
+      "lastTested": "2026-07-01T20:32:47.700248Z",
       "lastResult": "pass",
       "testCount": 12,
       "passCount": 12,
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T20:16:58.822514Z"
+  "lastUpdated": "2026-07-01T20:32:47.700248Z"
 }

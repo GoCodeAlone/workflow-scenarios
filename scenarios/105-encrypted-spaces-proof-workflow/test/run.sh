@@ -9,13 +9,14 @@ set -uo pipefail
 
 PLUGIN_NAME="workflow-plugin-encrypted-spaces"
 BASE_URL="${BASE_URL:-http://127.0.0.1:18105}"
-# The proof digests below are fixture vectors for this space/member tuple.
-SPACE_ID="space-1"
-MEMBER_ID="member-1"
+# The proof digests below are fixture defaults for the default space/member
+# tuple. Override the tuple only with matching proof digest overrides.
+SPACE_ID="${SPACE_ID:-space-1}"
+MEMBER_ID="${MEMBER_ID:-member-1}"
 DEVICE_ID="${DEVICE_ID:-device-1}"
 OPERATION_ID="${OPERATION_ID:-verified-op}"
-MEMBERSHIP_DIGEST="sha256:2f99cb90ee710be078aaf1b8cb9a22942c10f5965e5e39c1607a930fd6df7874"
-CHECKPOINT_DIGEST="sha256:479338417f33b12df048fbe2180f58638636b2618d90ac6f807ed436ff881d8c"
+MEMBERSHIP_DIGEST="${MEMBERSHIP_DIGEST:-sha256:2f99cb90ee710be078aaf1b8cb9a22942c10f5965e5e39c1607a930fd6df7874}"
+CHECKPOINT_DIGEST="${CHECKPOINT_DIGEST:-sha256:479338417f33b12df048fbe2180f58638636b2618d90ac6f807ed436ff881d8c}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCENARIO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"

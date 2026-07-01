@@ -14,8 +14,10 @@ Workflow server, and drives fixture-backed HTTP routes:
 The app uses an in-memory encrypted-space store. The route path, operation ID,
 encrypted payload, expected commitment, membership proof vector, and checkpoint
 proof vector are request inputs, not baked into the workflow pipeline. The
-proof digest fixture is intentionally bound to the `space-1`/`member-1`
-membership tuple.
+default proof digest fixture is intentionally bound to the `space-1`/`member-1`
+membership tuple; callers may override `SPACE_ID`, `MEMBER_ID`,
+`MEMBERSHIP_DIGEST`, and `CHECKPOINT_DIGEST` together when testing another
+vector tuple.
 
 ## Running
 
