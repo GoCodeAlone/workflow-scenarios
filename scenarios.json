@@ -382,10 +382,10 @@
       "status": "passed",
       "namespace": "wf-scenario-30",
       "deployed": true,
-      "lastTested": "2026-03-28T22:22:21.521127Z",
+      "lastTested": "2026-07-01T20:16:58.822514Z",
       "lastResult": "pass",
-      "testCount": 15,
-      "passCount": 15,
+      "testCount": 30,
+      "passCount": 30,
       "failCount": 0,
       "notes": "Platform ECS/Fargate module. Plan/apply/status/destroy lifecycle with mock backend. Task definitions, services, networking config.",
       "blockers": []
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T18:42:23.561678Z"
+  "lastUpdated": "2026-07-01T20:16:58.822514Z"
 }
