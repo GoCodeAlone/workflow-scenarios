@@ -6,9 +6,9 @@ description: |
   Uses a mock cloud provider so no real credentials are required.
 
   Endpoints:
-    POST /api/v1/cloud/validate              — Validate cloud credentials for an account
-    GET  /api/v1/cloud/accounts             — List configured accounts (name + provider)
-    GET  /api/v1/cloud/accounts/{name}      — Get account info (provider, region; no secrets)
+    POST /api/cloud/validate                — Validate selected account credentials
+    GET  /api/cloud/accounts                — List configured accounts (name + provider)
+    GET  /api/cloud/accounts/{account}      — Get selected account info (provider, region; no secrets)
     GET  /healthz                           — Health check
 
 components:
@@ -25,6 +25,6 @@ tags:
 
 status: pending
 notes: |
-  Port-forward uses 18025.
+  Local app proof uses port 18125.
   All credentials use the mock provider — no real cloud account needed.
-  The cloud.account module is the foundation for platform.kubernetes, platform.ecs, etc.
+  The runner selects an account from the configured pool and validates it through step.cloud_validate.
