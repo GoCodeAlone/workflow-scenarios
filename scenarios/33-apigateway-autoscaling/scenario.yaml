@@ -2,12 +2,24 @@ name: API Gateway and Autoscaling
 id: "33-apigateway-autoscaling"
 category: C
 description: |
-  Demonstrates API gateway and autoscaling resources via generic IaC modules.
-  Exposes plan/apply/status/destroy operations for both module types via HTTP pipelines.
-  Uses step.iac_plan, step.iac_apply, step.iac_status, and step.iac_destroy for
-  both API gateway and autoscaling lifecycle operations.
+  Demonstrates API gateway and autoscaling resources through a real Workflow
+  application boundary backed by the external workflow-plugin-aws provider in
+  local mock mode. The app exposes plan/apply/status/destroy HTTP APIs for both
+  resource families and accepts caller-supplied specs and refs, so the pipeline
+  is not hard-coded to one fixture identity or resource name.
+  Uses iac.provider plus typed step.iac_provider_plan/apply/list/destroy
+  operations so provider-specific behavior stays in the plugin while Workflow
+  owns request routing and pipeline execution.
 components:
   - workflow (engine)
-  - workflow-plugin-aws (infra.api_gateway, infra.autoscaling_group)
-  - workflow IaC steps (step.iac_plan/apply/status/destroy)
+  - workflow-plugin-aws external plugin (iac.provider mock mode)
+  - workflow typed IaC provider steps
 status: testable
+notes: |
+  Local proof: test/run.sh builds workflow-server, installs workflow-plugin-aws
+  under the server data directory, starts the configured app, and drives the
+  HTTP APIs with runtime-provided gateway and autoscaling names.
+
+  Kubernetes proof path: deploy with workflow-server-aws:local, an image that
+  bundles workflow-server plus workflow-plugin-aws under /data/plugins. Build it
+  with scripts/upgrade.sh workflow-plugin-aws before applying this scenario.

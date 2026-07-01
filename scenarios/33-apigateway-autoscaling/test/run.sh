@@ -9,6 +9,8 @@
 set -uo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:18133}"
+CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-2}"
+CURL_MAX_TIME="${CURL_MAX_TIME:-10}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCENARIO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -89,7 +91,7 @@ wait_for_server() {
     if [ -n "$SERVER_PID" ] && ! kill -0 "$SERVER_PID" >/dev/null 2>&1; then
       return 1
     fi
-    health="$(curl -fs "$url/healthz" 2>/dev/null)" \
+    health="$(curl --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" -fs "$url/healthz" 2>/dev/null)" \
       && printf '%s' "$health" | jq -e '.status == "ok" and .scenario == "33-apigateway-autoscaling"' >/dev/null 2>&1 \
       && return 0
     sleep 0.25
@@ -100,7 +102,7 @@ wait_for_server() {
 post_json() {
   local path="$1"
   local payload="$2"
-  curl -fsS -X POST -H 'Content-Type: application/json' -d "$payload" "$BASE_URL$path"
+  curl --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" -fsS -X POST -H 'Content-Type: application/json' -d "$payload" "$BASE_URL$path"
 }
 
 plan_apply_status_destroy() {
