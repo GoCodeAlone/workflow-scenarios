@@ -2,8 +2,7 @@ modules:
   - name: server
     type: http.server
     config:
-      address: ":8080"
-
+      address: ":18126"
   - name: router
     type: http.router
     dependsOn: [server]
@@ -12,10 +11,9 @@ workflows:
   http:
     router: router
     server: server
-    routes: []
 
 pipelines:
-  healthz:
+  health:
     trigger:
       type: http
       config:
@@ -25,28 +23,31 @@ pipelines:
       - name: respond
         type: step.json_response
         config:
+          status: 200
           body:
             status: ok
+            scenario: "26-config-to-binary"
 
   build-binary-dry-run:
     trigger:
       type: http
       config:
-        path: /api/v1/build/binary
+        path: /api/build/binary
         method: POST
+        include_raw_body: true
     steps:
       - name: build
         type: step.build_binary
         config:
-          config_file: /config/app.yaml
-          module_path: generated-app
-          go_version: "1.22"
+          config_from: request_body
+          module_path: generated-scenario-app
+          go_version: "1.26"
           os: linux
           arch: amd64
           embed_config: true
           dry_run: true
-
       - name: respond
         type: step.json_response
         config:
+          status: 200
           body_from: steps.build

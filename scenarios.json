@@ -334,10 +334,10 @@
       "status": "passed",
       "namespace": "wf-scenario-26",
       "deployed": true,
-      "lastTested": "2026-03-28T22:22:03.290515Z",
+      "lastTested": "2026-07-01T17:15:12.436747Z",
       "lastResult": "pass",
-      "testCount": 12,
-      "passCount": 12,
+      "testCount": 18,
+      "passCount": 18,
       "failCount": 0,
       "notes": "Config-to-binary build step. Takes workflow config YAML and builds a standalone Go binary.",
       "blockers": []
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T16:51:25.738110Z"
+  "lastUpdated": "2026-07-01T17:15:12.436747Z"
 }

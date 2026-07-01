@@ -3,10 +3,10 @@ id: "26-config-to-binary"
 category: C
 description: |
   Demonstrates step.build_binary which generates a self-contained Go project
-  from an embedded workflow config. Uses dry_run mode to verify generated code
-  without requiring a Go toolchain in the pod. Tests that POSTing a config
-  to a pipeline endpoint returns a valid Go project with go.mod, main.go,
-  and an embedded app.yaml.
+  from caller-supplied Workflow config. The test starts a real Workflow app,
+  POSTs two different app YAML documents to the build endpoint, and verifies
+  that dry-run output returns go.mod, main.go, and app.yaml content generated
+  by step.build_binary for each request.
 components:
   - workflow (engine)
   - cicd plugin (step.build_binary)
