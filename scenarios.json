@@ -1240,7 +1240,7 @@
       "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "lastTested": "2026-07-01T14:54:36.684390Z",
+      "lastTested": "2026-07-01T20:32:36.278483Z",
       "lastResult": "pass",
       "testCount": 12,
       "passCount": 12,
@@ -1253,15 +1253,15 @@
       "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "lastTested": "2026-07-01T14:54:36.688040Z",
+      "lastTested": "2026-07-01T20:44:09.757462Z",
       "lastResult": "pass",
-      "testCount": 12,
-      "passCount": 12,
+      "testCount": 13,
+      "passCount": 13,
       "failCount": 0,
       "localOnly": true,
       "notes": "Builds workflow-plugin-encrypted-spaces as an external plugin, launches workflow-server, and drives fixture-backed HTTP APIs for operation append, verified commitment, and proof evidence. Uses an in-memory store fixture with a space-1/member-1 proof vector and no S3 or live external service egress.",
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T20:16:58.822514Z"
+  "lastUpdated": "2026-07-01T20:44:09.757462Z"
 }
