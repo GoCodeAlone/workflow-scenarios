@@ -370,12 +370,12 @@
       "status": "passed",
       "namespace": "wf-scenario-29",
       "deployed": true,
-      "lastTested": "2026-03-28T22:22:17.087070Z",
+      "lastTested": "2026-07-01T18:42:23.561678Z",
       "lastResult": "pass",
-      "testCount": 28,
-      "passCount": 28,
+      "testCount": 26,
+      "passCount": 26,
       "failCount": 0,
-      "notes": "GitLab CI plugin with webhook receiver, REST API client, and pipeline steps. Mock GitLab backend for testing.",
+      "notes": "Workflow app-boundary proof for workflow-plugin-gitlab as an external plugin. Builds/installs the plugin, starts workflow-server, and drives webhook parsing plus pipeline/MR/comment flows through HTTP with caller-supplied request bodies and a module-backed mock GitLab client.",
       "blockers": []
     },
     "30-ecs-fargate": {
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T18:18:50.882642Z"
+  "lastUpdated": "2026-07-01T18:42:23.561678Z"
 }
