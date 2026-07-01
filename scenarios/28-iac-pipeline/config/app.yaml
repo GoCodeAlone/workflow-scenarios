@@ -2,7 +2,7 @@ modules:
   - name: server
     type: http.server
     config:
-      address: ":8080"
+      address: ":18128"
 
   - name: router
     type: http.router
@@ -20,7 +20,7 @@ modules:
     type: iac.state
     config:
       backend: filesystem
-      directory: /var/lib/workflow/iac-state
+      directory: ${WORKFLOW_SCENARIO_IAC_STATE_DIR}
 
   # Kubernetes platform provider (kind — in-memory cluster simulation).
   - name: production-cluster
