@@ -346,12 +346,12 @@
       "status": "passed",
       "namespace": "wf-scenario-27",
       "deployed": true,
-      "lastTested": "2026-03-28T22:22:07.993710Z",
+      "lastTested": "2026-07-01T17:51:39.700163Z",
       "lastResult": "pass",
-      "testCount": 13,
-      "passCount": 13,
+      "testCount": 20,
+      "passCount": 20,
       "failCount": 0,
-      "notes": "Platform Kubernetes module with kind backend. Plan/apply/status/destroy lifecycle. 14 unit tests passing.",
+      "notes": "Platform Kubernetes module with kind backend. Real Workflow HTTP app drives plan/apply/status/destroy lifecycle.",
       "blockers": []
     },
     "28-iac-pipeline": {
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T17:15:12.436747Z"
+  "lastUpdated": "2026-07-01T17:51:39.700163Z"
 }

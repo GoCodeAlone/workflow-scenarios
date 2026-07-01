@@ -3,8 +3,9 @@ id: "27-platform-kubernetes"
 category: C
 description: |
   Demonstrates platform.kubernetes module with the kind backend (in-memory state).
-  Exposes plan/apply/status/destroy operations via HTTP pipelines backed by
-  step.k8s_plan, step.k8s_apply, step.k8s_status, and step.k8s_destroy.
+  Starts a real Workflow server from the scenario app config, then drives
+  plan/apply/status/destroy through HTTP pipelines backed by step.k8s_plan,
+  step.k8s_apply, step.k8s_status, and step.k8s_destroy.
   Uses a cloud.account (mock) as the credential provider.
   No real cluster is created — cluster state is tracked entirely in-memory,
   making the scenario runnable without kind or any cloud tooling installed.
