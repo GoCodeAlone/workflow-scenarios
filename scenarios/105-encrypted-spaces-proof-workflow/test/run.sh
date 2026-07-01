@@ -49,7 +49,7 @@ resolve_wfctl() {
   local workflow_repo
   workflow_repo="$(find_repo "${WORKFLOW_REPO:-}" "$REPO_ROOT/../workflow" "$REPO_ROOT/../../../workflow")" || return 1
   mkdir -p "$workflow_repo/bin" || return 1
-  (cd "$workflow_repo" && GOWORK=off go build -o bin/wfctl ./cmd/wfctl) >/dev/null || return 1
+  (cd "$workflow_repo" && GOWORK=off go build -o bin/wfctl ./cmd/wfctl) >/dev/null 2>&1 || return 1
   printf '%s\n' "$workflow_repo/bin/wfctl"
 }
 
@@ -62,7 +62,7 @@ build_plugin() {
   cp "$plugin_repo/plugin.json" "$plugin_dir/$PLUGIN_NAME/plugin.json" || return 1
   (cd "$plugin_repo" && GOWORK=off go build \
     -ldflags "-X github.com/GoCodeAlone/workflow-plugin-encrypted-spaces/internal.Version=${PLUGIN_VERSION:-0.0.0}" \
-    -o "$plugin_dir/$PLUGIN_NAME/$PLUGIN_NAME" ./cmd/workflow-plugin-encrypted-spaces) >/dev/null || return 1
+    -o "$plugin_dir/$PLUGIN_NAME/$PLUGIN_NAME" ./cmd/workflow-plugin-encrypted-spaces) >/dev/null 2>&1 || return 1
 }
 
 echo ""
@@ -109,15 +109,20 @@ echo "$OUTPUT" | grep -q 'Pipeline completed successfully' \
   && pass "Workflow engine reported successful pipeline completion" \
   || fail "Workflow engine did not report successful completion"
 
-echo "$OUTPUT" | grep -q 'append_verified' \
+echo "$OUTPUT" | grep -q 'Step 4/6: append_verified' \
   && pass "verified append step executed through plugin" \
   || fail "verified append step was not observed"
 
-echo "$OUTPUT" | grep -q 'proof_evidence' \
+echo "$OUTPUT" | grep -q 'Step 6/6: proof_evidence' \
   && pass "proof evidence step executed through plugin" \
   || fail "proof evidence step was not observed"
 
-echo "$OUTPUT" | grep -q 'operationlog.commitment' \
+echo "$OUTPUT" | awk '
+  /Step 6\/6: proof_evidence/ { in_step = 1; next }
+  /^Pipeline completed successfully/ { in_step = 0 }
+  in_step && /operationlog\.commitment/ { found = 1 }
+  END { exit found ? 0 : 1 }
+' \
   && pass "proof report domains flowed through Workflow output" \
   || fail "proof report domains were not observed"
 
