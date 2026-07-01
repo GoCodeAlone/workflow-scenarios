@@ -9,8 +9,9 @@ description: |
   The scenario builds workflow-plugin-encrypted-spaces as an external plugin,
   loads it through the Workflow server's data/plugins path, and starts
   config/app.yaml with HTTP routes for appending encrypted operations and
-  verifying proof evidence. Operation IDs, member IDs, commitments, and vector
-  proof material are request inputs. It does not use S3 or live external
+  verifying proof evidence. Operation IDs, commitments, and vector proof
+  material are request inputs; the proof digest fixture is bound to the
+  space-1/member-1 membership tuple. It does not use S3 or live external
   services.
 components:
   - workflow-plugin-encrypted-spaces

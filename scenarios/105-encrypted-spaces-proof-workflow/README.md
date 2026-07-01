@@ -6,15 +6,16 @@ running Workflow API.
 
 The scenario builds `workflow-plugin-encrypted-spaces`, loads it as an external
 Workflow plugin under a temporary `data/plugins` directory, launches the real
-Workflow server, and drives space-parametric HTTP routes:
+Workflow server, and drives fixture-backed HTTP routes:
 
 - a client appends an encrypted operation via `POST /spaces/{space}/operations`
 - a proof client verifies the returned commitment via `POST /spaces/{space}/proof`
 
-The app uses an in-memory encrypted-space store. Operation IDs, member IDs,
-encrypted payloads, expected commitments, membership proof vectors, and
-checkpoint proof vectors are request inputs, not baked into the workflow
-pipeline.
+The app uses an in-memory encrypted-space store. The route path, operation ID,
+encrypted payload, expected commitment, membership proof vector, and checkpoint
+proof vector are request inputs, not baked into the workflow pipeline. The
+proof digest fixture is intentionally bound to the `space-1`/`member-1`
+membership tuple.
 
 ## Running
 
