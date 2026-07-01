@@ -9,8 +9,9 @@ set -uo pipefail
 
 PLUGIN_NAME="workflow-plugin-encrypted-spaces"
 BASE_URL="${BASE_URL:-http://127.0.0.1:18105}"
-SPACE_ID="${SPACE_ID:-space-1}"
-MEMBER_ID="${MEMBER_ID:-member-1}"
+# The proof digests below are fixture vectors for this space/member tuple.
+SPACE_ID="space-1"
+MEMBER_ID="member-1"
 DEVICE_ID="${DEVICE_ID:-device-1}"
 OPERATION_ID="${OPERATION_ID:-verified-op}"
 MEMBERSHIP_DIGEST="sha256:2f99cb90ee710be078aaf1b8cb9a22942c10f5965e5e39c1607a930fd6df7874"
@@ -159,10 +160,11 @@ fi
 PROOF_REQUEST="$(jq -cn \
   --argjson operation "$(printf '%s' "$OPERATION" | jq -c '.operation')" \
   --argjson expected_commitment "$COMMITMENT" \
+  --arg space "$SPACE_ID" \
   --arg member "$MEMBER_ID" \
   --arg membership_digest "$MEMBERSHIP_DIGEST" \
   --arg checkpoint_digest "$CHECKPOINT_DIGEST" \
-  '{operation:$operation,expected_commitment:$expected_commitment,membership:{group_id:"space-1",member_id:$member,issuer:"issuer-1",expires_at:1893456000,proof_digest:$membership_digest,upstream_path:"java/shared/java/org/signal/libsignal/zkgroup/groups"},checkpoint:{checkpoint_id:"checkpoint-1",tree_head:"tree-head-1",tree_size:42,proof_digest:$checkpoint_digest,upstream_path:"rust/keytrans/src/verify.rs",previous_tree_size:0}}')" || PROOF_REQUEST=""
+  '{operation:$operation,expected_commitment:$expected_commitment,membership:{group_id:$space,member_id:$member,issuer:"issuer-1",expires_at:1893456000,proof_digest:$membership_digest,upstream_path:"java/shared/java/org/signal/libsignal/zkgroup/groups"},checkpoint:{checkpoint_id:"checkpoint-1",tree_head:"tree-head-1",tree_size:42,proof_digest:$checkpoint_digest,upstream_path:"rust/keytrans/src/verify.rs",previous_tree_size:0}}')" || PROOF_REQUEST=""
 PROOF="$(curl -fsS -X POST "$BASE_URL/spaces/$SPACE_ID/proof" -H 'Content-Type: application/json' -d "$PROOF_REQUEST")" \
   && pass "proof client verified the operation through Workflow API" \
   || fail "proof verification API failed"
