@@ -1,0 +1,119 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":18104"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: participant_a_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-a
+      local_id: user-a@example.test
+      device_id: 1
+      registration_id: 1001
+
+  - name: participant_b_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-b
+      local_id: user-b@example.test
+      device_id: 1
+      registration_id: 2002
+
+workflows:
+  http:
+    server: server
+    router: router
+
+pipelines:
+  healthz:
+    trigger: { type: http, config: { path: /healthz, method: GET } }
+    steps:
+      - name: ok
+        type: step.json_response
+        config:
+          status: 200
+          body: { status: ok, scenario: "104-signal-e2e-encryption" }
+
+  prepare-session:
+    trigger:
+      type: http
+      config:
+        path: /participants/{participant}/session
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [participant]
+      - name: prepare
+        type: step.signal_session_prepare
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "participant" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            participant: '{{ index .steps "parse" "path_params" "participant" }}'
+            bundle:
+              _from: steps.prepare.bundle
+    on_error: stop
+
+  encrypt-message:
+    trigger:
+      type: http
+      config:
+        path: /participants/{sender}/messages
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [sender]
+          parse_body: true
+          merge_body: true
+      - name: encrypt
+        type: step.signal_encrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "sender" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
+            envelope:
+              _from: steps.encrypt.envelope
+    on_error: stop
+
+  decrypt-message:
+    trigger:
+      type: http
+      config:
+        path: /participants/{recipient}/messages/decrypt
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [recipient]
+          parse_body: true
+          merge_body: true
+      - name: decrypt
+        type: step.signal_decrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "recipient" }}'
+          required_principal: "{{ .principal }}"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            plaintext: "{{ .steps.decrypt.plaintext }}"
+    on_error: stop

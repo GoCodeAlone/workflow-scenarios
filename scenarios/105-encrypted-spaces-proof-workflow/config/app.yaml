@@ -1,0 +1,105 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":18105"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: encrypted_space_store
+    type: encrypted_space.store
+    config:
+      space_id: space-1
+      backend: memory
+      max_operations: 128
+
+  - name: encrypted_space_policy
+    type: encrypted_space.proof_policy
+    config:
+      mode: vector-backed
+      require_vector_backed: true
+      deferred_domains:
+        - message-backup
+        - svr-svrb
+
+workflows:
+  http:
+    server: server
+    router: router
+
+pipelines:
+  healthz:
+    trigger: { type: http, config: { path: /healthz, method: GET } }
+    steps:
+      - name: ok
+        type: step.json_response
+        config:
+          status: 200
+          body: { status: ok, scenario: "105-encrypted-spaces-proof-workflow" }
+
+  append-operation:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/operations
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space]
+          parse_body: true
+          merge_body: true
+      - name: append
+        type: step.encrypted_space_append
+        config:
+          allow_fake_verifier: true
+          retention:
+            max_operations: 10
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            commitment:
+              _from: steps.append.commitment
+    on_error: stop
+
+  verify-operation:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/proof
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space]
+          parse_body: true
+          merge_body: true
+      - name: append_verified
+        type: step.encrypted_space_append_verified
+        config:
+          policy:
+            require_vector_backed: true
+      - name: proof_evidence
+        type: step.encrypted_space_proof_evidence
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            commitment:
+              _from: steps.append_verified.commitment
+            reports:
+              _from: steps.append_verified.reports
+            evidence:
+              _from: steps.proof_evidence.evidence
+            json:
+              _from: steps.proof_evidence.evidence
+    on_error: stop

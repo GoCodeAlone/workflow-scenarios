@@ -1,20 +1,21 @@
-# Scenario 105 — Encrypted Spaces Proof Workflow
+# Scenario 105 - Encrypted Spaces Proof Workflow
 
-Local-only proof that the released Encrypted Spaces Workflow plugin can verify a
-proof-gated append flow and emit redacted proof evidence.
+Local-only Workflow app proof that the Encrypted Spaces Workflow plugin can
+verify a proof-gated append flow and emit redacted proof evidence through a
+running Workflow API.
 
-The scenario creates a temporary Go module, pins
-`github.com/GoCodeAlone/workflow-plugin-encrypted-spaces@v0.4.0`, then runs the
-released plugin's focused proof workflow tests:
+The scenario builds `workflow-plugin-encrypted-spaces`, loads it as an external
+Workflow plugin under a temporary `data/plugins` directory, launches the real
+Workflow server, and drives fixture-backed HTTP routes:
 
-- `TestAppendVerifiedAcceptsVectorBackedProof`
-- `TestAppendVerifiedRejectsTamperedProof`
-- `TestProofEvidenceRedactsPlaintextAndKeyMaterial`
-- `TestVectorReportStepFiltersRequiredDomains`
+- a client appends an encrypted operation via `POST /spaces/{space}/operations`
+- a proof client verifies the returned commitment via `POST /spaces/{space}/proof`
 
-Those tests execute the actual Workflow plugin step implementations for
-vector-backed append verification, tamper rejection, coverage filtering, and
-proof-evidence redaction.
+The app uses an in-memory encrypted-space store. The route path, operation ID,
+encrypted payload, expected commitment, membership proof vector, and checkpoint
+proof vector are request inputs, not baked into the workflow pipeline. The
+proof digest fixture is intentionally bound to the `space-1`/`member-1`
+membership tuple.
 
 ## Running
 
@@ -22,4 +23,7 @@ proof-evidence redaction.
 bash scenarios/105-encrypted-spaces-proof-workflow/test/run.sh
 ```
 
-No live external service egress is used.
+Set `WORKFLOW_SERVER`, `WORKFLOW_REPO`, or `ENCRYPTED_SPACES_PLUGIN_REPO` when
+running outside the standard workspace layout.
+
+No S3 bucket or live external service egress is used.

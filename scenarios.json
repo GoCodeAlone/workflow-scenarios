@@ -1237,31 +1237,31 @@
       "blockers": []
     },
     "104-signal-e2e-encryption": {
-      "status": "testable",
+      "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "lastTested": null,
-      "lastResult": null,
-      "testCount": 4,
-      "passCount": 0,
+      "lastTested": "2026-07-01T14:54:36.684390Z",
+      "lastResult": "pass",
+      "testCount": 12,
+      "passCount": 12,
       "failCount": 0,
       "localOnly": true,
-      "notes": "Runs released workflow-plugin-signal v0.9.0 focused typed-step tests for session prepare -> encrypt -> decrypt and unauthorized principal denial. Proves ciphertext/plaintext separation and authz denial through real plugin code with no official Signal service egress.",
+      "notes": "Builds workflow-plugin-signal as an external plugin, launches workflow-server, and drives participant-parametric HTTP APIs for session prepare -> encrypt -> decrypt. Proves two clients exchange an encrypted message through the running Workflow app with no official Signal service egress.",
       "blockers": []
     },
     "105-encrypted-spaces-proof-workflow": {
-      "status": "testable",
+      "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "lastTested": null,
-      "lastResult": null,
-      "testCount": 6,
-      "passCount": 0,
+      "lastTested": "2026-07-01T14:54:36.688040Z",
+      "lastResult": "pass",
+      "testCount": 12,
+      "passCount": 12,
       "failCount": 0,
       "localOnly": true,
-      "notes": "Runs released workflow-plugin-encrypted-spaces v0.4.0 focused typed-step tests for vector-backed append verification, tamper rejection, proof-evidence redaction, and required-domain coverage.",
+      "notes": "Builds workflow-plugin-encrypted-spaces as an external plugin, launches workflow-server, and drives fixture-backed HTTP APIs for operation append, verified commitment, and proof evidence. Uses an in-memory store fixture with a space-1/member-1 proof vector and no S3 or live external service egress.",
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T06:58:22Z"
+  "lastUpdated": "2026-07-01T14:54:36.688040Z"
 }

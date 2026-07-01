@@ -2,17 +2,20 @@ name: Signal E2E Encryption
 id: "104-signal-e2e-encryption"
 category: C
 description: |
-  Local-only proof that the released Signal Workflow plugin performs a real
-  end-to-end encrypted message exchange through its typed step code.
+  Local-only Workflow app proof that the Signal Workflow plugin performs a real
+  end-to-end encrypted message exchange through a running Workflow API.
 
-  The scenario creates a temporary Go module, pins
-  workflow-plugin-signal v0.9.0, and runs the released plugin's focused internal
-  step tests for session prepare -> encrypt -> decrypt plus unauthorized
-  principal denial. This executes the plugin's real typed step implementations
-  and libsignal-go session code; it does not reimplement the cryptography and
-  does not contact the official Signal service.
+  The scenario builds workflow-plugin-signal as an external plugin, loads it
+  through the Workflow server's data/plugins path, and starts config/app.yaml
+  with HTTP routes for participant session prep, message encryption, and message
+  decryption. The test chooses two participants from the app's local identity
+  pool and exchanges a message through separate API calls. It does not contact
+  the official Signal service.
 components:
-  - workflow-plugin-signal v0.9.0
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
   - libsignal-go session/pre-key primitives
   - step.signal_session_prepare
   - step.signal_encrypt
