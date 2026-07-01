@@ -11,6 +11,10 @@ PLUGIN_NAME="workflow-plugin-encrypted-spaces"
 BASE_URL="${BASE_URL:-http://127.0.0.1:18105}"
 # The proof digests below are fixture defaults for the default space/member
 # tuple. Override the tuple only with matching proof digest overrides.
+SPACE_ID_ENV_SET="${SPACE_ID+x}"
+MEMBER_ID_ENV_SET="${MEMBER_ID+x}"
+MEMBERSHIP_DIGEST_ENV_SET="${MEMBERSHIP_DIGEST+x}"
+CHECKPOINT_DIGEST_ENV_SET="${CHECKPOINT_DIGEST+x}"
 SPACE_ID="${SPACE_ID:-space-1}"
 MEMBER_ID="${MEMBER_ID:-member-1}"
 DEVICE_ID="${DEVICE_ID:-device-1}"
@@ -103,6 +107,17 @@ echo "=== Scenario 105 - Encrypted Spaces Proof Workflow ==="
 echo ""
 
 [ -f "$CONFIG" ] && pass "Workflow app config exists" || fail "Workflow app config missing"
+VECTOR_OVERRIDE_COUNT=0
+[ -n "$SPACE_ID_ENV_SET" ] && VECTOR_OVERRIDE_COUNT=$((VECTOR_OVERRIDE_COUNT + 1))
+[ -n "$MEMBER_ID_ENV_SET" ] && VECTOR_OVERRIDE_COUNT=$((VECTOR_OVERRIDE_COUNT + 1))
+[ -n "$MEMBERSHIP_DIGEST_ENV_SET" ] && VECTOR_OVERRIDE_COUNT=$((VECTOR_OVERRIDE_COUNT + 1))
+[ -n "$CHECKPOINT_DIGEST_ENV_SET" ] && VECTOR_OVERRIDE_COUNT=$((VECTOR_OVERRIDE_COUNT + 1))
+if [ "$VECTOR_OVERRIDE_COUNT" -ne 0 ] && [ "$VECTOR_OVERRIDE_COUNT" -ne 4 ]; then
+  fail "SPACE_ID, MEMBER_ID, MEMBERSHIP_DIGEST, and CHECKPOINT_DIGEST must be overridden together"
+  finish
+  exit 1
+fi
+pass "encrypted-space proof vector inputs are complete"
 if grep -q 'operation_id: verified-op' "$CONFIG"; then
   fail "Workflow pipelines should not hard-code the scenario operation id"
 else
