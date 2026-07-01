@@ -83,19 +83,30 @@ echo "=== Scenario 28: IaC Pipeline ==="
 echo ""
 
 [ -f "$CONFIG" ] && pass "Workflow app config exists" || fail "Workflow app config missing"
+for cmd in curl jq; do
+  if command -v "$cmd" >/dev/null 2>&1; then
+    pass "required command $cmd is available"
+  else
+    fail "required command $cmd is missing"
+  fi
+done
+if [ "$FAIL" -ne 0 ]; then
+  finish
+  exit 1
+fi
 if sed '/^[[:space:]]*#/d' "$SCRIPT_DIR/run.sh" | grep -Eq '(^|[;&|[:space:]])go[[:space:]]+test'; then
   fail "scenario test should not delegate proof to Go package tests"
 else
   pass "scenario test exercises the Workflow app boundary"
 fi
 for step in step.iac_plan step.iac_apply step.iac_status step.iac_drift_detect step.iac_destroy; do
-  if grep -q "type: $step" "$CONFIG"; then
+  if grep -Fq "type: $step" "$CONFIG"; then
     pass "Workflow config wires $step"
   else
     fail "Workflow config missing $step"
   fi
 done
-if grep -q 'directory: ${WORKFLOW_SCENARIO_IAC_STATE_DIR}' "$CONFIG"; then
+if grep -Fq 'directory: ${WORKFLOW_SCENARIO_IAC_STATE_DIR}' "$CONFIG"; then
   pass "Workflow config parameterizes filesystem state directory"
 else
   fail "Workflow config should parameterize filesystem state directory"
@@ -118,9 +129,19 @@ fi
 export WORKFLOW_SCENARIO_IAC_STATE_DIR="$DATA_DIR/iac-state"
 
 SERVER_LOG="$SCRIPT_DIR/artifacts/last-server.log"
-mkdir -p "$(dirname "$SERVER_LOG")"
+if ! mkdir -p "$(dirname "$SERVER_LOG")"; then
+  fail "could not create server log directory"
+  finish
+  exit 1
+fi
 "$SERVER_BIN" -config "$CONFIG" -data-dir "$DATA_DIR" >"$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
+sleep 0.1
+if ! kill -0 "$SERVER_PID" >/dev/null 2>&1; then
+  fail "workflow server process exited immediately; see $SERVER_LOG"
+  finish
+  exit 1
+fi
 
 if wait_for_server "$BASE_URL"; then
   pass "workflow server started and served /healthz"

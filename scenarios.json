@@ -358,10 +358,10 @@
       "status": "passed",
       "namespace": "wf-scenario-28",
       "deployed": true,
-      "lastTested": "2026-07-01T18:09:02.953639Z",
+      "lastTested": "2026-07-01T18:18:50.882642Z",
       "lastResult": "pass",
-      "testCount": 25,
-      "passCount": 25,
+      "testCount": 27,
+      "passCount": 27,
       "failCount": 0,
       "notes": "Real Workflow HTTP app drives iac.state filesystem persistence and generic IaC lifecycle steps: plan \u2192 apply \u2192 status \u2192 drift-detect \u2192 destroy. No real cluster required (kind backend).",
       "blockers": []
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T18:09:02.953639Z"
+  "lastUpdated": "2026-07-01T18:18:50.882642Z"
 }
