@@ -370,7 +370,7 @@
       "status": "passed",
       "namespace": "wf-scenario-29",
       "deployed": true,
-      "lastTested": "2026-07-01T18:34:40.974070Z",
+      "lastTested": "2026-07-01T18:42:23.561678Z",
       "lastResult": "pass",
       "testCount": 26,
       "passCount": 26,
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T18:34:40.974070Z"
+  "lastUpdated": "2026-07-01T18:42:23.561678Z"
 }
