@@ -112,7 +112,11 @@ else
   exit 1
 fi
 
-DATA_DIR="$(mktemp -d)"
+if ! DATA_DIR="$(mktemp -d)"; then
+  fail "could not create temporary data directory"
+  finish
+  exit 1
+fi
 PLUGIN_DIR="$DATA_DIR/plugins"
 if build_plugin "$PLUGIN_DIR"; then
   pass "built workflow-plugin-signal external plugin"
