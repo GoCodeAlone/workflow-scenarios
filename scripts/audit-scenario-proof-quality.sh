@@ -3,6 +3,11 @@ set -euo pipefail
 
 ROOT="${1:-.}"
 
+if ! command -v rg >/dev/null 2>&1; then
+  echo "ERROR: rg (ripgrep) is required to audit scenario proof quality" >&2
+  exit 127
+fi
+
 api_count=0
 workflow_count=0
 package_only_count=0
