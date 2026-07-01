@@ -2,7 +2,7 @@ modules:
   - name: server
     type: http.server
     config:
-      address: ":8080"
+      address: ":18129"
 
   - name: router
     type: http.router
@@ -11,8 +11,7 @@ modules:
   - name: gitlab-client
     type: gitlab.client
     config:
-      url: "mock://"
-      token: "mock-token"
+      token: "mock"
 
 workflows:
   http:
@@ -33,6 +32,7 @@ pipelines:
         config:
           body:
             status: ok
+            scenario: "29-gitlab-ci"
 
   # Receive a GitLab webhook, parse and normalize the event
   gitlab-webhook:
@@ -44,8 +44,7 @@ pipelines:
     steps:
       - name: parse
         type: step.gitlab_parse_webhook
-        config:
-          secret: ""
+        config: {}
 
       - name: respond
         type: step.json_response
@@ -60,14 +59,16 @@ pipelines:
         path: /api/v1/gitlab/trigger
         method: POST
     steps:
+      - name: input
+        type: step.jq
+        config:
+          input_from: body
+          expression: "."
+
       - name: trigger
         type: step.gitlab_trigger_pipeline
         config:
           client: gitlab-client
-          project: "group/project"
-          ref: main
-          variables:
-            DEPLOY_ENV: production
 
       - name: respond
         type: step.json_response
@@ -79,15 +80,19 @@ pipelines:
     trigger:
       type: http
       config:
-        path: /api/v1/gitlab/pipeline/{id}
-        method: GET
+        path: /api/v1/gitlab/pipeline/status
+        method: POST
     steps:
+      - name: input
+        type: step.jq
+        config:
+          input_from: body
+          expression: "."
+
       - name: status
         type: step.gitlab_pipeline_status
         config:
           client: gitlab-client
-          project: "group/project"
-          pipeline_id: "42"
 
       - name: respond
         type: step.json_response
@@ -102,14 +107,16 @@ pipelines:
         path: /api/v1/gitlab/mr
         method: POST
     steps:
+      - name: input
+        type: step.jq
+        config:
+          input_from: body
+          expression: "."
+
       - name: create
         type: step.gitlab_create_mr
         config:
           client: gitlab-client
-          project: "group/project"
-          source_branch: feature-demo
-          target_branch: main
-          title: "Demo MR from scenario 29"
 
       - name: respond
         type: step.json_response
@@ -124,13 +131,16 @@ pipelines:
         path: /api/v1/gitlab/mr/comment
         method: POST
     steps:
+      - name: input
+        type: step.jq
+        config:
+          input_from: body
+          expression: "."
+
       - name: comment
         type: step.gitlab_mr_comment
         config:
           client: gitlab-client
-          project: "group/project"
-          mr_iid: 1
-          body: "Pipeline passed! Scenario 29 verified."
 
       - name: respond
         type: step.json_response
