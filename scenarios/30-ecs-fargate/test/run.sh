@@ -183,49 +183,59 @@ else
   exit 1
 fi
 
-PLAN="$(curl -fsS -X POST "$BASE_URL/api/v1/services/plan")" \
-  && pass "client planned ECS service through Workflow API" \
-  || fail "ECS plan API failed"
-if printf '%s' "$PLAN" | jq -e '.provider == "aws-provider" and (.desired_hash | type == "string" and length > 0) and (.plan.actions[] | select(.action == "create" and .resource.name == "staging-ecs" and .resource.type == "infra.container_service" and .resource.config.image == "public.ecr.aws/nginx/nginx:latest" and .resource.config.replicas == 2))' >/dev/null 2>&1; then
-  pass "plan response proposed creating the ECS service"
+if PLAN="$(curl -fsS -X POST "$BASE_URL/api/v1/services/plan")"; then
+  pass "client planned ECS service through Workflow API"
+  if printf '%s' "$PLAN" | jq -e '.provider == "aws-provider" and (.desired_hash | type == "string" and length > 0) and (.plan.actions[] | select(.action == "create" and .resource.name == "staging-ecs" and .resource.type == "infra.container_service" and .resource.config.image == "public.ecr.aws/nginx/nginx:latest" and .resource.config.replicas == 2))' >/dev/null 2>&1; then
+    pass "plan response proposed creating the ECS service"
+  else
+    fail "plan response mismatch: $PLAN"
+  fi
 else
-  fail "plan response mismatch: $PLAN"
+  fail "ECS plan API failed"
 fi
 
-APPLIED="$(curl -fsS -X POST "$BASE_URL/api/v1/services/apply")" \
-  && pass "client applied ECS service through Workflow API" \
-  || fail "ECS apply API failed"
-if printf '%s' "$APPLIED" | jq -e '.provider == "aws-provider" and .action_count == 1 and (.desired_hash | type == "string" and length > 0) and (.apply_result.resources[] | select(.name == "staging-ecs" and .type == "infra.container_service" and .status == "running" and .outputs.image == "public.ecr.aws/nginx/nginx:latest" and .outputs.replicas == 2))' >/dev/null 2>&1; then
-  pass "apply response showed running mock ECS service"
+if APPLIED="$(curl -fsS -X POST "$BASE_URL/api/v1/services/apply")"; then
+  pass "client applied ECS service through Workflow API"
+  if printf '%s' "$APPLIED" | jq -e '.provider == "aws-provider" and .action_count == 1 and (.desired_hash | type == "string" and length > 0) and (.apply_result.resources[] | select(.name == "staging-ecs" and .type == "infra.container_service" and .status == "running" and .outputs.image == "public.ecr.aws/nginx/nginx:latest" and .outputs.replicas == 2))' >/dev/null 2>&1; then
+    pass "apply response showed running mock ECS service"
+  else
+    fail "apply response mismatch: $APPLIED"
+  fi
 else
-  fail "apply response mismatch: $APPLIED"
+  fail "ECS apply API failed"
 fi
 
-STATUS_RUNNING="$(curl -fsS "$BASE_URL/api/v1/services/status")" \
-  && pass "client fetched ECS status through Workflow API" \
-  || fail "ECS status API failed"
-if printf '%s' "$STATUS_RUNNING" | jq -e '.provider == "aws-provider" and .count == 1 and (.resources[] | select(.name == "staging-ecs" and .type == "infra.container_service" and .status == "running" and .outputs.image == "public.ecr.aws/nginx/nginx:latest"))' >/dev/null 2>&1; then
-  pass "status response showed running mock service"
+if STATUS_RUNNING="$(curl -fsS "$BASE_URL/api/v1/services/status")"; then
+  pass "client fetched ECS status through Workflow API"
+  if printf '%s' "$STATUS_RUNNING" | jq -e '.provider == "aws-provider" and .count == 1 and (.resources[] | select(.name == "staging-ecs" and .type == "infra.container_service" and .status == "running" and .outputs.image == "public.ecr.aws/nginx/nginx:latest"))' >/dev/null 2>&1; then
+    pass "status response showed running mock service"
+  else
+    fail "status response mismatch after apply: $STATUS_RUNNING"
+  fi
 else
-  fail "status response mismatch after apply: $STATUS_RUNNING"
+  fail "ECS status API failed"
 fi
 
-DESTROYED="$(curl -fsS -X DELETE "$BASE_URL/api/v1/services")" \
-  && pass "client destroyed ECS service through Workflow API" \
-  || fail "ECS destroy API failed"
-if printf '%s' "$DESTROYED" | jq -e '.provider == "aws-provider" and (.destroyed | index("staging-ecs")) and (.destroy_errors | length == 0)' >/dev/null 2>&1; then
-  pass "destroy response confirmed ECS teardown"
+if DESTROYED="$(curl -fsS -X DELETE "$BASE_URL/api/v1/services")"; then
+  pass "client destroyed ECS service through Workflow API"
+  if printf '%s' "$DESTROYED" | jq -e '.provider == "aws-provider" and (.destroyed | index("staging-ecs")) and (.destroy_errors | length == 0)' >/dev/null 2>&1; then
+    pass "destroy response confirmed ECS teardown"
+  else
+    fail "destroy response mismatch: $DESTROYED"
+  fi
 else
-  fail "destroy response mismatch: $DESTROYED"
+  fail "ECS destroy API failed"
 fi
 
-STATUS_DESTROYED="$(curl -fsS "$BASE_URL/api/v1/services/status")" \
-  && pass "client fetched destroyed ECS status through Workflow API" \
-  || fail "ECS status after destroy API failed"
-if printf '%s' "$STATUS_DESTROYED" | jq -e '.provider == "aws-provider" and .count == 1 and (.resources[] | select(.name == "staging-ecs" and .type == "infra.container_service" and .status == "unknown"))' >/dev/null 2>&1; then
-  pass "status response showed absent live service after destroy"
+if STATUS_DESTROYED="$(curl -fsS "$BASE_URL/api/v1/services/status")"; then
+  pass "client fetched destroyed ECS status through Workflow API"
+  if printf '%s' "$STATUS_DESTROYED" | jq -e '.provider == "aws-provider" and .count == 1 and (.resources[] | select(.name == "staging-ecs" and .type == "infra.container_service" and .status == "unknown"))' >/dev/null 2>&1; then
+    pass "status response showed absent live service after destroy"
+  else
+    fail "status response mismatch after destroy: $STATUS_DESTROYED"
+  fi
 else
-  fail "status response mismatch after destroy: $STATUS_DESTROYED"
+  fail "ECS status after destroy API failed"
 fi
 
 finish
