@@ -21,11 +21,11 @@ spec:
           imagePullPolicy: Never
           args: ["-config", "/config/app.yaml", "-data-dir", "/tmp"]
           ports:
-            - containerPort: 8080
+            - containerPort: 18132
           readinessProbe:
             httpGet:
               path: /healthz
-              port: 8080
+              port: 18132
             initialDelaySeconds: 3
             periodSeconds: 3
             failureThreshold: 20
@@ -53,5 +53,5 @@ spec:
   selector:
     app: workflow-server
   ports:
-    - port: 8080
-      targetPort: 8080
+    - port: 18132
+      targetPort: 18132

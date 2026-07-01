@@ -406,7 +406,7 @@
       "status": "passed",
       "namespace": "wf-scenario-32",
       "deployed": true,
-      "lastTested": "2026-07-01T22:36:39.589960Z",
+      "lastTested": "2026-07-01T22:46:14.634586Z",
       "lastResult": "pass",
       "testCount": 23,
       "passCount": 23,
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T22:36:39.589960Z"
+  "lastUpdated": "2026-07-01T22:46:14.634586Z"
 }
