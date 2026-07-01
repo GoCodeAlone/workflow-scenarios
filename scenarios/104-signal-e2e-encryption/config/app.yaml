@@ -1,0 +1,66 @@
+modules:
+  - name: alice_identity
+    type: signal.identity_store
+    config:
+      identity_ref: alice
+      local_id: alice@example.test
+      device_id: 1
+      registration_id: 1001
+  - name: bob_identity
+    type: signal.identity_store
+    config:
+      identity_ref: bob
+      local_id: bob@example.test
+      device_id: 1
+      registration_id: 2002
+
+pipelines:
+  signal-e2e:
+    steps:
+      - name: prepare_bob
+        type: step.signal_session_prepare
+        config:
+          identity_ref: bob
+      - name: encrypt_input
+        type: step.set
+        config:
+          values:
+            remote_id: bob@example.test
+            remote_device_id: 1
+            plaintext: cHJpdmF0ZSB3b3JrZmxvdyBtZXNzYWdl
+            remote_bundle:
+              identity_ref: "{{ index .steps \"prepare_bob\" \"bundle\" \"identity_ref\" }}"
+              local_id: "{{ index .steps \"prepare_bob\" \"bundle\" \"local_id\" }}"
+              device_id: "{{ index .steps \"prepare_bob\" \"bundle\" \"device_id\" }}"
+              registration_id: "{{ index .steps \"prepare_bob\" \"bundle\" \"registration_id\" }}"
+              pre_key_id: "{{ index .steps \"prepare_bob\" \"bundle\" \"pre_key_id\" }}"
+              pre_key: "{{ index .steps \"prepare_bob\" \"bundle\" \"pre_key\" }}"
+              signed_pre_key_id: "{{ index .steps \"prepare_bob\" \"bundle\" \"signed_pre_key_id\" }}"
+              signed_pre_key: "{{ index .steps \"prepare_bob\" \"bundle\" \"signed_pre_key\" }}"
+              signed_pre_key_signature: "{{ index .steps \"prepare_bob\" \"bundle\" \"signed_pre_key_signature\" }}"
+              kyber_pre_key_id: "{{ index .steps \"prepare_bob\" \"bundle\" \"kyber_pre_key_id\" }}"
+              kyber_pre_key: "{{ index .steps \"prepare_bob\" \"bundle\" \"kyber_pre_key\" }}"
+              kyber_pre_key_signature: "{{ index .steps \"prepare_bob\" \"bundle\" \"kyber_pre_key_signature\" }}"
+              identity_key: "{{ index .steps \"prepare_bob\" \"bundle\" \"identity_key\" }}"
+      - name: encrypt
+        type: step.signal_encrypt
+        config:
+          identity_ref: alice
+      - name: decrypt_input
+        type: step.set
+        config:
+          values:
+            principal: bob-user
+            envelope:
+              sender_id: "{{ index .steps \"encrypt\" \"envelope\" \"sender_id\" }}"
+              sender_device_id: "{{ index .steps \"encrypt\" \"envelope\" \"sender_device_id\" }}"
+              recipient_id: "{{ index .steps \"encrypt\" \"envelope\" \"recipient_id\" }}"
+              recipient_device_id: "{{ index .steps \"encrypt\" \"envelope\" \"recipient_device_id\" }}"
+              message_type: "{{ index .steps \"encrypt\" \"envelope\" \"message_type\" }}"
+              ciphertext: "{{ index .steps \"encrypt\" \"envelope\" \"ciphertext\" }}"
+      - name: decrypt
+        type: step.signal_decrypt
+        config:
+          identity_ref: bob
+          required_principal: bob-user
+    on_error: stop

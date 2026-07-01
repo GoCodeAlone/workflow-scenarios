@@ -1060,7 +1060,7 @@
       "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "testCount": 6,
+      "testCount": 7,
       "passCount": 6,
       "failCount": 0,
       "localOnly": true,
@@ -1237,31 +1237,31 @@
       "blockers": []
     },
     "104-signal-e2e-encryption": {
-      "status": "testable",
+      "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "lastTested": null,
-      "lastResult": null,
-      "testCount": 4,
-      "passCount": 0,
+      "lastTested": "2026-07-01T13:23:26.393784Z",
+      "lastResult": "pass",
+      "testCount": 7,
+      "passCount": 7,
       "failCount": 0,
       "localOnly": true,
-      "notes": "Runs released workflow-plugin-signal v0.9.0 focused typed-step tests for session prepare -> encrypt -> decrypt and unauthorized principal denial. Proves ciphertext/plaintext separation and authz denial through real plugin code with no official Signal service egress.",
+      "notes": "Builds workflow-plugin-signal as an external plugin, loads it through wfctl pipeline run, and executes a Workflow app pipeline for session prepare -> encrypt -> decrypt. Proves decrypted plaintext reaches Workflow output with no official Signal service egress.",
       "blockers": []
     },
     "105-encrypted-spaces-proof-workflow": {
-      "status": "testable",
+      "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "lastTested": null,
-      "lastResult": null,
-      "testCount": 6,
-      "passCount": 0,
+      "lastTested": "2026-07-01T13:23:34.249401Z",
+      "lastResult": "pass",
+      "testCount": 8,
+      "passCount": 8,
       "failCount": 0,
       "localOnly": true,
-      "notes": "Runs released workflow-plugin-encrypted-spaces v0.4.0 focused typed-step tests for vector-backed append verification, tamper rejection, proof-evidence redaction, and required-domain coverage.",
+      "notes": "Builds workflow-plugin-encrypted-spaces as an external plugin, loads it through wfctl pipeline run, and executes a Workflow app pipeline for in-memory encrypted-space append, verified commitment, and proof evidence. No S3 or live external service egress.",
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T06:58:22Z"
+  "lastUpdated": "2026-07-01T13:23:34.249401Z"
 }

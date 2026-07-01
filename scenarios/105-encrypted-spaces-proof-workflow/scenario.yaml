@@ -2,20 +2,23 @@ name: Encrypted Spaces Proof Workflow
 id: "105-encrypted-spaces-proof-workflow"
 category: C
 description: |
-  Local-only proof that the released Encrypted Spaces Workflow plugin verifies
-  a proof-gated append flow and emits redacted proof evidence.
+  Local-only Workflow app proof that the Encrypted Spaces Workflow plugin
+  verifies a proof-gated append flow and emits redacted proof evidence.
 
-  The scenario creates a temporary Go module, pins
-  workflow-plugin-encrypted-spaces v0.4.0, and runs the released plugin's
-  focused tests for vector-backed append verification, tamper rejection,
-  proof-evidence redaction, and required-domain vector coverage. This executes
-  the real plugin step implementations backed by encrypted-spaces-go.
+  The scenario builds workflow-plugin-encrypted-spaces as an external plugin,
+  loads it through wfctl, and runs config/app.yaml with the Workflow engine. The
+  app uses an in-memory encrypted-space store, verifies a commitment with
+  membership and key-transparency vector evidence, and emits proof evidence. It
+  does not use S3 or live external services.
 components:
-  - workflow-plugin-encrypted-spaces v0.4.0
+  - workflow-plugin-encrypted-spaces
+  - wfctl pipeline run
+  - Workflow external plugin loader
   - encrypted-spaces-go proof policy
+  - encrypted_space.store memory backend
+  - step.encrypted_space_append
   - step.encrypted_space_append_verified
   - step.encrypted_space_proof_evidence
-  - step.encrypted_space_vector_report
 status: testable
 tags:
   - encrypted-spaces

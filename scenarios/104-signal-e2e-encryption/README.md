@@ -1,25 +1,21 @@
-# Scenario 104 — Signal E2E Encryption
+# Scenario 104 - Signal E2E Encryption
 
-Local-only proof that the released Signal Workflow plugin can perform an
-end-to-end encrypted message exchange using its real typed step code.
+Local-only Workflow app proof that the Signal Workflow plugin can perform an
+end-to-end encrypted message exchange through `wfctl pipeline run`.
 
-The scenario creates a temporary Go module, pins
-`github.com/GoCodeAlone/workflow-plugin-signal@v0.9.0`, then runs the released
-plugin's focused step tests:
-
-- `TestSignalSessionPrepareEncryptDecryptRoundTrip`
-- `TestSignalDecryptDeniesUnauthorizedPrincipalWithoutPlaintext`
-
-Those tests execute the actual Workflow plugin step implementations for
-identity setup, pre-key bundle preparation, encryption, decrypt authorization,
-and decryption. The test asserts ciphertext does not contain plaintext and that
-an unauthorized principal cannot recover plaintext.
+The scenario builds `workflow-plugin-signal`, loads it as an external Workflow
+plugin, and runs `config/app.yaml` with the Workflow engine. The app prepares a
+Bob pre-key bundle, encrypts a base64 message as Alice, decrypts as Bob, and
+asserts that the decrypted plaintext appears in Workflow pipeline output.
 
 ## Running
 
 ```bash
 bash scenarios/104-signal-e2e-encryption/test/run.sh
 ```
+
+Set `WFCTL`, `WORKFLOW_REPO`, or `SIGNAL_PLUGIN_REPO` when running outside the
+standard workspace layout.
 
 No official Signal service endpoint, account, phone number, or production
 transport is used.

@@ -1,0 +1,109 @@
+modules:
+  - name: encrypted_space_store
+    type: encrypted_space.store
+    config:
+      space_id: space-1
+      backend: memory
+      max_operations: 128
+  - name: encrypted_space_policy
+    type: encrypted_space.proof_policy
+    config:
+      mode: vector-backed
+      require_vector_backed: true
+      deferred_domains:
+        - message-backup
+        - svr-svrb
+
+pipelines:
+  encrypted-space-proof:
+    steps:
+      - name: operation_input
+        type: step.set
+        config:
+          values:
+            operation:
+              space_id: space-1
+              member_id: member-1
+              device_id: device-1
+              operation_id: verified-op
+              key_epoch: 1
+              membership_epoch: 1
+              ciphertext: c2VhbGVkLWNvbGxhYi1wYXlsb2Fk
+              nonce: bm9uY2UtMTIzNDU2Nzg5MDEy
+              associated_data: c3BhY2UtMS9yb29tLTE=
+              created_at_unix_nano: 1783000000000000000
+      - name: append
+        type: step.encrypted_space_append
+        config:
+          allow_fake_verifier: true
+          retention:
+            max_operations: 10
+      - name: verified_input
+        type: step.set
+        config:
+          values:
+            operation:
+              space_id: space-1
+              member_id: member-1
+              device_id: device-1
+              operation_id: verified-op
+              key_epoch: 1
+              membership_epoch: 1
+              ciphertext: c2VhbGVkLWNvbGxhYi1wYXlsb2Fk
+              nonce: bm9uY2UtMTIzNDU2Nzg5MDEy
+              associated_data: c3BhY2UtMS9yb29tLTE=
+              created_at_unix_nano: 1783000000000000000
+            expected_commitment:
+              space_id: "{{ index .steps \"append\" \"commitment\" \"space_id\" }}"
+              operation_id: "{{ index .steps \"append\" \"commitment\" \"operation_id\" }}"
+              sequence: "{{ index .steps \"append\" \"commitment\" \"sequence\" }}"
+              digest: "{{ index .steps \"append\" \"commitment\" \"digest\" }}"
+              key_epoch: "{{ index .steps \"append\" \"commitment\" \"key_epoch\" }}"
+              membership_epoch: "{{ index .steps \"append\" \"commitment\" \"membership_epoch\" }}"
+              ciphertext_size: "{{ index .steps \"append\" \"commitment\" \"ciphertext_size\" }}"
+            membership:
+              group_id: space-1
+              member_id: member-1
+              issuer: issuer-1
+              expires_at: 1893456000
+              proof_digest: sha256:2f99cb90ee710be078aaf1b8cb9a22942c10f5965e5e39c1607a930fd6df7874
+              upstream_path: java/shared/java/org/signal/libsignal/zkgroup/groups
+            checkpoint:
+              checkpoint_id: checkpoint-1
+              tree_head: tree-head-1
+              tree_size: 42
+              proof_digest: sha256:479338417f33b12df048fbe2180f58638636b2618d90ac6f807ed436ff881d8c
+              upstream_path: rust/keytrans/src/verify.rs
+              previous_tree_size: 0
+      - name: append_verified
+        type: step.encrypted_space_append_verified
+        config:
+          policy:
+            require_vector_backed: true
+      - name: evidence_input
+        type: step.set
+        config:
+          values:
+            commitment:
+              space_id: "{{ index .steps \"append_verified\" \"commitment\" \"space_id\" }}"
+              operation_id: "{{ index .steps \"append_verified\" \"commitment\" \"operation_id\" }}"
+              sequence: "{{ index .steps \"append_verified\" \"commitment\" \"sequence\" }}"
+              digest: "{{ index .steps \"append_verified\" \"commitment\" \"digest\" }}"
+              key_epoch: "{{ index .steps \"append_verified\" \"commitment\" \"key_epoch\" }}"
+              membership_epoch: "{{ index .steps \"append_verified\" \"commitment\" \"membership_epoch\" }}"
+              ciphertext_size: "{{ index .steps \"append_verified\" \"commitment\" \"ciphertext_size\" }}"
+            reports:
+              - domain: operationlog.commitment
+                accepted: true
+                production_ready: true
+              - domain: zkgroup.membership
+                accepted: true
+                production_ready: true
+                upstream_path: java/shared/java/org/signal/libsignal/zkgroup/groups
+              - domain: keytrans.checkpoint
+                accepted: true
+                production_ready: true
+                upstream_path: rust/keytrans/src/verify.rs
+      - name: proof_evidence
+        type: step.encrypted_space_proof_evidence
+    on_error: stop

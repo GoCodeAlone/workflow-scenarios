@@ -1,20 +1,13 @@
-# Scenario 105 — Encrypted Spaces Proof Workflow
+# Scenario 105 - Encrypted Spaces Proof Workflow
 
-Local-only proof that the released Encrypted Spaces Workflow plugin can verify a
-proof-gated append flow and emit redacted proof evidence.
+Local-only Workflow app proof that the Encrypted Spaces Workflow plugin can
+verify a proof-gated append flow and emit redacted proof evidence.
 
-The scenario creates a temporary Go module, pins
-`github.com/GoCodeAlone/workflow-plugin-encrypted-spaces@v0.4.0`, then runs the
-released plugin's focused proof workflow tests:
-
-- `TestAppendVerifiedAcceptsVectorBackedProof`
-- `TestAppendVerifiedRejectsTamperedProof`
-- `TestProofEvidenceRedactsPlaintextAndKeyMaterial`
-- `TestVectorReportStepFiltersRequiredDomains`
-
-Those tests execute the actual Workflow plugin step implementations for
-vector-backed append verification, tamper rejection, coverage filtering, and
-proof-evidence redaction.
+The scenario builds `workflow-plugin-encrypted-spaces`, loads it as an external
+Workflow plugin, and runs `config/app.yaml` with the Workflow engine. The app
+uses an in-memory encrypted-space store, appends an encrypted operation, verifies
+the expected commitment with membership and key-transparency vector evidence,
+and emits proof-evidence output.
 
 ## Running
 
@@ -22,4 +15,7 @@ proof-evidence redaction.
 bash scenarios/105-encrypted-spaces-proof-workflow/test/run.sh
 ```
 
-No live external service egress is used.
+Set `WFCTL`, `WORKFLOW_REPO`, or `ENCRYPTED_SPACES_PLUGIN_REPO` when running
+outside the standard workspace layout.
+
+No S3 bucket or live external service egress is used.
