@@ -267,7 +267,7 @@
       ],
       "uiGenerated": true,
       "uiPath": "/ui/",
-      "notes": "Payment lifecycle: pending\u2192captured\u2192refunded. Webhook via step.http_call on capture. UI generated via wfctl api extract + wfctl ui scaffold. Playwright QA: 26/30 browser tests passed (4 capture failures are backend state machine edge cases). Test 14 verifies DB state via GET after capture.",
+      "notes": "Payment lifecycle: pending→captured→refunded. Webhook via step.http_call on capture. UI generated via wfctl api extract + wfctl ui scaffold. Playwright QA: 26/30 browser tests passed (4 capture failures are backend state machine edge cases). Test 14 verifies DB state via GET after capture.",
       "blockers": []
     },
     "22-ecommerce-app": {
@@ -291,7 +291,7 @@
       ],
       "uiGenerated": true,
       "uiPath": "/ui/",
-      "notes": "Full cross-service integration passing. Flow: register user (auth-service) \u2192 create order (calls payment-service) \u2192 capture payment \u2192 webhook updates order status to paid. UI generated via wfctl api extract + wfctl ui scaffold. Playwright QA: 9/9 browser integration tests passed.",
+      "notes": "Full cross-service integration passing. Flow: register user (auth-service) → create order (calls payment-service) → capture payment → webhook updates order status to paid. UI generated via wfctl api extract + wfctl ui scaffold. Playwright QA: 9/9 browser integration tests passed.",
       "blockers": []
     },
     "23-nosql-datastore": {
@@ -363,7 +363,7 @@
       "testCount": 27,
       "passCount": 27,
       "failCount": 0,
-      "notes": "Real Workflow HTTP app drives iac.state filesystem persistence and generic IaC lifecycle steps: plan \u2192 apply \u2192 status \u2192 drift-detect \u2192 destroy. No real cluster required (kind backend).",
+      "notes": "Real Workflow HTTP app drives iac.state filesystem persistence and generic IaC lifecycle steps: plan → apply → status → drift-detect → destroy. No real cluster required (kind backend).",
       "blockers": []
     },
     "29-gitlab-ci": {
@@ -841,7 +841,7 @@
       "passCount": 17,
       "failCount": 0,
       "localOnly": true,
-      "notes": "Config-validation scenario for end-to-end CI/CD pipeline: step.iac_plan \u2192 step.iac_apply \u2192 step.container_build \u2192 step.deploy_rolling \u2192 step.deploy_verify. Includes infra.registry and a rollback pipeline. iac.provider: digitalocean."
+      "notes": "Config-validation scenario for end-to-end CI/CD pipeline: step.iac_plan → step.iac_apply → step.container_build → step.deploy_rolling → step.deploy_verify. Includes infra.registry and a rollback pipeline. iac.provider: digitalocean."
     },
     "76-tofu-generate-pipeline": {
       "status": "passed",
@@ -877,7 +877,7 @@
       "passCount": 19,
       "failCount": 0,
       "localOnly": true,
-      "notes": "Config-validation scenario testing the iac.provider \u2192 infra.* \u2192 step.iac_* dependency chain. All infra modules (vpc, database, container_service) explicitly reference provider: aws-provider; all IaC steps reference state_store: iac-state. Validates plan-all, apply-all, status-check pipelines."
+      "notes": "Config-validation scenario testing the iac.provider → infra.* → step.iac_* dependency chain. All infra modules (vpc, database, container_service) explicitly reference provider: aws-provider; all IaC steps reference state_store: iac-state. Validates plan-all, apply-all, status-check pipelines."
     },
     "63-twilio-integration": {
       "status": "passed",
@@ -1040,7 +1040,7 @@
       "testCount": 0,
       "passCount": 0,
       "failCount": 0,
-      "notes": "Autonomous agile agent scenario. Agent audits, plans, deploys, and verifies up to 5 iterations without human direction. Full loop: audit \u2192 plan \u2192 validate \u2192 deploy \u2192 verify \u2192 git_commit. Real Ollama + Gemma 4 via Docker Compose.",
+      "notes": "Autonomous agile agent scenario. Agent audits, plans, deploys, and verifies up to 5 iterations without human direction. Full loop: audit → plan → validate → deploy → verify → git_commit. Real Ollama + Gemma 4 via Docker Compose.",
       "lastTested": null,
       "lastResult": null
     },
@@ -1173,7 +1173,7 @@
       "passCount": 11,
       "failCount": 0,
       "localOnly": true,
-      "notes": "Showcases wfctl ci plan --out plan.json (platform-neutral CIPlan JSON with secrets+warnings) then wfctl ci generate --from-plan producing a .github/workflows/*.yml with secret env wiring, plugin install step, functional migration step (wfctl migrations up \u2014 post-PR4 fix; asserts no obsolete --phase migrate), and smoke-test job.",
+      "notes": "Showcases wfctl ci plan --out plan.json (platform-neutral CIPlan JSON with secrets+warnings) then wfctl ci generate --from-plan producing a .github/workflows/*.yml with secret env wiring, plugin install step, functional migration step (wfctl migrations up — post-PR4 fix; asserts no obsolete --phase migrate), and smoke-test job.",
       "lastTested": "2026-05-30T00:00:00Z",
       "lastResult": "pass"
     },
@@ -1253,15 +1253,15 @@
       "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "lastTested": "2026-07-02T04:37:55.649883Z",
+      "lastTested": "2026-07-02T05:58:53Z",
       "lastResult": "pass",
-      "testCount": 21,
-      "passCount": 21,
+      "testCount": 41,
+      "passCount": 41,
       "failCount": 0,
       "localOnly": true,
-      "notes": "Builds workflow-plugin-encrypted-spaces as an external plugin, launches workflow-server, and drives fixture-backed HTTP APIs for two-member operation append, verified commitment, and proof evidence. Uses an in-memory store fixture with space-1/member-1 and space-1/member-2 proof tuples and no S3 or live external service egress.",
+      "notes": "Builds workflow-plugin-encrypted-spaces as an external plugin, launches workflow-server, initializes participant-parametric encrypted-space membership through the running app, persists lifecycle snapshots in encrypted_space.state_store, gates two-member encrypted operation append on member checks, verifies commitments/proof evidence, removes one member, and proves the removed member can no longer append. Uses local memory stores and no S3 or live external service egress.",
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-02T04:37:55.649883Z"
+  "lastUpdated": "2026-07-02T05:58:53Z"
 }

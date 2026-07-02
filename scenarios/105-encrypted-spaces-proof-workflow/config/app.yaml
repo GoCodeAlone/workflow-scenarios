@@ -24,6 +24,12 @@ modules:
         - message-backup
         - svr-svrb
 
+  - name: encrypted_space_state
+    type: encrypted_space.state_store
+    config:
+      backend: memory
+      max_spaces: 16
+
 workflows:
   http:
     server: server
@@ -39,11 +45,11 @@ pipelines:
           status: 200
           body: { status: ok, scenario: "105-encrypted-spaces-proof-workflow" }
 
-  append-operation:
+  initialize-space:
     trigger:
       type: http
       config:
-        path: /spaces/{space}/operations
+        path: /spaces/{space}/members
         method: POST
     steps:
       - name: parse
@@ -52,6 +58,155 @@ pipelines:
           path_params: [space]
           parse_body: true
           merge_body: true
+      - name: path_input
+        type: step.set
+        config:
+          values:
+            space_id: '{{ index .steps "parse" "path_params" "space" }}'
+      - name: init_state
+        type: step.encrypted_space_state_init
+      - name: save_state
+        type: step.encrypted_space_state_save
+        config:
+          state_store: encrypted_space_state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            state:
+              _from: steps.save_state.state
+            stored:
+              _from: steps.save_state.stored
+    on_error: stop
+
+  check-member:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/members/{member}/check
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, member]
+          parse_body: true
+          merge_body: true
+      - name: path_input
+        type: step.set
+        config:
+          values:
+            space_id: '{{ index .steps "parse" "path_params" "space" }}'
+            member_id: '{{ index .steps "parse" "path_params" "member" }}'
+      - name: load_state
+        type: step.encrypted_space_state_load
+        config:
+          state_store: encrypted_space_state
+      - name: member_check
+        type: step.encrypted_space_member_check
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            member: '{{ index .steps "parse" "path_params" "member" }}'
+            found:
+              _from: steps.load_state.found
+            member_allowed:
+              _from: steps.member_check.member_allowed
+            member_removed:
+              _from: steps.member_check.member_removed
+            membership_epoch:
+              _from: steps.member_check.membership_epoch
+    on_error: stop
+
+  remove-member:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/members/{member}/remove
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, member]
+          parse_body: true
+          merge_body: true
+      - name: path_input
+        type: step.set
+        config:
+          values:
+            space_id: '{{ index .steps "parse" "path_params" "space" }}'
+            member_id: '{{ index .steps "parse" "path_params" "member" }}'
+            action: remove
+      - name: load_state
+        type: step.encrypted_space_state_load
+        config:
+          state_store: encrypted_space_state
+      - name: update_state
+        type: step.encrypted_space_state_update
+      - name: save_state
+        type: step.encrypted_space_state_save
+        config:
+          state_store: encrypted_space_state
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            member: '{{ index .steps "parse" "path_params" "member" }}'
+            action:
+              _from: steps.update_state.action
+            member_allowed:
+              _from: steps.update_state.member_allowed
+            state:
+              _from: steps.save_state.state
+    on_error: stop
+
+  append-operation:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/members/{member}/operations
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, member]
+          parse_body: true
+          merge_body: true
+      - name: path_input
+        type: step.set
+        config:
+          values:
+            space_id: '{{ index .steps "parse" "path_params" "space" }}'
+            member_id: '{{ index .steps "parse" "path_params" "member" }}'
+      - name: load_state
+        type: step.encrypted_space_state_load
+        config:
+          state_store: encrypted_space_state
+      - name: member_check
+        type: step.encrypted_space_member_check
+      - name: require_member
+        type: step.conditional
+        config:
+          field: steps.member_check.member_removed
+          routes:
+            "true": not_allowed
+          default: append
+      - name: not_allowed
+        type: step.json_response
+        config:
+          status: 403
+          body:
+            error: member not allowed
+            member: '{{ index .steps "parse" "path_params" "member" }}'
       - name: append
         type: step.encrypted_space_append
         config:
@@ -64,6 +219,9 @@ pipelines:
           status: 200
           body:
             space: '{{ index .steps "parse" "path_params" "space" }}'
+            member: '{{ index .steps "parse" "path_params" "member" }}'
+            member_allowed:
+              _from: steps.member_check.member_allowed
             commitment:
               _from: steps.append.commitment
     on_error: stop

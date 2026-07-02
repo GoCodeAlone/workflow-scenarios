@@ -3,17 +3,19 @@ id: "105-encrypted-spaces-proof-workflow"
 category: C
 description: |
   Local-only Workflow app proof that the Encrypted Spaces Workflow plugin
-  verifies a proof-gated append flow and emits redacted proof evidence through
-  a running Workflow API.
+  verifies a state-gated, proof-gated append flow and emits redacted proof
+  evidence through a running Workflow API.
 
   The scenario builds workflow-plugin-encrypted-spaces as an external plugin,
   loads it through the Workflow server's data/plugins path, and starts
-  config/app.yaml with HTTP routes for appending encrypted operations and
-  verifying proof evidence. The test drives two members through separate append
-  and proof calls, then asserts distinct commitments. Operation IDs,
-  commitments, and vector proof material are request inputs; the proof digest
-  fixtures are bound to the space-1/member-1 and space-1/member-2 membership
-  tuples. It does not use S3 or live external services.
+  config/app.yaml with HTTP routes for initializing member state, checking and
+  removing members, appending encrypted operations, and verifying proof
+  evidence. The test drives two members through separate append and proof
+  calls, asserts distinct commitments, removes one member, and verifies the
+  removed member can no longer append. Operation IDs, commitments, member IDs,
+  and vector proof material are request inputs; the proof digest fixtures are
+  bound to the space-1/member-1 and space-1/member-2 membership tuples. It does
+  not use S3 or live external services.
 components:
   - workflow-plugin-encrypted-spaces
   - workflow-server
@@ -21,9 +23,15 @@ components:
   - Workflow external plugin loader
   - encrypted-spaces-go proof policy
   - encrypted_space.store memory backend
+  - encrypted_space.state_store memory backend
   - step.encrypted_space_append
   - step.encrypted_space_append_verified
   - step.encrypted_space_proof_evidence
+  - step.encrypted_space_state_init
+  - step.encrypted_space_state_load
+  - step.encrypted_space_state_save
+  - step.encrypted_space_state_update
+  - step.encrypted_space_member_check
 status: testable
 tags:
   - encrypted-spaces
