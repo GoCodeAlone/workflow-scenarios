@@ -102,7 +102,7 @@ assert_no_secrets() {
   local label="$1"
   local json="$2"
   if printf '%s' "$json" | grep -Eiq 'secretKey|accessKey|client_secret|private_key|token'; then
-    fail "$label response exposed credential-looking material: $json"
+    fail "$label response exposed credential-looking material"
   else
     pass "$label response did not expose credential material"
   fi
@@ -118,19 +118,19 @@ assert_account_response() {
     '.account == $account and .provider == $provider and .region == $region and .valid == true' >/dev/null 2>&1; then
     pass "$label response matched selected $provider account"
   else
-    fail "$label response mismatch for $provider/$account: $json"
+    fail "$label response mismatch for $provider/$account"
   fi
 
   case "$provider" in
     gcp)
       printf '%s' "$json" | jq -e '.project_id == "my-gcp-project"' >/dev/null 2>&1 \
         && pass "$label response included GCP project metadata" \
-        || fail "$label response missing GCP project metadata: $json"
+        || fail "$label response missing GCP project metadata"
       ;;
     azure)
       printf '%s' "$json" | jq -e '.subscription_id == "00000000-0000-0000-0000-000000000001" and .tenant_id == "11111111-1111-1111-1111-111111111111"' >/dev/null 2>&1 \
         && pass "$label response included Azure tenant/subscription metadata" \
-        || fail "$label response missing Azure metadata: $json"
+        || fail "$label response missing Azure metadata"
       ;;
   esac
   assert_no_secrets "$label" "$json"
@@ -166,7 +166,7 @@ echo "=== Scenario 35: Multi-Cloud Accounts Workflow App ==="
 echo ""
 
 [ -f "$CONFIG" ] && pass "Workflow app config exists" || fail "Workflow app config missing"
-for cmd in curl jq go; do
+for cmd in curl dirname go grep head jq mkdir mktemp rm sed; do
   if command -v "$cmd" >/dev/null 2>&1; then
     pass "required command $cmd is available"
   else

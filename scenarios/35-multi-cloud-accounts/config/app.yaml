@@ -95,7 +95,21 @@ pipelines:
               type: step.json_response
               config:
                 status: 200
-                body_from: steps.validate
+                body:
+                    account:
+                        _from: account
+                    provider:
+                        _from: provider
+                    region:
+                        _from: region
+                    valid:
+                        _from: valid
+                    project_id:
+                        _from: project_id
+                    tenant_id:
+                        _from: tenant_id
+                    subscription_id:
+                        _from: subscription_id
     # GET /api/v1/cloud/accounts
     list-accounts:
         trigger:
@@ -142,4 +156,18 @@ pipelines:
               type: step.json_response
               config:
                 status: 200
-                body_from: steps.validate
+                body:
+                    account:
+                        _from: account
+                    provider:
+                        _from: provider
+                    region:
+                        _from: region
+                    valid:
+                        _from: valid
+                    project_id:
+                        _from: project_id
+                    tenant_id:
+                        _from: tenant_id
+                    subscription_id:
+                        _from: subscription_id
