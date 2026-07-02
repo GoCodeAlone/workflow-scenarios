@@ -11,14 +11,16 @@ description: |
   config/app.yaml with HTTP routes for initializing member state, checking and
   removing members, appending encrypted operations, and verifying proof
   evidence. The test drives two members through separate append and proof
-  calls, asserts distinct commitments, removes one member, and verifies the
-  removed member can no longer append. It also verifies that an unknown member
-  cannot append before membership state authorizes them. Operation IDs,
+  calls, asserts distinct commitments, removes one member, verifies the removed
+  member can no longer append, restarts Workflow, and proves the file-backed
+  membership state reload still rejects that removed member. It also verifies
+  that an unknown member cannot append before membership state authorizes them.
+  Operation IDs,
   commitments, member IDs, and vector proof material are request inputs; the
   proof digest fixtures are bound to the space-1/member-1 and space-1/member-2
   membership tuples. The Workflow app runtime does not use S3 or live external
   services; the test harness may clone plugin source when no compatible local
-  checkout is available.
+  checkout with file state-store support is available.
 components:
   - workflow-plugin-encrypted-spaces
   - workflow-server
@@ -26,7 +28,7 @@ components:
   - Workflow external plugin loader
   - encrypted-spaces-go proof policy
   - encrypted_space.store memory backend
-  - encrypted_space.state_store memory backend
+  - encrypted_space.state_store file backend
   - step.encrypted_space_append
   - step.encrypted_space_append_verified
   - step.encrypted_space_proof_evidence

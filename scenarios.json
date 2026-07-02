@@ -1240,28 +1240,28 @@
       "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "lastTested": "2026-07-02T07:55:44.729933Z",
+      "lastTested": "2026-07-02T11:21:45.410211Z",
       "lastResult": "pass",
-      "testCount": 26,
-      "passCount": 26,
+      "testCount": 37,
+      "passCount": 37,
       "failCount": 0,
       "localOnly": true,
-      "notes": "Builds workflow-plugin-signal as an external plugin, launches workflow-server, and drives participant-parametric HTTP APIs for session prepare -> encrypt -> decrypt plus custody-attested send readiness. Proves two clients publish bundles, exchange encrypted messages in both directions, recover both plaintexts, produce distinct encrypted envelopes, and obtain host-custody send-preparation evidence through the running Workflow app with no official Signal service egress.",
+      "notes": "Builds workflow-plugin-signal as an external plugin, launches workflow-server, and drives participant-parametric HTTP APIs for session prepare, direct encrypt/decrypt, queued outbox/inbox envelope delivery, reply decrypt, and custody-attested send readiness. Proves two clients publish bundles, exchange encrypted messages in both directions, move a queued ciphertext envelope through claimed/received states, recover plaintext only at the recipient, produce distinct encrypted envelopes, and obtain host-custody send-preparation evidence through the running Workflow app with no official Signal service egress.",
       "blockers": []
     },
     "105-encrypted-spaces-proof-workflow": {
       "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "lastTested": "2026-07-02T07:55:29.741419Z",
+      "lastTested": "2026-07-02T11:21:23.198249Z",
       "lastResult": "pass",
-      "testCount": 42,
-      "passCount": 42,
+      "testCount": 50,
+      "passCount": 50,
       "failCount": 0,
       "localOnly": true,
-      "notes": "Builds workflow-plugin-encrypted-spaces as an external plugin, launches workflow-server, initializes participant-parametric encrypted-space membership through the running app, persists lifecycle snapshots in encrypted_space.state_store, gates two-member encrypted operation append on positive member checks, rejects unknown and removed members, verifies commitments/proof evidence, removes one member, and proves the removed member can no longer append. The Workflow app runtime uses local memory stores and no S3 or live external service egress; the harness may clone plugin source when no compatible local checkout is available.",
+      "notes": "Builds workflow-plugin-encrypted-spaces as an external plugin, launches workflow-server, initializes participant-parametric encrypted-space membership through the running app, persists lifecycle snapshots in a local file-backed encrypted_space.state_store, gates two-member encrypted operation append on positive member checks, rejects unknown and removed members, verifies commitments/proof evidence, removes one member, validates schema/checksum state snapshot metadata, restarts Workflow, and proves the removed member remains rejected after reload. The Workflow app runtime uses local memory operation stores plus local file state, no S3, and no live external service egress; the harness may clone plugin source when no compatible local checkout is available.",
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-02T07:55:44.729933Z"
+  "lastUpdated": "2026-07-02T11:21:45.410211Z"
 }

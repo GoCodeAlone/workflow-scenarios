@@ -1,41 +1,23 @@
-# Workflow Scenarios
+# workflow-scenarios
 
 Persistent regression and resiliency scenarios for the Workflow ecosystem.
 
 ## Scenario Proof Standard
 
-A scenario must exercise a Workflow application path. Prefer a deployed
-`workflow-server` or another path that builds a Workflow engine from scenario
-configuration and then drives it through the same API, trigger, CLI, or event
-boundary an application user would use. `wfctl pipeline run` and `wfctl test`
-are acceptable when the scenario itself is a pipeline/tooling contract; they are
-not sufficient for scenarios that claim multi-client communication,
-collaboration, auth, storage, or other application behavior.
+Scenarios must exercise one or more Workflow modules through a Workflow
+application boundary. A valid application scenario launches or builds a Workflow
+app from scenario configuration and drives it through real API, trigger, CLI, or
+pipeline boundaries.
 
-Package tests, library unit tests, schema validation, and generated fixture
-checks are useful supporting evidence, but they are not sufficient by
-themselves for a `workflow-scenarios` entry. If a scenario covers a Workflow
-plugin, it should load the plugin through Workflow's plugin mechanism and
-execute the plugin from a Workflow app config.
+`wfctl pipeline run` and package tests are useful supporting checks, but they
+are not enough for scenarios that claim application behavior, multi-client
+communication, persistence, or plugin interoperability. Those scenarios should
+accept actor/resource IDs as inputs and avoid baking a single demo conversation
+or fixture result into the pipeline.
 
-Scenarios that would normally require external services or object stores should
-use committed mocks, fakes, local emulators, or explicitly approved live
-environments. A scenario that claims to cover S3, Signal, SaaS APIs, or similar
-dependencies must make the dependency boundary clear in its README and test
-script.
+Plugin scenarios should load plugins through Workflow's plugin mechanism. Mocks,
+emulators, fixture pools, and live-boundary approvals must be documented in the
+scenario README and test output.
 
-Application scenarios should be actor/resource-parametric. It is acceptable for
-the app config to define a pool of known local identities, tenants, stores, or
-fixtures required by the engine, but workflows should not bake a single demo
-conversation such as "Alice sends exactly this message to Bob" into their step
-graph. The test runner should choose participant/resource IDs and submit
-requests as clients. Hard-coded values belong only to explicit fixtures, vector
-data, mock endpoints, and other documented test inputs.
-
-## Running
-
-```bash
-make list
-make test SCENARIO=104-signal-e2e-encryption
-make test SCENARIO=105-encrypted-spaces-proof-workflow
-```
+`make test SCENARIO=...` updates shared `scenarios.json`; run scenario tests
+sequentially unless the harness explicitly provides isolated state or locking.

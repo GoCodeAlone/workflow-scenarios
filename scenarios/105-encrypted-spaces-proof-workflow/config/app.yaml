@@ -27,7 +27,9 @@ modules:
   - name: encrypted_space_state
     type: encrypted_space.state_store
     config:
-      backend: memory
+      backend: file
+      storage_path: __STATE_STORE_PATH__
+      allow_file_state_store: true
       max_spaces: 16
 
 workflows:
