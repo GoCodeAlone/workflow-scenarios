@@ -196,10 +196,10 @@ pipelines:
       - name: require_member
         type: step.conditional
         config:
-          field: steps.member_check.member_removed
+          field: steps.member_check.member_allowed
           routes:
-            "true": not_allowed
-          default: append
+            "true": append
+          default: not_allowed
       - name: not_allowed
         type: step.json_response
         config:

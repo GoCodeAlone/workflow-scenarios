@@ -12,10 +12,13 @@ description: |
   removing members, appending encrypted operations, and verifying proof
   evidence. The test drives two members through separate append and proof
   calls, asserts distinct commitments, removes one member, and verifies the
-  removed member can no longer append. Operation IDs, commitments, member IDs,
-  and vector proof material are request inputs; the proof digest fixtures are
-  bound to the space-1/member-1 and space-1/member-2 membership tuples. It does
-  not use S3 or live external services.
+  removed member can no longer append. It also verifies that an unknown member
+  cannot append before membership state authorizes them. Operation IDs,
+  commitments, member IDs, and vector proof material are request inputs; the
+  proof digest fixtures are bound to the space-1/member-1 and space-1/member-2
+  membership tuples. The Workflow app runtime does not use S3 or live external
+  services; the test harness may clone plugin source when no compatible local
+  checkout is available.
 components:
   - workflow-plugin-encrypted-spaces
   - workflow-server

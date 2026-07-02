@@ -14,6 +14,7 @@ members:
 - member B appends a separate encrypted operation via the same route
 - a proof client verifies each returned commitment via `POST /spaces/{space}/proof`
 - the test asserts the two member operations produce distinct commitments
+- an unknown member is rejected before append
 - a client removes member B and proves member B can no longer append
 
 The app uses an in-memory encrypted-space operation store and a named
@@ -37,6 +38,9 @@ Set `WORKFLOW_SERVER` or `WORKFLOW_REPO` when running outside the standard
 workspace layout. The test uses a local `ENCRYPTED_SPACES_PLUGIN_REPO` only if
 it advertises `encrypted_space.state_store`; otherwise it clones
 `GoCodeAlone/workflow-plugin-encrypted-spaces` at
-`ENCRYPTED_SPACES_PLUGIN_REF` (default `v0.6.0`).
+`ENCRYPTED_SPACES_PLUGIN_REF` (default `v0.6.0`). `PLUGIN_VERSION` defaults to
+the tag/ref value with a leading `v` stripped for version tags.
 
-No S3 bucket or live external service egress is used.
+The Workflow app runtime is local-only and uses no S3 bucket or live external
+service egress. The test harness may fetch the plugin source from GitHub when a
+compatible local plugin checkout is not available.

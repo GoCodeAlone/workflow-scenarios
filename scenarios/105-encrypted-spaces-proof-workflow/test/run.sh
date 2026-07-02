@@ -10,7 +10,12 @@ set -uo pipefail
 PLUGIN_NAME="workflow-plugin-encrypted-spaces"
 BASE_URL="${BASE_URL:-http://127.0.0.1:18105}"
 ENCRYPTED_SPACES_PLUGIN_REF="${ENCRYPTED_SPACES_PLUGIN_REF:-v0.6.0}"
-PLUGIN_VERSION="${PLUGIN_VERSION:-0.6.0}"
+if [ -z "${PLUGIN_VERSION+x}" ]; then
+  case "$ENCRYPTED_SPACES_PLUGIN_REF" in
+    v[0-9]*) PLUGIN_VERSION="${ENCRYPTED_SPACES_PLUGIN_REF#v}" ;;
+    *) PLUGIN_VERSION="$ENCRYPTED_SPACES_PLUGIN_REF" ;;
+  esac
+fi
 # The proof digests below are fixture defaults for the default space/member
 # tuples. Override the tuple only with matching proof digest overrides.
 SPACE_ID_ENV_SET="${SPACE_ID+x}"
@@ -22,6 +27,7 @@ CHECKPOINT_DIGEST_ENV_SET="${CHECKPOINT_DIGEST+x}"
 SPACE_ID="${SPACE_ID:-space-1}"
 MEMBER_A_ID="${MEMBER_ID:-member-1}"
 MEMBER_B_ID="${MEMBER_B_ID:-member-2}"
+UNKNOWN_MEMBER_ID="${UNKNOWN_MEMBER_ID:-member-unknown}"
 DEVICE_A_ID="${DEVICE_ID:-device-1}"
 DEVICE_B_ID="${DEVICE_B_ID:-device-2}"
 OPERATION_A_ID="${OPERATION_ID:-verified-op-a}"
@@ -256,6 +262,17 @@ check_member_allowed() {
 
 check_member_allowed "member A" "$MEMBER_A_ID" true
 check_member_allowed "member B" "$MEMBER_B_ID" true
+
+unknown_body="$(mktemp)"
+unknown_operation="$(operation_payload "$UNKNOWN_MEMBER_ID" "device-unknown" "unknown-op" "dW5rbm93bi1wYXlsb2Fk" "dW5rbm93bi1ub25jZQ==")" || unknown_operation=""
+unknown_status="$(curl -sS -o "$unknown_body" -w '%{http_code}' -X POST "$BASE_URL/spaces/$SPACE_ID/members/$UNKNOWN_MEMBER_ID/operations" -H 'Content-Type: application/json' -d "$unknown_operation")" \
+  || unknown_status=""
+if [ "$unknown_status" = "403" ]; then
+  pass "unknown member append was rejected by Workflow API"
+else
+  fail "unknown member append status=$unknown_status body=$(cat "$unknown_body")"
+fi
+rm -f "$unknown_body"
 
 run_collaborator_flow() {
   local slot="$1"
