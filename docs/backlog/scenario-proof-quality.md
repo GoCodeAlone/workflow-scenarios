@@ -1,7 +1,7 @@
 # Scenario Proof Quality Backlog
 
 This backlog tracks scenarios whose tests do not yet meet the repository proof
-standard. The audit was refreshed after scenarios 23-33 and 104-105 were
+standard. The audit was refreshed after scenarios 23-35 and 104-105 were
 converted to real Workflow app/API proofs.
 
 ## Audit Method
@@ -18,12 +18,15 @@ without HTTP if the scenario is explicitly a `wfctl`/CLI/tooling contract.
 ## Summary
 
 - 102 scenarios have `test/run.sh` scripts.
-- 64 scenarios currently exercise an API/application-style boundary.
-- 90 scenarios exercise a Workflow host or `wfctl` boundary.
-- 2 scenarios are package-test-only despite describing Workflow app or plugin
+- 66 scenarios currently exercise an API/application-style boundary.
+- 92 scenarios exercise a Workflow host or `wfctl` boundary.
+- 1 scenario is explicitly manual/out-of-band.
+- 4 scenarios exercise committed replay fixtures.
+- 1 scenario exercises a released plugin contract validator.
+- 0 scenarios are package-test-only despite describing Workflow app or plugin
   behavior.
 - 0 scenarios were classified as static-only without a Workflow/API marker.
-- 3 scenarios have no first-pass proof marker and need manual classification.
+- 0 scenarios have no first-pass proof marker.
 
 ## Highest Priority: Package-Test-Only Scenarios
 
@@ -32,24 +35,28 @@ flows, but their `test/run.sh` scripts only run Go package tests from the
 `workflow` repo. They should be converted to real scenario apps or explicitly
 reclassified as package-test support fixtures.
 
-| Scenario | Current Test Shape | Expected Remediation |
+| Scenario | Previous Test Shape | Remediation |
 |---|---|---|
-| `34-app-container` | `go test ./module -run TestAppContainer` | Drive deploy/status/rollback through the scenario config. |
-| `35-multi-cloud-accounts` | `go test ./module -run TestCloudAccount` | Drive multi-cloud account validation through Workflow using mock/inline credentials. |
+| `34-app-container` | `go test ./module -run TestAppContainer` | Remediated: deploy/status/rollback are driven through the scenario config over HTTP. |
+| `35-multi-cloud-accounts` | `go test ./module -run TestCloudAccount` | Remediated: multi-cloud account validation is driven through Workflow using mock/inline credentials. |
 
 Already remediated: scenarios 23-33 now launch real Workflow app paths and
 drive HTTP/API boundaries against local mocks or fixtures.
 
-## No-Marker Scenarios To Classify
+## Non-App Proof Classifications
 
-The audit script found three scenarios whose scripts do not contain the
-first-pass API, Workflow, package-test, or static markers:
+The audit script now classifies non-app proofs explicitly instead of leaving
+them as no-marker rows:
 
-| Scenario | Notes |
-|---|---|
-| `45-agent-operator-mode` | Appears to be manual QA only; either add an executable proof or mark explicitly as manual/out-of-band. |
-| `88-iac-dns-replay-migration` | Review whether the DNS replay command path is still current and whether the script should expose a `wfctl`/Workflow marker. |
-| `103-control-plane-descriptors` | Validator-based descriptor proof may be valid, but the README/scenario should state this is a released-contract artifact proof rather than an application scenario. |
+| Scenario | Classification | Notes |
+|---|---|---|
+| `45-agent-operator-mode` | `manual` | Manual QA harness for a live external operator. It does not claim automated app proof coverage. |
+| `88-iac-dns-replay-migration` | `fixture` | Offline replay validator over sanitized DNS/IaC portfolio fixtures. |
+| `103-control-plane-descriptors` | `contract` | Go validator over released `workflow-plugin-control-plane` descriptor/envelope/registry contracts. |
+
+Fixture and contract scenarios are still allowed only when the scenario
+description says that the subject is an offline artifact/tooling contract rather
+than application runtime behavior.
 
 ## CLI/Tooling Boundary Scenarios To Review
 

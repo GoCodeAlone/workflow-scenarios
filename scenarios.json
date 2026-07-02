@@ -566,10 +566,10 @@
       "status": "passed",
       "namespace": "wf-scenario-45",
       "deployed": true,
-      "lastTested": "2026-03-28T22:40:29.336340Z",
+      "lastTested": "2026-07-02T01:38:47.031433Z",
       "lastResult": "pass",
-      "testCount": 0,
-      "passCount": 0,
+      "testCount": 1,
+      "passCount": 1,
       "failCount": 0,
       "notes": "Manual QA only. test provider in HTTP mode routes agent turns to an external Claude operator process. See README.md for setup. Requires workflow-server:agent-local image.",
       "blockers": [
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-02T01:28:39.158453Z"
+  "lastUpdated": "2026-07-02T01:38:47.031433Z"
 }
