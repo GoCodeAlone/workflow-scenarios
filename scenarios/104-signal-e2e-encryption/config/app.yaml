@@ -24,6 +24,23 @@ modules:
       device_id: 1
       registration_id: 2002
 
+  - name: service_custody
+    type: signal.key_custody
+    config:
+      custody_ref: custody://signal/service-test/device-1
+      account_ref: account://signal/service-test
+      non_exportable_key_ref: kms://signal/service-test/device-1
+
+  - name: service_account
+    type: signal.account_ref
+    config:
+      account_ref: account://signal/service-test
+      device_ref: device://signal/service-test/device-1
+      custody_ref: custody://signal/service-test/device-1
+      credential_ref: secret://signal/service-test/credential
+      consent_ref: consent://signal/service-test/consent
+      audit_ref: audit://signal/service-test/audit
+
 workflows:
   http:
     server: server
@@ -116,4 +133,35 @@ pipelines:
           body:
             recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
             plaintext: "{{ .steps.decrypt.plaintext }}"
+    on_error: stop
+
+  prepare-service-send:
+    trigger:
+      type: http
+      config:
+        path: /participants/{sender}/service/send-prepare
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [sender]
+          parse_body: true
+          merge_body: true
+      - name: prepare
+        type: step.signal_service_send_prepare
+        config:
+          account_ref: account://signal/service-test
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
+            custody_attested: '{{ index .steps "prepare" "custody_attested" }}'
+            custody_attestation_ref: '{{ index .steps "prepare" "custody_attestation_ref" }}'
+            readiness_warnings:
+              _from: steps.prepare.readiness_warnings
+            envelope:
+              _from: steps.prepare.envelope
     on_error: stop

@@ -1240,13 +1240,13 @@
       "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "lastTested": "2026-07-01T20:32:36.278483Z",
+      "lastTested": "2026-07-02T04:11:50.231148Z",
       "lastResult": "pass",
-      "testCount": 12,
-      "passCount": 12,
+      "testCount": 18,
+      "passCount": 18,
       "failCount": 0,
       "localOnly": true,
-      "notes": "Builds workflow-plugin-signal as an external plugin, launches workflow-server, and drives participant-parametric HTTP APIs for session prepare -> encrypt -> decrypt. Proves two clients exchange an encrypted message through the running Workflow app with no official Signal service egress.",
+      "notes": "Builds workflow-plugin-signal as an external plugin, launches workflow-server, and drives participant-parametric HTTP APIs for session prepare -> encrypt -> decrypt plus custody-attested send readiness. Proves two clients exchange an encrypted message and obtain host-custody send-preparation evidence through the running Workflow app with no official Signal service egress.",
       "blockers": []
     },
     "105-encrypted-spaces-proof-workflow": {
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-02T01:38:47.031433Z"
+  "lastUpdated": "2026-07-02T04:11:50.231148Z"
 }

@@ -10,6 +10,8 @@ server, and drives participant-parametric HTTP routes:
 - client B publishes a pre-key bundle via `POST /participants/{id}/session`
 - client A encrypts a message via `POST /participants/{id}/messages`
 - client B decrypts the envelope via `POST /participants/{id}/messages/decrypt`
+- client A prepares a custody-attested service send envelope via
+  `POST /participants/{id}/service/send-prepare`
 
 The app config contains a small local identity pool, but the workflows take
 participant IDs and message content from HTTP route params and request bodies.

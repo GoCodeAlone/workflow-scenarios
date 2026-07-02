@@ -8,9 +8,9 @@ description: |
   The scenario builds workflow-plugin-signal as an external plugin, loads it
   through the Workflow server's data/plugins path, and starts config/app.yaml
   with HTTP routes for participant session prep, message encryption, and message
-  decryption. The test chooses two participants from the app's local identity
-  pool and exchanges a message through separate API calls. It does not contact
-  the official Signal service.
+  decryption, plus a custody-attested send-readiness route. The test chooses two
+  participants from the app's local identity pool and exchanges a message
+  through separate API calls. It does not contact the official Signal service.
 components:
   - workflow-plugin-signal
   - workflow-server
@@ -20,6 +20,9 @@ components:
   - step.signal_session_prepare
   - step.signal_encrypt
   - step.signal_decrypt
+  - step.signal_service_send_prepare
+  - signal.key_custody
+  - signal.account_ref
 status: testable
 tags:
   - signal
