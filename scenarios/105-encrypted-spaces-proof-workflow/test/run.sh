@@ -198,9 +198,13 @@ if ! DATA_DIR="$(mktemp -d)"; then
 fi
 STATE_FILE="$DATA_DIR/encrypted-space-state.json"
 RUNTIME_CONFIG="$DATA_DIR/app.yaml"
-sed "s#__STATE_STORE_PATH__#$STATE_FILE#g" "$CONFIG" >"$RUNTIME_CONFIG" \
-  && pass "generated Workflow app config with per-run local file state store" \
-  || fail "could not generate runtime Workflow app config"
+if sed "s#__STATE_STORE_PATH__#$STATE_FILE#g" "$CONFIG" >"$RUNTIME_CONFIG"; then
+  pass "generated Workflow app config with per-run local file state store"
+else
+  fail "could not generate runtime Workflow app config"
+  finish
+  exit 1
+fi
 PLUGIN_DIR="$DATA_DIR/plugins"
 if build_plugin "$PLUGIN_DIR"; then
   pass "built workflow-plugin-encrypted-spaces external plugin"
@@ -396,7 +400,7 @@ rm -f "$denied_body"
 if [ -s "$STATE_FILE" ] && jq -e '.schema_version == 1 and .backend == "file" and (.checksum | startswith("sha256:"))' "$STATE_FILE" >/dev/null 2>&1; then
   pass "file state store wrote a schema-versioned checksum snapshot"
 else
-  fail "file state store did not write expected snapshot: $(cat "$STATE_FILE" 2>/dev/null)"
+  fail "file state store did not write expected snapshot at $STATE_FILE"
 fi
 
 if grep -Eq 'sealed-collab-payload|proof_digest|private-key|plaintext|nonce' "$STATE_FILE" 2>/dev/null; then
