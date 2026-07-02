@@ -9,6 +9,13 @@ set -uo pipefail
 
 PLUGIN_NAME="workflow-plugin-encrypted-spaces"
 BASE_URL="${BASE_URL:-http://127.0.0.1:18105}"
+ENCRYPTED_SPACES_PLUGIN_REF="${ENCRYPTED_SPACES_PLUGIN_REF:-v0.6.0}"
+if [ -z "${PLUGIN_VERSION+x}" ]; then
+  case "$ENCRYPTED_SPACES_PLUGIN_REF" in
+    v[0-9]*) PLUGIN_VERSION="${ENCRYPTED_SPACES_PLUGIN_REF#v}" ;;
+    *) PLUGIN_VERSION="$ENCRYPTED_SPACES_PLUGIN_REF" ;;
+  esac
+fi
 # The proof digests below are fixture defaults for the default space/member
 # tuples. Override the tuple only with matching proof digest overrides.
 SPACE_ID_ENV_SET="${SPACE_ID+x}"
@@ -20,6 +27,7 @@ CHECKPOINT_DIGEST_ENV_SET="${CHECKPOINT_DIGEST+x}"
 SPACE_ID="${SPACE_ID:-space-1}"
 MEMBER_A_ID="${MEMBER_ID:-member-1}"
 MEMBER_B_ID="${MEMBER_B_ID:-member-2}"
+UNKNOWN_MEMBER_ID="${UNKNOWN_MEMBER_ID:-member-unknown}"
 DEVICE_A_ID="${DEVICE_ID:-device-1}"
 DEVICE_B_ID="${DEVICE_B_ID:-device-2}"
 OPERATION_A_ID="${OPERATION_ID:-verified-op-a}"
@@ -70,6 +78,12 @@ find_repo() {
   return 1
 }
 
+plugin_repo_supports_state_store() {
+  local repo="$1"
+  [ -f "$repo/plugin.json" ] || return 1
+  jq -e '.capabilities.moduleTypes | index("encrypted_space.state_store")' "$repo/plugin.json" >/dev/null 2>&1
+}
+
 resolve_server() {
   if [ -n "${WORKFLOW_SERVER:-}" ]; then
     [ -x "$WORKFLOW_SERVER" ] && printf '%s\n' "$WORKFLOW_SERVER" && return 0
@@ -86,12 +100,24 @@ resolve_server() {
 build_plugin() {
   local plugin_dir="$1"
   local plugin_repo
-  plugin_repo="$(find_repo "${ENCRYPTED_SPACES_PLUGIN_REPO:-}" "$REPO_ROOT/../workflow-plugin-encrypted-spaces" "$REPO_ROOT/../../../workflow-plugin-encrypted-spaces")" || return 1
+  plugin_repo="$(find_repo "${ENCRYPTED_SPACES_PLUGIN_REPO:-}" "$REPO_ROOT/../workflow-plugin-encrypted-spaces" "$REPO_ROOT/../../../workflow-plugin-encrypted-spaces")" || plugin_repo=""
+  if [ -z "$plugin_repo" ] || ! plugin_repo_supports_state_store "$plugin_repo"; then
+    plugin_repo="$DATA_DIR/repos/workflow-plugin-encrypted-spaces"
+    mkdir -p "$(dirname "$plugin_repo")" || return 1
+    if git ls-remote --exit-code --tags https://github.com/GoCodeAlone/workflow-plugin-encrypted-spaces.git "refs/tags/$ENCRYPTED_SPACES_PLUGIN_REF" >/dev/null 2>&1; then
+      git clone --quiet --depth 1 https://github.com/GoCodeAlone/workflow-plugin-encrypted-spaces.git "$plugin_repo" || return 1
+      git -C "$plugin_repo" fetch --quiet --depth 1 origin "refs/tags/$ENCRYPTED_SPACES_PLUGIN_REF:refs/tags/$ENCRYPTED_SPACES_PLUGIN_REF" || return 1
+      git -C "$plugin_repo" -c advice.detachedHead=false checkout --quiet "$ENCRYPTED_SPACES_PLUGIN_REF^{commit}" || return 1
+    else
+      git clone --quiet --depth 1 --branch "$ENCRYPTED_SPACES_PLUGIN_REF" \
+        https://github.com/GoCodeAlone/workflow-plugin-encrypted-spaces.git "$plugin_repo" || return 1
+    fi
+  fi
 
   mkdir -p "$plugin_dir/$PLUGIN_NAME" || return 1
   cp "$plugin_repo/plugin.json" "$plugin_dir/$PLUGIN_NAME/plugin.json" || return 1
   (cd "$plugin_repo" && GOWORK=off go build \
-    -ldflags "-X github.com/GoCodeAlone/workflow-plugin-encrypted-spaces/internal.Version=${PLUGIN_VERSION:-0.0.0}" \
+    -ldflags "-X github.com/GoCodeAlone/workflow-plugin-encrypted-spaces/internal.Version=${PLUGIN_VERSION}" \
     -o "$plugin_dir/$PLUGIN_NAME/$PLUGIN_NAME" ./cmd/workflow-plugin-encrypted-spaces) >/dev/null 2>&1 || return 1
 }
 
@@ -131,6 +157,29 @@ if grep -q 'operation_id: verified-op' "$CONFIG"; then
 else
   pass "Workflow API accepts operation/proof inputs from clients"
 fi
+for step_type in \
+  step.encrypted_space_state_init \
+  step.encrypted_space_state_load \
+  step.encrypted_space_state_save \
+  step.encrypted_space_member_check \
+  step.encrypted_space_state_update
+do
+  if grep -q "type: $step_type" "$CONFIG"; then
+    pass "Workflow app config exercises $step_type"
+  else
+    fail "Workflow app config does not exercise $step_type"
+  fi
+done
+if grep -q 'type: encrypted_space.state_store' "$CONFIG"; then
+  pass "Workflow app config owns encrypted-space lifecycle state"
+else
+  fail "Workflow app config does not declare encrypted_space.state_store"
+fi
+if grep -q 'path: /spaces/{space}/members/{member}/operations' "$CONFIG"; then
+  pass "Workflow operation route is participant-parametric"
+else
+  fail "Workflow operation route does not accept participant IDs from clients"
+fi
 
 SERVER_BIN="$(resolve_server)"
 if [ "$?" -eq 0 ]; then
@@ -168,6 +217,63 @@ else
   exit 1
 fi
 
+operation_payload() {
+  local member="$1"
+  local device="$2"
+  local operation_id="$3"
+  local ciphertext="$4"
+  local nonce="$5"
+  jq -cn \
+    --arg space "$SPACE_ID" \
+    --arg member "$member" \
+    --arg device "$device" \
+    --arg operation "$operation_id" \
+    --arg ciphertext "$ciphertext" \
+    --arg nonce "$nonce" \
+    '{operation:{space_id:$space,member_id:$member,device_id:$device,operation_id:$operation,key_epoch:1,membership_epoch:1,ciphertext:$ciphertext,nonce:$nonce,associated_data:"c3BhY2UtMS9yb29tLTE=",created_at_unix_nano:1783000000000000000}}'
+}
+
+init_members="$(jq -cn --arg member_a "$MEMBER_A_ID" --arg member_b "$MEMBER_B_ID" '{members:[$member_a,$member_b]}')" || init_members=""
+init_response="$(curl -fsS -X POST "$BASE_URL/spaces/$SPACE_ID/members" -H 'Content-Type: application/json' -d "$init_members")" \
+  && pass "clients initialized encrypted-space membership through Workflow API" \
+  || fail "membership initialization API failed"
+if printf '%s' "$init_response" | jq -e --arg member_a "$MEMBER_A_ID" --arg member_b "$MEMBER_B_ID" '.stored == true and (.state.members | index($member_a)) and (.state.members | index($member_b))' >/dev/null 2>&1; then
+  pass "Workflow app persisted the initialized member state"
+else
+  fail "membership initialization did not persist both members: $init_response"
+fi
+
+check_member_allowed() {
+  local label="$1"
+  local member="$2"
+  local expected="$3"
+  local response
+  response="$(curl -fsS -X POST "$BASE_URL/spaces/$SPACE_ID/members/$member/check" -H 'Content-Type: application/json' -d '{}')" \
+    && pass "$label membership check API responded" \
+    || fail "$label membership check API failed"
+  if [ "$expected" = "true" ] && printf '%s' "$response" | jq -e '.member_allowed == true' >/dev/null 2>&1; then
+    pass "$label membership check returned member_allowed=$expected"
+  elif [ "$expected" = "false" ] && printf '%s' "$response" | jq -e '.member_allowed != true and .member_removed == true' >/dev/null 2>&1; then
+    pass "$label membership check returned member_allowed=$expected"
+  else
+    fail "$label membership check had unexpected result: $response"
+  fi
+}
+
+check_member_allowed "member A" "$MEMBER_A_ID" true
+check_member_allowed "member B" "$MEMBER_B_ID" true
+
+unknown_body="$(mktemp)"
+unknown_operation="$(operation_payload "$UNKNOWN_MEMBER_ID" "device-unknown" "unknown-op" "dW5rbm93bi1wYXlsb2Fk" "dW5rbm93bi1ub25jZQ==")" || unknown_operation=""
+unknown_status="$(curl -sS -o "$unknown_body" -w '%{http_code}' -X POST "$BASE_URL/spaces/$SPACE_ID/members/$UNKNOWN_MEMBER_ID/operations" -H 'Content-Type: application/json' -d "$unknown_operation")" \
+  || unknown_status=""
+if [ "$unknown_status" = "403" ]; then
+  pass "unknown member append was rejected by Workflow API"
+else
+  fail "unknown member append status=$unknown_status body=$(cat "$unknown_body")"
+fi
+rm -f "$unknown_body"
+
 run_collaborator_flow() {
   local slot="$1"
   local label="$2"
@@ -179,17 +285,16 @@ run_collaborator_flow() {
   local nonce="$8"
   local operation appended commitment proof_request proof digest
 
-  operation="$(jq -cn \
-    --arg space "$SPACE_ID" \
-    --arg member "$member" \
-    --arg device "$device" \
-    --arg operation "$operation_id" \
-    --arg ciphertext "$ciphertext" \
-    --arg nonce "$nonce" \
-    '{operation:{space_id:$space,member_id:$member,device_id:$device,operation_id:$operation,key_epoch:1,membership_epoch:1,ciphertext:$ciphertext,nonce:$nonce,associated_data:"c3BhY2UtMS9yb29tLTE=",created_at_unix_nano:1783000000000000000}}')" || operation=""
-  appended="$(curl -fsS -X POST "$BASE_URL/spaces/$SPACE_ID/operations" -H 'Content-Type: application/json' -d "$operation")" \
+  operation="$(operation_payload "$member" "$device" "$operation_id" "$ciphertext" "$nonce")" || operation=""
+  appended="$(curl -fsS -X POST "$BASE_URL/spaces/$SPACE_ID/members/$member/operations" -H 'Content-Type: application/json' -d "$operation")" \
     && pass "$label appended an encrypted operation through Workflow API" \
     || fail "$label operation append API failed"
+
+  if printf '%s' "$appended" | jq -e '.member_allowed == true' >/dev/null 2>&1; then
+    pass "$label append was authorized by persisted membership state"
+  else
+    fail "$label append did not include member authorization evidence: $appended"
+  fi
 
   commitment="$(printf '%s' "$appended" | jq -c '.commitment // empty' 2>/dev/null)"
   if [ -n "$commitment" ] && [ "$commitment" != "null" ]; then
@@ -248,5 +353,26 @@ if [ -n "$COMMITMENT_DIGEST_1" ] && [ -n "$COMMITMENT_DIGEST_2" ] && [ "$COMMITM
 else
   fail "member A and member B commitments were not distinct"
 fi
+
+remove_response="$(curl -fsS -X POST "$BASE_URL/spaces/$SPACE_ID/members/$MEMBER_B_ID/remove" -H 'Content-Type: application/json' -d '{"reason":"scenario removal"}')" \
+  && pass "member B was removed through Workflow API" \
+  || fail "member B removal API failed"
+if printf '%s' "$remove_response" | jq -e --arg member_b "$MEMBER_B_ID" '.member_allowed != true and (.state.removed_members | index($member_b))' >/dev/null 2>&1; then
+  pass "Workflow app persisted member B removal"
+else
+  fail "member B removal response did not prove persisted removal: $remove_response"
+fi
+check_member_allowed "member B after removal" "$MEMBER_B_ID" false
+
+denied_body="$(mktemp)"
+denied_operation="$(operation_payload "$MEMBER_B_ID" "$DEVICE_B_ID" "denied-op-b" "cmVtb3ZlZC1wYXlsb2FkLWI=" "cmVtb3ZlZC1ub25jZS1i")" || denied_operation=""
+denied_status="$(curl -sS -o "$denied_body" -w '%{http_code}' -X POST "$BASE_URL/spaces/$SPACE_ID/members/$MEMBER_B_ID/operations" -H 'Content-Type: application/json' -d "$denied_operation")" \
+  || denied_status=""
+if [ "$denied_status" = "403" ]; then
+  pass "removed member B append was rejected by Workflow API"
+else
+  fail "removed member B append status=$denied_status body=$(cat "$denied_body")"
+fi
+rm -f "$denied_body"
 
 finish
