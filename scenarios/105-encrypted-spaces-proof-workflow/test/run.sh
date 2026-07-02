@@ -10,16 +10,22 @@ set -uo pipefail
 PLUGIN_NAME="workflow-plugin-encrypted-spaces"
 BASE_URL="${BASE_URL:-http://127.0.0.1:18105}"
 # The proof digests below are fixture defaults for the default space/member
-# tuple. Override the tuple only with matching proof digest overrides.
+# tuples. Override the tuple only with matching proof digest overrides.
 SPACE_ID_ENV_SET="${SPACE_ID+x}"
-MEMBER_ID_ENV_SET="${MEMBER_ID+x}"
-MEMBERSHIP_DIGEST_ENV_SET="${MEMBERSHIP_DIGEST+x}"
+MEMBER_A_ID_ENV_SET="${MEMBER_ID+x}"
+MEMBER_B_ID_ENV_SET="${MEMBER_B_ID+x}"
+MEMBERSHIP_A_DIGEST_ENV_SET="${MEMBERSHIP_DIGEST+x}"
+MEMBERSHIP_B_DIGEST_ENV_SET="${MEMBERSHIP_B_DIGEST+x}"
 CHECKPOINT_DIGEST_ENV_SET="${CHECKPOINT_DIGEST+x}"
 SPACE_ID="${SPACE_ID:-space-1}"
-MEMBER_ID="${MEMBER_ID:-member-1}"
-DEVICE_ID="${DEVICE_ID:-device-1}"
-OPERATION_ID="${OPERATION_ID:-verified-op}"
-MEMBERSHIP_DIGEST="${MEMBERSHIP_DIGEST:-sha256:2f99cb90ee710be078aaf1b8cb9a22942c10f5965e5e39c1607a930fd6df7874}"
+MEMBER_A_ID="${MEMBER_ID:-member-1}"
+MEMBER_B_ID="${MEMBER_B_ID:-member-2}"
+DEVICE_A_ID="${DEVICE_ID:-device-1}"
+DEVICE_B_ID="${DEVICE_B_ID:-device-2}"
+OPERATION_A_ID="${OPERATION_ID:-verified-op-a}"
+OPERATION_B_ID="${OPERATION_B_ID:-verified-op-b}"
+MEMBERSHIP_A_DIGEST="${MEMBERSHIP_DIGEST:-sha256:2f99cb90ee710be078aaf1b8cb9a22942c10f5965e5e39c1607a930fd6df7874}"
+MEMBERSHIP_B_DIGEST="${MEMBERSHIP_B_DIGEST:-sha256:c31f6d764ac0dad1b4687f540a4e6d4aa10a7ce30948e5d590ae9134bc16980f}"
 CHECKPOINT_DIGEST="${CHECKPOINT_DIGEST:-sha256:479338417f33b12df048fbe2180f58638636b2618d90ac6f807ed436ff881d8c}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -109,11 +115,13 @@ echo ""
 [ -f "$CONFIG" ] && pass "Workflow app config exists" || fail "Workflow app config missing"
 VECTOR_OVERRIDE_COUNT=0
 [ -n "$SPACE_ID_ENV_SET" ] && VECTOR_OVERRIDE_COUNT=$((VECTOR_OVERRIDE_COUNT + 1))
-[ -n "$MEMBER_ID_ENV_SET" ] && VECTOR_OVERRIDE_COUNT=$((VECTOR_OVERRIDE_COUNT + 1))
-[ -n "$MEMBERSHIP_DIGEST_ENV_SET" ] && VECTOR_OVERRIDE_COUNT=$((VECTOR_OVERRIDE_COUNT + 1))
+[ -n "$MEMBER_A_ID_ENV_SET" ] && VECTOR_OVERRIDE_COUNT=$((VECTOR_OVERRIDE_COUNT + 1))
+[ -n "$MEMBER_B_ID_ENV_SET" ] && VECTOR_OVERRIDE_COUNT=$((VECTOR_OVERRIDE_COUNT + 1))
+[ -n "$MEMBERSHIP_A_DIGEST_ENV_SET" ] && VECTOR_OVERRIDE_COUNT=$((VECTOR_OVERRIDE_COUNT + 1))
+[ -n "$MEMBERSHIP_B_DIGEST_ENV_SET" ] && VECTOR_OVERRIDE_COUNT=$((VECTOR_OVERRIDE_COUNT + 1))
 [ -n "$CHECKPOINT_DIGEST_ENV_SET" ] && VECTOR_OVERRIDE_COUNT=$((VECTOR_OVERRIDE_COUNT + 1))
-if [ "$VECTOR_OVERRIDE_COUNT" -ne 0 ] && [ "$VECTOR_OVERRIDE_COUNT" -ne 4 ]; then
-  fail "SPACE_ID, MEMBER_ID, MEMBERSHIP_DIGEST, and CHECKPOINT_DIGEST must be overridden together"
+if [ "$VECTOR_OVERRIDE_COUNT" -ne 0 ] && [ "$VECTOR_OVERRIDE_COUNT" -ne 6 ]; then
+  fail "SPACE_ID, MEMBER_ID, MEMBER_B_ID, MEMBERSHIP_DIGEST, MEMBERSHIP_B_DIGEST, and CHECKPOINT_DIGEST must be overridden together"
   finish
   exit 1
 fi
@@ -160,57 +168,85 @@ else
   exit 1
 fi
 
-OPERATION="$(jq -cn \
-  --arg space "$SPACE_ID" \
-  --arg member "$MEMBER_ID" \
-  --arg device "$DEVICE_ID" \
-  --arg operation "$OPERATION_ID" \
-  '{operation:{space_id:$space,member_id:$member,device_id:$device,operation_id:$operation,key_epoch:1,membership_epoch:1,ciphertext:"c2VhbGVkLWNvbGxhYi1wYXlsb2Fk",nonce:"bm9uY2UtMTIzNDU2Nzg5MDEy",associated_data:"c3BhY2UtMS9yb29tLTE=",created_at_unix_nano:1783000000000000000}}')" || OPERATION=""
-APPENDED="$(curl -fsS -X POST "$BASE_URL/spaces/$SPACE_ID/operations" -H 'Content-Type: application/json' -d "$OPERATION")" \
-  && pass "client appended an encrypted operation through Workflow API" \
-  || fail "operation append API failed"
+run_collaborator_flow() {
+  local slot="$1"
+  local label="$2"
+  local member="$3"
+  local device="$4"
+  local operation_id="$5"
+  local membership_digest="$6"
+  local ciphertext="$7"
+  local nonce="$8"
+  local operation appended commitment proof_request proof digest
 
-COMMITMENT="$(printf '%s' "$APPENDED" | jq -c '.commitment // empty' 2>/dev/null)"
-if [ -n "$COMMITMENT" ] && [ "$COMMITMENT" != "null" ]; then
-  pass "append response contained an operation commitment"
+  operation="$(jq -cn \
+    --arg space "$SPACE_ID" \
+    --arg member "$member" \
+    --arg device "$device" \
+    --arg operation "$operation_id" \
+    --arg ciphertext "$ciphertext" \
+    --arg nonce "$nonce" \
+    '{operation:{space_id:$space,member_id:$member,device_id:$device,operation_id:$operation,key_epoch:1,membership_epoch:1,ciphertext:$ciphertext,nonce:$nonce,associated_data:"c3BhY2UtMS9yb29tLTE=",created_at_unix_nano:1783000000000000000}}')" || operation=""
+  appended="$(curl -fsS -X POST "$BASE_URL/spaces/$SPACE_ID/operations" -H 'Content-Type: application/json' -d "$operation")" \
+    && pass "$label appended an encrypted operation through Workflow API" \
+    || fail "$label operation append API failed"
+
+  commitment="$(printf '%s' "$appended" | jq -c '.commitment // empty' 2>/dev/null)"
+  if [ -n "$commitment" ] && [ "$commitment" != "null" ]; then
+    pass "$label append response contained an operation commitment"
+  else
+    fail "$label append response did not contain a commitment: $appended"
+  fi
+
+  digest="$(printf '%s' "$commitment" | jq -r '.digest // empty' 2>/dev/null)"
+  printf -v "COMMITMENT_DIGEST_$slot" '%s' "$digest"
+
+  proof_request="$(jq -cn \
+    --argjson operation "$(printf '%s' "$operation" | jq -c '.operation')" \
+    --argjson expected_commitment "$commitment" \
+    --arg space "$SPACE_ID" \
+    --arg member "$member" \
+    --arg membership_digest "$membership_digest" \
+    --arg checkpoint_digest "$CHECKPOINT_DIGEST" \
+    '{operation:$operation,expected_commitment:$expected_commitment,membership:{group_id:$space,member_id:$member,issuer:"issuer-1",expires_at:1893456000,proof_digest:$membership_digest,upstream_path:"java/shared/java/org/signal/libsignal/zkgroup/groups"},checkpoint:{checkpoint_id:"checkpoint-1",tree_head:"tree-head-1",tree_size:42,proof_digest:$checkpoint_digest,upstream_path:"rust/keytrans/src/verify.rs",previous_tree_size:0}}')" || proof_request=""
+  proof="$(curl -fsS -X POST "$BASE_URL/spaces/$SPACE_ID/proof" -H 'Content-Type: application/json' -d "$proof_request")" \
+    && pass "$label proof client verified the operation through Workflow API" \
+    || fail "$label proof verification API failed"
+
+  if printf '%s' "$proof" | jq -e '.reports[] | select(.domain=="operationlog.commitment" and .accepted==true)' >/dev/null 2>&1; then
+    pass "$label proof response contains accepted operationlog commitment report"
+  else
+    fail "$label proof response missing accepted operationlog report: $proof"
+  fi
+
+  if printf '%s' "$proof" | jq -e --arg member "$member" '.json.reports[] | select(.domain=="zkgroup.membership")' >/dev/null 2>&1; then
+    pass "$label redacted proof evidence JSON contains membership proof report"
+  else
+    fail "$label proof evidence JSON missing membership domain: $proof"
+  fi
+
+  if printf '%s' "$proof" | jq -e '.reports[] | select(.domain=="zkgroup.membership" and .production_ready==true)' >/dev/null 2>&1; then
+    pass "$label proof response contains vector-backed membership report"
+  else
+    fail "$label proof response missing vector-backed membership report: $proof"
+  fi
+
+  if printf '%s' "$proof" | grep -q "$ciphertext"; then
+    fail "$label proof response leaked ciphertext payload"
+  else
+    pass "$label proof response did not leak ciphertext payload"
+  fi
+}
+
+COMMITMENT_DIGEST_1=""
+COMMITMENT_DIGEST_2=""
+run_collaborator_flow 1 "member A" "$MEMBER_A_ID" "$DEVICE_A_ID" "$OPERATION_A_ID" "$MEMBERSHIP_A_DIGEST" "c2VhbGVkLWNvbGxhYi1wYXlsb2FkLWE=" "bm9uY2UtYS0xMjM0NTY3ODkw"
+run_collaborator_flow 2 "member B" "$MEMBER_B_ID" "$DEVICE_B_ID" "$OPERATION_B_ID" "$MEMBERSHIP_B_DIGEST" "c2VhbGVkLWNvbGxhYi1wYXlsb2FkLWI=" "bm9uY2UtYi0xMjM0NTY3ODkw"
+
+if [ -n "$COMMITMENT_DIGEST_1" ] && [ -n "$COMMITMENT_DIGEST_2" ] && [ "$COMMITMENT_DIGEST_1" != "$COMMITMENT_DIGEST_2" ]; then
+  pass "member A and member B produced distinct operation commitments"
 else
-  fail "append response did not contain a commitment: $APPENDED"
-fi
-
-PROOF_REQUEST="$(jq -cn \
-  --argjson operation "$(printf '%s' "$OPERATION" | jq -c '.operation')" \
-  --argjson expected_commitment "$COMMITMENT" \
-  --arg space "$SPACE_ID" \
-  --arg member "$MEMBER_ID" \
-  --arg membership_digest "$MEMBERSHIP_DIGEST" \
-  --arg checkpoint_digest "$CHECKPOINT_DIGEST" \
-  '{operation:$operation,expected_commitment:$expected_commitment,membership:{group_id:$space,member_id:$member,issuer:"issuer-1",expires_at:1893456000,proof_digest:$membership_digest,upstream_path:"java/shared/java/org/signal/libsignal/zkgroup/groups"},checkpoint:{checkpoint_id:"checkpoint-1",tree_head:"tree-head-1",tree_size:42,proof_digest:$checkpoint_digest,upstream_path:"rust/keytrans/src/verify.rs",previous_tree_size:0}}')" || PROOF_REQUEST=""
-PROOF="$(curl -fsS -X POST "$BASE_URL/spaces/$SPACE_ID/proof" -H 'Content-Type: application/json' -d "$PROOF_REQUEST")" \
-  && pass "proof client verified the operation through Workflow API" \
-  || fail "proof verification API failed"
-
-if printf '%s' "$PROOF" | jq -e '.reports[] | select(.domain=="operationlog.commitment" and .accepted==true)' >/dev/null 2>&1; then
-  pass "proof response contains accepted operationlog commitment report"
-else
-  fail "proof response missing accepted operationlog report: $PROOF"
-fi
-
-if printf '%s' "$PROOF" | jq -e '.reports[] | select(.domain=="zkgroup.membership" and .production_ready==true)' >/dev/null 2>&1; then
-  pass "proof response contains vector-backed membership report"
-else
-  fail "proof response missing vector-backed membership report: $PROOF"
-fi
-
-if printf '%s' "$PROOF" | jq -e '.json.reports[] | select(.domain=="operationlog.commitment")' >/dev/null 2>&1; then
-  pass "redacted proof evidence JSON was returned by the app"
-else
-  fail "proof evidence JSON missing operationlog domain: $PROOF"
-fi
-
-if printf '%s' "$PROOF" | grep -q 'c2VhbGVkLWNvbGxhYi1wYXlsb2Fk'; then
-  fail "proof response leaked ciphertext payload"
-else
-  pass "proof response did not leak ciphertext payload"
+  fail "member A and member B commitments were not distinct"
 fi
 
 finish
