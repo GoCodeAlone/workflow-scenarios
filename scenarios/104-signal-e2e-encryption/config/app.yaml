@@ -94,6 +94,11 @@ pipelines:
           path_params: [sender]
           parse_body: true
           merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: "."
       - name: encrypt
         type: step.signal_encrypt
         config:
@@ -121,6 +126,11 @@ pipelines:
           path_params: [recipient]
           parse_body: true
           merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: "."
       - name: decrypt
         type: step.signal_decrypt
         config:
@@ -148,6 +158,11 @@ pipelines:
           path_params: [sender]
           parse_body: true
           merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: "."
       - name: prepare
         type: step.signal_service_send_prepare
         config:
