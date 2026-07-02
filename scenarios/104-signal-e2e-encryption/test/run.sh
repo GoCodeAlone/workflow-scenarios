@@ -70,7 +70,12 @@ plugin_repo_supports_service_readiness() {
   jq -e '
     (.capabilities.moduleTypes | index("signal.key_custody")) and
     (.capabilities.moduleTypes | index("signal.account_ref")) and
-    (.capabilities.stepTypes | index("step.signal_service_send_prepare"))
+    (.capabilities.moduleTypes | index("signal.envelope_store")) and
+    (.capabilities.stepTypes | index("step.signal_service_send_prepare")) and
+    (.capabilities.stepTypes | index("step.signal_outbox_enqueue")) and
+    (.capabilities.stepTypes | index("step.signal_outbox_claim")) and
+    (.capabilities.stepTypes | index("step.signal_inbox_receive")) and
+    (.capabilities.stepTypes | index("step.signal_inbox_decrypt"))
   ' "$repo/plugin.json" >/dev/null 2>&1
 }
 
@@ -134,6 +139,18 @@ if grep -Eiq 'alice|bob' "$CONFIG"; then
 else
   pass "Workflow API is participant-parametric"
 fi
+for step_type in \
+  step.signal_outbox_enqueue \
+  step.signal_outbox_claim \
+  step.signal_inbox_receive \
+  step.signal_inbox_decrypt
+do
+  if grep -q "type: $step_type" "$CONFIG"; then
+    pass "Workflow app config exercises $step_type"
+  else
+    fail "Workflow app config does not exercise $step_type"
+  fi
+done
 
 SERVER_BIN="$(resolve_server)"
 if [ "$?" -eq 0 ]; then
@@ -223,6 +240,51 @@ if [ "$GOT" = "$PLAINTEXT_B64" ]; then
   pass "client B recovered the original plaintext"
 else
   fail "client B plaintext mismatch: got '$GOT'"
+fi
+
+QUEUE_BODY="$(jq -cn --arg plaintext "$PLAINTEXT_B64" --arg message_ref "scenario-104-envelope-1" --argjson remote_bundle "$BUNDLE" \
+  '{plaintext:$plaintext, message_ref:$message_ref, remote_bundle:$remote_bundle}')" || QUEUE_BODY=""
+QUEUED="$(curl -fsS -X POST "$BASE_URL/participants/$CLIENT_A/outbox/$CLIENT_B" -H 'Content-Type: application/json' -d "$QUEUE_BODY")" \
+  && pass "client A enqueued an encrypted outbox envelope for client B through Workflow API" \
+  || fail "client A outbox enqueue API failed"
+
+if [ "$(printf '%s' "$QUEUED" | jq -r '.status // empty' 2>/dev/null)" = "queued" ]; then
+  pass "outbox enqueue returned queued status"
+else
+  fail "outbox enqueue returned unexpected response: $QUEUED"
+fi
+
+QUEUED_REF="$(printf '%s' "$QUEUED" | jq -r '.envelope_ref // empty' 2>/dev/null)"
+if [ -n "$QUEUED_REF" ]; then
+  pass "outbox enqueue returned an envelope ref"
+else
+  fail "outbox enqueue did not return an envelope ref: $QUEUED"
+fi
+
+if printf '%s' "$QUEUED" | grep -q "$PLAINTEXT_B64"; then
+  fail "outbox queue response leaked plaintext"
+else
+  pass "outbox queue response did not expose plaintext"
+fi
+
+RECEIVE_BODY="$(jq -cn --arg envelope_ref "$QUEUED_REF" --arg lease_id "scenario-104-lease-1" \
+  '{envelope_ref:$envelope_ref, lease_id:$lease_id}')" || RECEIVE_BODY=""
+RECEIVED="$(curl -fsS -X POST "$BASE_URL/participants/$CLIENT_B/messages/receive" -H 'Content-Type: application/json' -d "$RECEIVE_BODY")" \
+  && pass "client B claimed, received, and decrypted queued envelope through Workflow API" \
+  || fail "client B queued receive API failed"
+
+if [ "$(printf '%s' "$RECEIVED" | jq -r '.claim_status // empty' 2>/dev/null)" = "claimed" ] &&
+   [ "$(printf '%s' "$RECEIVED" | jq -r '.receive_status // empty' 2>/dev/null)" = "received" ]; then
+  pass "queued envelope moved through claimed and received states"
+else
+  fail "queued envelope did not move through expected states: $RECEIVED"
+fi
+
+QUEUED_GOT="$(printf '%s' "$RECEIVED" | jq -r '.plaintext // empty' 2>/dev/null)"
+if [ "$QUEUED_GOT" = "$PLAINTEXT_B64" ]; then
+  pass "client B recovered plaintext from queued envelope"
+else
+  fail "queued envelope plaintext mismatch: got '$QUEUED_GOT'"
 fi
 
 REPLY_BODY="$(jq -cn --arg plaintext "$REPLY_PLAINTEXT_B64" --argjson remote_bundle "$BUNDLE_A" \

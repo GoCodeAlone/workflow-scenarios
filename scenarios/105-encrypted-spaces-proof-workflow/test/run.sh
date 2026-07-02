@@ -3,8 +3,8 @@
 #
 # Demonstration-fidelity: this starts the real Workflow server, loads the real
 # workflow-plugin-encrypted-spaces subprocess from data/plugins, and drives a
-# space/member API through separate HTTP calls. Storage is an in-memory plugin
-# module, not S3.
+# space/member API through separate HTTP calls. Storage is a local file-backed
+# plugin module, not S3.
 set -uo pipefail
 
 PLUGIN_NAME="workflow-plugin-encrypted-spaces"
@@ -81,7 +81,8 @@ find_repo() {
 plugin_repo_supports_state_store() {
   local repo="$1"
   [ -f "$repo/plugin.json" ] || return 1
-  jq -e '.capabilities.moduleTypes | index("encrypted_space.state_store")' "$repo/plugin.json" >/dev/null 2>&1
+  jq -e '.capabilities.moduleTypes | index("encrypted_space.state_store")' "$repo/plugin.json" >/dev/null 2>&1 || return 1
+  grep -q 'allow_file_state_store' "$repo/internal/contracts/spaces.proto" 2>/dev/null
 }
 
 resolve_server() {
@@ -195,6 +196,11 @@ if ! DATA_DIR="$(mktemp -d)"; then
   finish
   exit 1
 fi
+STATE_FILE="$DATA_DIR/encrypted-space-state.json"
+RUNTIME_CONFIG="$DATA_DIR/app.yaml"
+sed "s#__STATE_STORE_PATH__#$STATE_FILE#g" "$CONFIG" >"$RUNTIME_CONFIG" \
+  && pass "generated Workflow app config with per-run local file state store" \
+  || fail "could not generate runtime Workflow app config"
 PLUGIN_DIR="$DATA_DIR/plugins"
 if build_plugin "$PLUGIN_DIR"; then
   pass "built workflow-plugin-encrypted-spaces external plugin"
@@ -206,8 +212,20 @@ fi
 
 SERVER_LOG="$SCRIPT_DIR/artifacts/last-server.log"
 mkdir -p "$(dirname "$SERVER_LOG")"
-"$SERVER_BIN" -config "$CONFIG" -data-dir "$DATA_DIR" >"$SERVER_LOG" 2>&1 &
-SERVER_PID=$!
+start_server() {
+  "$SERVER_BIN" -config "$RUNTIME_CONFIG" -data-dir "$DATA_DIR" >"$SERVER_LOG" 2>&1 &
+  SERVER_PID=$!
+}
+
+stop_server() {
+  if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" >/dev/null 2>&1; then
+    kill "$SERVER_PID" >/dev/null 2>&1 || true
+    wait "$SERVER_PID" >/dev/null 2>&1 || true
+  fi
+  SERVER_PID=""
+}
+
+start_server
 
 if wait_for_server "$BASE_URL"; then
   pass "workflow server started and served /healthz"
@@ -374,5 +392,29 @@ else
   fail "removed member B append status=$denied_status body=$(cat "$denied_body")"
 fi
 rm -f "$denied_body"
+
+if [ -s "$STATE_FILE" ] && jq -e '.schema_version == 1 and .backend == "file" and (.checksum | startswith("sha256:"))' "$STATE_FILE" >/dev/null 2>&1; then
+  pass "file state store wrote a schema-versioned checksum snapshot"
+else
+  fail "file state store did not write expected snapshot: $(cat "$STATE_FILE" 2>/dev/null)"
+fi
+
+if grep -Eq 'sealed-collab-payload|proof_digest|private-key|plaintext|nonce' "$STATE_FILE" 2>/dev/null; then
+  fail "file state snapshot leaked operation payload or proof material"
+else
+  pass "file state snapshot contains membership state only"
+fi
+
+stop_server
+start_server
+if wait_for_server "$BASE_URL"; then
+  pass "workflow server restarted against existing file state snapshot"
+else
+  fail "workflow server did not restart against existing file state snapshot; see $SERVER_LOG"
+  finish
+  exit 1
+fi
+check_member_allowed "member B after restart/reload" "$MEMBER_B_ID" false
+check_member_allowed "member A after restart/reload" "$MEMBER_A_ID" true
 
 finish

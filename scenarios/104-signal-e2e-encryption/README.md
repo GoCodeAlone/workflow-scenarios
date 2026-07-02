@@ -10,6 +10,10 @@ server, and drives participant-parametric HTTP routes:
 - client A and client B publish pre-key bundles via `POST /participants/{id}/session`
 - client A encrypts a message via `POST /participants/{id}/messages`
 - client B decrypts the envelope via `POST /participants/{id}/messages/decrypt`
+- client A enqueues an encrypted outbox envelope via
+  `POST /participants/{sender}/outbox/{recipient}`
+- client B claims, receives, and decrypts that queued envelope via
+  `POST /participants/{id}/messages/receive`
 - client B encrypts a reply via the same route
 - client A decrypts the reply via the same route
 - client A prepares a custody-attested service send envelope via
@@ -18,6 +22,9 @@ server, and drives participant-parametric HTTP routes:
 The app config contains a small local identity pool, but the workflows take
 participant IDs and message content from HTTP route params and request bodies.
 They do not hard-code an Alice/Bob conversation.
+The local envelope store keeps ciphertext and routing refs only; the scenario
+asserts the queue response does not expose plaintext before the recipient
+receives and decrypts it.
 
 ## Running
 
@@ -27,9 +34,9 @@ bash scenarios/104-signal-e2e-encryption/test/run.sh
 
 Set `WORKFLOW_SERVER`, `WORKFLOW_REPO`, or `SIGNAL_PLUGIN_REPO` when running
 outside the standard workspace layout. If the nearby `workflow-plugin-signal`
-checkout does not advertise the service-readiness primitives required by this
-scenario, the harness clones the pinned `SIGNAL_PLUGIN_REF` tag, defaulting to
-`v0.11.0`.
+checkout does not advertise the service-readiness and envelope queue primitives
+required by this scenario, the harness clones the pinned `SIGNAL_PLUGIN_REF`
+tag.
 
 No official Signal service endpoint, account, phone number, or production
 transport is used.

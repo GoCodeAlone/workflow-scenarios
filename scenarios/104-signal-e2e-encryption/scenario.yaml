@@ -7,21 +7,27 @@ description: |
 
   The scenario builds workflow-plugin-signal as an external plugin, loads it
   through the Workflow server's data/plugins path, and starts config/app.yaml
-  with HTTP routes for participant session prep, message encryption, and message
-  decryption, plus a custody-attested send-readiness route. The test chooses two
-  participants from the app's local identity pool, has both participants publish
-  bundles, exchanges messages in both directions through separate API calls, and
-  verifies distinct encrypted envelopes. It does not contact the official Signal
-  service.
+  with HTTP routes for participant session prep, message encryption, message
+  decryption, queued outbox/inbox delivery, and custody-attested send readiness.
+  The test chooses two participants from the app's local identity pool, has both
+  participants publish bundles, exchanges messages in both directions through
+  separate API calls, drives a queued envelope through separate sender and
+  recipient API calls, and verifies distinct encrypted envelopes. It does not
+  contact the official Signal service.
 components:
   - workflow-plugin-signal
   - workflow-server
   - HTTP trigger routes
   - Workflow external plugin loader
   - libsignal-go session/pre-key primitives
+  - signal.envelope_store
   - step.signal_session_prepare
   - step.signal_encrypt
   - step.signal_decrypt
+  - step.signal_outbox_enqueue
+  - step.signal_outbox_claim
+  - step.signal_inbox_receive
+  - step.signal_inbox_decrypt
   - step.signal_service_send_prepare
   - signal.key_custody
   - signal.account_ref

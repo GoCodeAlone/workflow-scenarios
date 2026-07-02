@@ -39,3 +39,8 @@ make list
 make test SCENARIO=104-signal-e2e-encryption
 make test SCENARIO=105-encrypted-spaces-proof-workflow
 ```
+
+Scenarios 104 and 105 are Signal ecosystem app proofs: 104 drives two clients
+through direct Signal encryption plus queued outbox/inbox envelope delivery, and
+105 drives encrypted-space membership/proof APIs with local file-backed state
+surviving Workflow restart/reload.

@@ -41,6 +41,13 @@ modules:
       consent_ref: consent://signal/service-test/consent
       audit_ref: audit://signal/service-test/audit
 
+  - name: signal_envelopes
+    type: signal.envelope_store
+    config:
+      store_ref: signal_envelopes
+      backend: memory
+      retention_limit: 64
+
 workflows:
   http:
     server: server
@@ -143,6 +150,140 @@ pipelines:
           body:
             recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
             plaintext: "{{ .steps.decrypt.plaintext }}"
+    on_error: stop
+
+  enqueue-message:
+    trigger:
+      type: http
+      config:
+        path: /participants/{sender}/outbox/{recipient}
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [sender, recipient]
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: "."
+      - name: encrypt
+        type: step.signal_encrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "sender" }}'
+      - name: enqueue_input
+        type: step.set
+        config:
+          values:
+            envelope:
+              sender_id: '{{ index .steps "encrypt" "envelope" "sender_id" }}'
+              sender_device_id: '{{ index .steps "encrypt" "envelope" "sender_device_id" }}'
+              recipient_id: '{{ index .steps "encrypt" "envelope" "recipient_id" }}'
+              recipient_device_id: '{{ index .steps "encrypt" "envelope" "recipient_device_id" }}'
+              message_type: '{{ index .steps "encrypt" "envelope" "message_type" }}'
+              ciphertext: '{{ index .steps "encrypt" "envelope" "ciphertext" }}'
+            sender_ref: 'participant://{{ index .steps "parse" "path_params" "sender" }}'
+            recipient_ref: 'participant://{{ index .steps "parse" "path_params" "recipient" }}'
+            custody_ref: 'custody://{{ index .steps "parse" "path_params" "sender" }}/device-1'
+            authz_ref: 'authz://signal/{{ index .steps "parse" "path_params" "sender" }}/send/{{ index .steps "parse" "path_params" "recipient" }}'
+            message_ref: "{{ .message_ref }}"
+            idempotency_key: '{{ index .steps "parse" "path_params" "sender" }}-{{ index .steps "parse" "path_params" "recipient" }}-{{ .message_ref }}'
+      - name: enqueue
+        type: step.signal_outbox_enqueue
+        config:
+          store_ref: signal_envelopes
+      - name: respond
+        type: step.json_response
+        config:
+          status: 202
+          body:
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            envelope_ref:
+              _from: steps.enqueue.envelope_ref
+            status:
+              _from: steps.enqueue.status
+            metadata:
+              _from: steps.enqueue.metadata
+    on_error: stop
+
+  receive-message:
+    trigger:
+      type: http
+      config:
+        path: /participants/{recipient}/messages/receive
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [recipient]
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: "."
+      - name: claim_input
+        type: step.set
+        config:
+          values:
+            envelope_ref: "{{ .envelope_ref }}"
+            claimant_ref: 'participant://{{ index .steps "parse" "path_params" "recipient" }}/inbox'
+            lease_id: "{{ .lease_id }}"
+      - name: claim
+        type: step.signal_outbox_claim
+        config:
+          store_ref: signal_envelopes
+      - name: receive_input
+        type: step.set
+        config:
+          values:
+            envelope_ref: '{{ index .steps "claim" "envelope_ref" }}'
+            envelope:
+              sender_id: '{{ index .steps "claim" "envelope" "sender_id" }}'
+              sender_device_id: '{{ index .steps "claim" "envelope" "sender_device_id" }}'
+              recipient_id: '{{ index .steps "claim" "envelope" "recipient_id" }}'
+              recipient_device_id: '{{ index .steps "claim" "envelope" "recipient_device_id" }}'
+              message_type: '{{ index .steps "claim" "envelope" "message_type" }}'
+              ciphertext: '{{ index .steps "claim" "envelope" "ciphertext" }}'
+            recipient_ref: 'participant://{{ index .steps "parse" "path_params" "recipient" }}'
+            idempotency_key: '{{ index .steps "parse" "path_params" "recipient" }}-receive-{{ .envelope_ref }}'
+      - name: receive
+        type: step.signal_inbox_receive
+        config:
+          store_ref: signal_envelopes
+      - name: decrypt_input
+        type: step.set
+        config:
+          values:
+            envelope_ref: '{{ index .steps "receive" "envelope_ref" }}'
+            principal: '{{ index .steps "parse" "path_params" "recipient" }}'
+            custody_ref: 'custody://{{ index .steps "parse" "path_params" "recipient" }}/device-1'
+            authz_ref: 'authz://signal/{{ index .steps "parse" "path_params" "recipient" }}/decrypt/{{ .envelope_ref }}'
+      - name: decrypt
+        type: step.signal_inbox_decrypt
+        config:
+          store_ref: signal_envelopes
+          identity_ref: '{{ index .steps "parse" "path_params" "recipient" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            claim_status:
+              _from: steps.claim.status
+            receive_status:
+              _from: steps.receive.status
+            plaintext:
+              _from: steps.decrypt.plaintext
+            metadata:
+              _from: steps.decrypt.metadata
     on_error: stop
 
   prepare-service-send:
