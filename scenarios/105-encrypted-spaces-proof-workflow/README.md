@@ -6,18 +6,22 @@ running Workflow API.
 
 The scenario builds `workflow-plugin-encrypted-spaces`, loads it as an external
 Workflow plugin under a temporary `data/plugins` directory, launches the real
-Workflow server, and drives fixture-backed HTTP routes:
+Workflow server, and drives fixture-backed HTTP routes with two independent
+members:
 
-- a client appends an encrypted operation via `POST /spaces/{space}/operations`
-- a proof client verifies the returned commitment via `POST /spaces/{space}/proof`
+- member A appends an encrypted operation via `POST /spaces/{space}/operations`
+- member B appends a separate encrypted operation via the same route
+- a proof client verifies each returned commitment via `POST /spaces/{space}/proof`
+- the test asserts the two member operations produce distinct commitments
 
 The app uses an in-memory encrypted-space store. The route path, operation ID,
 encrypted payload, expected commitment, membership proof vector, and checkpoint
 proof vector are request inputs, not baked into the workflow pipeline. The
-default proof digest fixture is intentionally bound to the `space-1`/`member-1`
-membership tuple; callers may override the `SPACE_ID`, `MEMBER_ID`,
-`MEMBERSHIP_DIGEST`, and `CHECKPOINT_DIGEST` environment variables consumed by
-`test/run.sh` together when testing another vector tuple.
+default proof digest fixtures are intentionally bound to the
+`space-1`/`member-1` and `space-1`/`member-2` membership tuples; callers may
+override the `SPACE_ID`, `MEMBER_ID`, `MEMBER_B_ID`, `MEMBERSHIP_DIGEST`,
+`MEMBERSHIP_B_DIGEST`, and `CHECKPOINT_DIGEST` environment variables consumed
+by `test/run.sh` together when testing another vector tuple.
 
 ## Running
 
