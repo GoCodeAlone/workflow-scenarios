@@ -10,7 +10,7 @@ set -uo pipefail
 PLUGIN_NAME="workflow-plugin-encrypted-spaces"
 BASE_URL="${BASE_URL:-http://127.0.0.1:18105}"
 ENCRYPTED_SPACES_PLUGIN_REF="${ENCRYPTED_SPACES_PLUGIN_REF:-v0.6.0}"
-if [ -z "${PLUGIN_VERSION+x}" ]; then
+if [ -z "${PLUGIN_VERSION:-}" ]; then
   case "$ENCRYPTED_SPACES_PLUGIN_REF" in
     v[0-9]*) PLUGIN_VERSION="${ENCRYPTED_SPACES_PLUGIN_REF#v}" ;;
     *) PLUGIN_VERSION="$ENCRYPTED_SPACES_PLUGIN_REF" ;;

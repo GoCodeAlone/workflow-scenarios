@@ -58,11 +58,11 @@ pipelines:
           path_params: [space]
           parse_body: true
           merge_body: true
-      - name: path_input
-        type: step.set
+      - name: request_input
+        type: step.jq
         config:
-          values:
-            space_id: '{{ index .steps "parse" "path_params" "space" }}'
+          input_from: steps.parse
+          expression: '.body + {space_id: .path_params.space}'
       - name: init_state
         type: step.encrypted_space_state_init
       - name: save_state
@@ -94,12 +94,11 @@ pipelines:
           path_params: [space, member]
           parse_body: true
           merge_body: true
-      - name: path_input
-        type: step.set
+      - name: request_input
+        type: step.jq
         config:
-          values:
-            space_id: '{{ index .steps "parse" "path_params" "space" }}'
-            member_id: '{{ index .steps "parse" "path_params" "member" }}'
+          input_from: steps.parse
+          expression: '{space_id: .path_params.space, member_id: .path_params.member}'
       - name: load_state
         type: step.encrypted_space_state_load
         config:
@@ -136,13 +135,11 @@ pipelines:
           path_params: [space, member]
           parse_body: true
           merge_body: true
-      - name: path_input
-        type: step.set
+      - name: request_input
+        type: step.jq
         config:
-          values:
-            space_id: '{{ index .steps "parse" "path_params" "space" }}'
-            member_id: '{{ index .steps "parse" "path_params" "member" }}'
-            action: remove
+          input_from: steps.parse
+          expression: '{space_id: .path_params.space, member_id: .path_params.member, action: "remove"}'
       - name: load_state
         type: step.encrypted_space_state_load
         config:
@@ -181,12 +178,11 @@ pipelines:
           path_params: [space, member]
           parse_body: true
           merge_body: true
-      - name: path_input
-        type: step.set
+      - name: request_input
+        type: step.jq
         config:
-          values:
-            space_id: '{{ index .steps "parse" "path_params" "space" }}'
-            member_id: '{{ index .steps "parse" "path_params" "member" }}'
+          input_from: steps.parse
+          expression: '.body + {space_id: .path_params.space, member_id: .path_params.member}'
       - name: load_state
         type: step.encrypted_space_state_load
         config:
@@ -239,6 +235,11 @@ pipelines:
           path_params: [space]
           parse_body: true
           merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse
+          expression: '.body + {space_id: .path_params.space}'
       - name: append_verified
         type: step.encrypted_space_append_verified
         config:
