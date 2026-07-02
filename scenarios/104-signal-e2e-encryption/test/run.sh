@@ -10,6 +10,8 @@ PLUGIN_NAME="workflow-plugin-signal"
 CLIENT_A="${CLIENT_A:-user-a}"
 CLIENT_B="${CLIENT_B:-user-b}"
 PLAINTEXT_B64="${PLAINTEXT_B64:-cHJpdmF0ZSB3b3JrZmxvdyBtZXNzYWdl}"
+SERVICE_REQUEST_ID="${SERVICE_REQUEST_ID:-scenario-104-send-prepare}"
+SERVICE_PAYLOAD_REF="${SERVICE_PAYLOAD_REF:-payload://scenario-104/message}"
 BASE_URL="${BASE_URL:-http://127.0.0.1:18104}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -180,6 +182,48 @@ if [ "$GOT" = "$PLAINTEXT_B64" ]; then
   pass "client B recovered the original plaintext"
 else
   fail "client B plaintext mismatch: got '$GOT'"
+fi
+
+SERVICE_BODY="$(jq -cn \
+  --arg idempotency_key "$SERVICE_REQUEST_ID" \
+  --arg recipient_ref "participant://$CLIENT_B" \
+  --arg payload_ref "$SERVICE_PAYLOAD_REF" \
+  '{idempotency_key:$idempotency_key,recipient_ref:$recipient_ref,payload_ref:$payload_ref}')" || SERVICE_BODY=""
+SERVICE_READY="$(curl -fsS -X POST "$BASE_URL/participants/$CLIENT_A/service/send-prepare" -H 'Content-Type: application/json' -d "$SERVICE_BODY")" \
+  && pass "client A prepared a custody-attested service send through Workflow API" \
+  || fail "client A service send prepare API failed"
+
+if [ "$(printf '%s' "$SERVICE_READY" | jq -r '.sender // empty' 2>/dev/null)" = "$CLIENT_A" ]; then
+  pass "service send readiness response preserved caller participant"
+else
+  fail "service send readiness response lost caller participant: $SERVICE_READY"
+fi
+
+if [ "$(printf '%s' "$SERVICE_READY" | jq -r '.custody_attested // empty' 2>/dev/null)" = "true" ]; then
+  pass "service send readiness returned custody attestation"
+else
+  fail "service send readiness did not attest custody: $SERVICE_READY"
+fi
+
+if [ "$(printf '%s' "$SERVICE_READY" | jq -r '.custody_attestation_ref // empty' 2>/dev/null)" = "attest://signal/custody/custody-signal-service-test-device-1" ]; then
+  pass "service send readiness returned stable custody attestation ref"
+else
+  fail "service send readiness returned unexpected attestation ref: $SERVICE_READY"
+fi
+
+READY_RECIPIENT="$(printf '%s' "$SERVICE_READY" | jq -r '.envelope.recipient_ref // empty' 2>/dev/null)"
+READY_PAYLOAD="$(printf '%s' "$SERVICE_READY" | jq -r '.envelope.payload_ref // empty' 2>/dev/null)"
+if [ "$READY_RECIPIENT" = "participant://$CLIENT_B" ] && [ "$READY_PAYLOAD" = "$SERVICE_PAYLOAD_REF" ]; then
+  pass "service send readiness preserved caller-supplied recipient and payload refs"
+else
+  fail "service send readiness refs mismatch: $SERVICE_READY"
+fi
+
+READY_KEY_REF="$(printf '%s' "$SERVICE_READY" | jq -r '.envelope.non_exportable_key_ref // empty' 2>/dev/null)"
+if [ "$READY_KEY_REF" = "kms://signal/service-test/device-1" ]; then
+  pass "service send readiness inherited non-exportable key custody ref"
+else
+  fail "service send readiness missing non-exportable key ref: $SERVICE_READY"
 fi
 
 finish
