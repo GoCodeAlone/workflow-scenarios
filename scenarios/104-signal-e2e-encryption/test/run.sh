@@ -7,9 +7,17 @@
 set -uo pipefail
 
 PLUGIN_NAME="workflow-plugin-signal"
+SIGNAL_PLUGIN_REF="${SIGNAL_PLUGIN_REF:-v0.11.0}"
+if [ -z "${PLUGIN_VERSION:-}" ]; then
+  case "$SIGNAL_PLUGIN_REF" in
+    v[0-9]*) PLUGIN_VERSION="${SIGNAL_PLUGIN_REF#v}" ;;
+    *) PLUGIN_VERSION="$SIGNAL_PLUGIN_REF" ;;
+  esac
+fi
 CLIENT_A="${CLIENT_A:-user-a}"
 CLIENT_B="${CLIENT_B:-user-b}"
 PLAINTEXT_B64="${PLAINTEXT_B64:-cHJpdmF0ZSB3b3JrZmxvdyBtZXNzYWdl}"
+REPLY_PLAINTEXT_B64="${REPLY_PLAINTEXT_B64:-c2Vjb25kIHByaXZhdGUgd29ya2Zsb3cgbWVzc2FnZQ==}"
 SERVICE_REQUEST_ID="${SERVICE_REQUEST_ID:-scenario-104-send-prepare}"
 SERVICE_PAYLOAD_REF="${SERVICE_PAYLOAD_REF:-payload://scenario-104/message}"
 BASE_URL="${BASE_URL:-http://127.0.0.1:18104}"
@@ -56,6 +64,16 @@ find_repo() {
   return 1
 }
 
+plugin_repo_supports_service_readiness() {
+  local repo="$1"
+  [ -f "$repo/plugin.json" ] || return 1
+  jq -e '
+    (.capabilities.moduleTypes | index("signal.key_custody")) and
+    (.capabilities.moduleTypes | index("signal.account_ref")) and
+    (.capabilities.stepTypes | index("step.signal_service_send_prepare"))
+  ' "$repo/plugin.json" >/dev/null 2>&1
+}
+
 resolve_server() {
   if [ -n "${WORKFLOW_SERVER:-}" ]; then
     [ -x "$WORKFLOW_SERVER" ] && printf '%s\n' "$WORKFLOW_SERVER" && return 0
@@ -72,12 +90,24 @@ resolve_server() {
 build_plugin() {
   local plugin_dir="$1"
   local plugin_repo
-  plugin_repo="$(find_repo "${SIGNAL_PLUGIN_REPO:-}" "$REPO_ROOT/../workflow-plugin-signal" "$REPO_ROOT/../../../workflow-plugin-signal")" || return 1
+  plugin_repo="$(find_repo "${SIGNAL_PLUGIN_REPO:-}" "$REPO_ROOT/../workflow-plugin-signal" "$REPO_ROOT/../../../workflow-plugin-signal")" || plugin_repo=""
+  if [ -z "$plugin_repo" ] || ! plugin_repo_supports_service_readiness "$plugin_repo"; then
+    plugin_repo="$DATA_DIR/repos/workflow-plugin-signal"
+    mkdir -p "$(dirname "$plugin_repo")" || return 1
+    if git ls-remote --exit-code --tags https://github.com/GoCodeAlone/workflow-plugin-signal.git "refs/tags/$SIGNAL_PLUGIN_REF" >/dev/null 2>&1; then
+      git clone --quiet --depth 1 https://github.com/GoCodeAlone/workflow-plugin-signal.git "$plugin_repo" || return 1
+      git -C "$plugin_repo" fetch --quiet --depth 1 origin "refs/tags/$SIGNAL_PLUGIN_REF:refs/tags/$SIGNAL_PLUGIN_REF" || return 1
+      git -C "$plugin_repo" -c advice.detachedHead=false checkout --quiet "$SIGNAL_PLUGIN_REF^{commit}" || return 1
+    else
+      git clone --quiet --depth 1 --branch "$SIGNAL_PLUGIN_REF" \
+        https://github.com/GoCodeAlone/workflow-plugin-signal.git "$plugin_repo" || return 1
+    fi
+  fi
 
   mkdir -p "$plugin_dir/$PLUGIN_NAME" || return 1
   cp "$plugin_repo/plugin.json" "$plugin_dir/$PLUGIN_NAME/plugin.json" || return 1
   (cd "$plugin_repo" && GOWORK=off go build \
-    -ldflags "-X github.com/GoCodeAlone/workflow-plugin-signal/internal.Version=${PLUGIN_VERSION:-0.0.0}" \
+    -ldflags "-X github.com/GoCodeAlone/workflow-plugin-signal/internal.Version=${PLUGIN_VERSION}" \
     -o "$plugin_dir/$PLUGIN_NAME/$PLUGIN_NAME" ./cmd/workflow-plugin-signal) >/dev/null 2>&1 || return 1
 }
 
@@ -152,6 +182,17 @@ else
   fail "client B response did not contain a bundle: $SESSION_B"
 fi
 
+SESSION_A="$(curl -fsS -X POST "$BASE_URL/participants/$CLIENT_A/session" -H 'Content-Type: application/json' -d '{}')" \
+  && pass "client A published a pre-key bundle via Workflow API" \
+  || fail "client A session prepare API failed"
+
+BUNDLE_A="$(printf '%s' "$SESSION_A" | jq -c '.bundle // empty' 2>/dev/null)"
+if [ -n "$BUNDLE_A" ] && [ "$BUNDLE_A" != "null" ]; then
+  pass "client A response contained a bundle"
+else
+  fail "client A response did not contain a bundle: $SESSION_A"
+fi
+
 ENCRYPT_BODY="$(jq -cn --arg plaintext "$PLAINTEXT_B64" --argjson remote_bundle "$BUNDLE" \
   '{plaintext:$plaintext, remote_bundle:$remote_bundle}')" || ENCRYPT_BODY=""
 ENCRYPTED="$(curl -fsS -X POST "$BASE_URL/participants/$CLIENT_A/messages" -H 'Content-Type: application/json' -d "$ENCRYPT_BODY")" \
@@ -182,6 +223,44 @@ if [ "$GOT" = "$PLAINTEXT_B64" ]; then
   pass "client B recovered the original plaintext"
 else
   fail "client B plaintext mismatch: got '$GOT'"
+fi
+
+REPLY_BODY="$(jq -cn --arg plaintext "$REPLY_PLAINTEXT_B64" --argjson remote_bundle "$BUNDLE_A" \
+  '{plaintext:$plaintext, remote_bundle:$remote_bundle}')" || REPLY_BODY=""
+REPLY_ENCRYPTED="$(curl -fsS -X POST "$BASE_URL/participants/$CLIENT_B/messages" -H 'Content-Type: application/json' -d "$REPLY_BODY")" \
+  && pass "client B encrypted a reply to client A through Workflow API" \
+  || fail "client B reply encrypt API failed"
+
+REPLY_ENVELOPE="$(printf '%s' "$REPLY_ENCRYPTED" | jq -c '.envelope // empty' 2>/dev/null)"
+if [ -n "$REPLY_ENVELOPE" ] && [ "$REPLY_ENVELOPE" != "null" ]; then
+  pass "client B reply response contained an encrypted envelope"
+else
+  fail "client B reply response did not contain an envelope: $REPLY_ENCRYPTED"
+fi
+
+if printf '%s' "$REPLY_ENVELOPE" | grep -q "$REPLY_PLAINTEXT_B64"; then
+  fail "reply encrypted envelope leaked plaintext"
+else
+  pass "reply encrypted envelope did not contain plaintext"
+fi
+
+REPLY_DECRYPT_BODY="$(jq -cn --arg principal "$CLIENT_A" --argjson envelope "$REPLY_ENVELOPE" \
+  '{principal:$principal, envelope:$envelope}')" || REPLY_DECRYPT_BODY=""
+REPLY_DECRYPTED="$(curl -fsS -X POST "$BASE_URL/participants/$CLIENT_A/messages/decrypt" -H 'Content-Type: application/json' -d "$REPLY_DECRYPT_BODY")" \
+  && pass "client A decrypted client B reply through Workflow API" \
+  || fail "client A reply decrypt API failed"
+
+REPLY_GOT="$(printf '%s' "$REPLY_DECRYPTED" | jq -r '.plaintext // empty' 2>/dev/null)"
+if [ "$REPLY_GOT" = "$REPLY_PLAINTEXT_B64" ]; then
+  pass "client A recovered the reply plaintext"
+else
+  fail "client A reply plaintext mismatch: got '$REPLY_GOT'"
+fi
+
+if [ "$(printf '%s' "$ENVELOPE" | jq -c . 2>/dev/null)" != "$(printf '%s' "$REPLY_ENVELOPE" | jq -c . 2>/dev/null)" ]; then
+  pass "two-way exchange produced distinct encrypted envelopes"
+else
+  fail "two-way exchange reused the same encrypted envelope"
 fi
 
 SERVICE_BODY="$(jq -cn \
