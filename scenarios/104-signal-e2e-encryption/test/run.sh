@@ -7,7 +7,7 @@
 set -uo pipefail
 
 PLUGIN_NAME="workflow-plugin-signal"
-SIGNAL_PLUGIN_REF="${SIGNAL_PLUGIN_REF:-v0.11.0}"
+SIGNAL_PLUGIN_REF="${SIGNAL_PLUGIN_REF:-v0.12.0}"
 if [ -z "${PLUGIN_VERSION:-}" ]; then
   case "$SIGNAL_PLUGIN_REF" in
     v[0-9]*) PLUGIN_VERSION="${SIGNAL_PLUGIN_REF#v}" ;;

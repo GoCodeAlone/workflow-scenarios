@@ -36,7 +36,7 @@ Set `WORKFLOW_SERVER`, `WORKFLOW_REPO`, or `SIGNAL_PLUGIN_REPO` when running
 outside the standard workspace layout. If the nearby `workflow-plugin-signal`
 checkout does not advertise the service-readiness and envelope queue primitives
 required by this scenario, the harness clones the pinned `SIGNAL_PLUGIN_REF`
-tag.
+tag (default `v0.12.0`).
 
 No official Signal service endpoint, account, phone number, or production
 transport is used.

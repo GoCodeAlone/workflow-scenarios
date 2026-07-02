@@ -43,7 +43,7 @@ Set `WORKFLOW_SERVER` or `WORKFLOW_REPO` when running outside the standard
 workspace layout. The test uses a local `ENCRYPTED_SPACES_PLUGIN_REPO` only if
 it advertises file-backed `encrypted_space.state_store`; otherwise it clones
 `GoCodeAlone/workflow-plugin-encrypted-spaces` at
-`ENCRYPTED_SPACES_PLUGIN_REF` (default `v0.6.0`). `PLUGIN_VERSION` defaults to
+`ENCRYPTED_SPACES_PLUGIN_REF` (default `v0.7.0`). `PLUGIN_VERSION` defaults to
 the tag/ref value with a leading `v` stripped for version tags.
 
 The Workflow app runtime is local-only and uses no S3 bucket or live external
