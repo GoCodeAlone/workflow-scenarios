@@ -430,10 +430,10 @@
       "status": "passed",
       "namespace": "wf-scenario-34",
       "deployed": true,
-      "lastTested": "2026-03-28T22:22:39.467543Z",
+      "lastTested": "2026-07-02T01:04:59.088667Z",
       "lastResult": "pass",
-      "testCount": 19,
-      "passCount": 19,
+      "testCount": 24,
+      "passCount": 24,
       "failCount": 0,
       "notes": "App container deployment abstraction. Deploy/status/rollback lifecycle using mock backend. k8s and ECS backends.",
       "blockers": []
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-01T23:17:45.843856Z"
+  "lastUpdated": "2026-07-02T01:04:59.088667Z"
 }

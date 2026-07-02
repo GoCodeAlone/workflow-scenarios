@@ -2,13 +2,20 @@ name: App Container Deployment
 id: "34-app-container"
 category: C
 description: |
-  Demonstrates the app.container module — a high-level application deployment
-  abstraction that sits on top of platform modules (platform.kubernetes or
-  platform.ecs). Exposes deploy/status/rollback operations via HTTP pipelines.
-  Uses step.app_deploy, step.app_status, and step.app_rollback.
+  Demonstrates the app.container module through a real Workflow application
+  boundary. The app owns one deployment target and exposes deploy/status/rollback
+  HTTP APIs. Callers supply container release specs at runtime, so the pipeline
+  proves application behavior rather than replaying a fixed package test.
+  Uses step.request_parse, step.app_deploy with spec_from, step.app_status, and
+  step.app_rollback.
   The backing platform.kubernetes module uses a mock backend so no real
   Kubernetes cluster is required. All deployment state is tracked in-memory.
 components:
   - workflow (engine)
   - platform plugin (platform.kubernetes, app.container, app pipeline steps)
 status: testable
+notes: |
+  Local proof: test/run.sh builds workflow-server, starts the configured app,
+  sends two runtime deployment specs with different images and replica counts,
+  verifies status after each deploy, then rolls back and verifies the previous
+  runtime image is restored.
