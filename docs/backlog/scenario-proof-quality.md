@@ -49,7 +49,7 @@ The audit script now classifies non-app proofs explicitly instead of leaving
 them as no-marker rows:
 
 | Scenario | Classification | Notes |
-|---|---|
+|---|---|---|
 | `45-agent-operator-mode` | `manual` | Manual QA harness for a live external operator. It does not claim automated app proof coverage. |
 | `88-iac-dns-replay-migration` | `fixture` | Offline replay validator over sanitized DNS/IaC portfolio fixtures. |
 | `103-control-plane-descriptors` | `contract` | Go validator over released `workflow-plugin-control-plane` descriptor/envelope/registry contracts. |
