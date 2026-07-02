@@ -2,7 +2,7 @@ modules:
   - name: server
     type: http.server
     config:
-      address: ":8080"
+      address: ":18134"
 
   - name: router
     type: http.router
@@ -71,15 +71,20 @@ pipelines:
         path: /api/v1/app/deploy
         method: POST
     steps:
+      - name: parse-request
+        type: step.request_parse
+        config:
+          parse_body: true
       - name: deploy
         type: step.app_deploy
         config:
           app: webapp
+          spec_from: steps.parse-request.body.spec
       - name: respond
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.deploy
 
   app-status:
     trigger:
@@ -96,7 +101,7 @@ pipelines:
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.status
 
   app-rollback:
     trigger:
@@ -113,4 +118,4 @@ pipelines:
         type: step.json_response
         config:
           status: 200
-          body_from: "."
+          body_from: steps.rollback
