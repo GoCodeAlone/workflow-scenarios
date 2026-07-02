@@ -43,6 +43,23 @@ PVCs persist across upgrades/teardowns for data durability.
 5. Write tests in `scenarios/<id>-<name>/test/run.sh` using `PASS:` / `FAIL:` prefixes
 6. Add entry to `scenarios.json`
 
+## Proof Standard
+
+Every scenario that claims application behavior must exercise one or more
+Workflow modules through a real Workflow app boundary. Launch/build the app from
+scenario config, drive it through API, trigger, CLI, or pipeline boundaries, and
+use actor/resource IDs supplied by the client or test harness instead of baking
+one hard-coded interaction into the pipeline.
+
+`wfctl pipeline run` and package tests are valid supporting checks, but they are
+not enough for multi-client communication, persistence, plugin interoperability,
+or end-to-end application claims. Plugin scenarios should load plugins through
+Workflow's plugin mechanism. Document mocks, emulators, fixture pools, and any
+live-boundary approval in the scenario README and test output.
+
+`make test SCENARIO=...` updates shared `scenarios.json`; run scenario tests
+sequentially unless the harness explicitly provides isolated state or locking.
+
 Scenario tests must exercise a Workflow application path. Prefer a deployed
 `workflow-server` or another path that builds a Workflow engine from scenario
 configuration and drives the app through its real API, trigger, CLI, or event
