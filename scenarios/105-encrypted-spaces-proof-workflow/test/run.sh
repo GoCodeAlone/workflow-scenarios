@@ -219,7 +219,7 @@ run_collaborator_flow() {
     fail "$label proof response missing accepted operationlog report: $proof"
   fi
 
-  if printf '%s' "$proof" | jq -e --arg member "$member" '.json.reports[] | select(.domain=="zkgroup.membership")' >/dev/null 2>&1; then
+  if printf '%s' "$proof" | jq -e '.json.reports[] | select(.domain=="zkgroup.membership")' >/dev/null 2>&1; then
     pass "$label redacted proof evidence JSON contains membership proof report"
   else
     fail "$label proof evidence JSON missing membership domain: $proof"
