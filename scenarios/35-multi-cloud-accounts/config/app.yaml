@@ -7,11 +7,9 @@
 #   azure-prod   — Azure client_credentials (eastus)
 #
 # Endpoints:
-#   POST /api/v1/cloud/validate             — validate account credentials
+#   POST /api/v1/cloud/validate             — validate caller-selected account credentials
 #   GET  /api/v1/cloud/accounts             — list all accounts
-#   GET  /api/v1/cloud/accounts/aws-prod    — AWS account details
-#   GET  /api/v1/cloud/accounts/gcp-prod    — GCP account details
-#   GET  /api/v1/cloud/accounts/azure-prod  — Azure account details
+#   GET  /api/v1/cloud/accounts/{account}   — account details + validation result
 #   GET  /healthz                           — health check
 # ============================================================
 
@@ -19,7 +17,7 @@ modules:
     - name: server
       type: http.server
       config:
-        address: ":8080"
+        address: ":18135"
     - name: router
       type: http.router
       dependsOn: [server]
@@ -76,7 +74,7 @@ pipelines:
                     status: ok
                     scenario: "35-multi-cloud-accounts"
     # POST /api/v1/cloud/validate
-    # Body: {"account":"aws-prod"}
+    # Body: {"account":"<configured account name>"}
     validate-cloud:
         trigger:
             type: http
@@ -88,15 +86,16 @@ pipelines:
               type: step.request_parse
               config:
                 parse_body: true
-            - name: validate_aws
+                merge_body: true
+            - name: validate
               type: step.cloud_validate
               config:
-                account: "aws-prod"
+                account_from: account
             - name: respond
               type: step.json_response
               config:
                 status: 200
-                body_from: "."
+                body_from: steps.validate
     # GET /api/v1/cloud/accounts
     list-accounts:
         trigger:
@@ -122,68 +121,25 @@ pipelines:
                           provider: azure
                           region: eastus
                           subscription_id: "00000000-0000-0000-0000-000000000001"
-    # GET /api/v1/cloud/accounts/aws-prod
-    get-account-aws-prod:
+                    count: 3
+    # GET /api/v1/cloud/accounts/{account}
+    get-account:
         trigger:
             type: http
             config:
-                path: /api/v1/cloud/accounts/aws-prod
+                path: /api/v1/cloud/accounts/{account}
                 method: GET
         steps:
+            - name: parse_path
+              type: step.request_parse
+              config:
+                path_params: [account]
             - name: validate
               type: step.cloud_validate
               config:
-                account: "aws-prod"
+                account_from: steps.parse_path.path_params.account
             - name: respond
               type: step.json_response
               config:
                 status: 200
-                body:
-                    name: aws-prod
-                    provider: mock
-                    region: us-east-1
-                    valid: "{{.valid}}"
-    # GET /api/v1/cloud/accounts/gcp-prod
-    get-account-gcp-prod:
-        trigger:
-            type: http
-            config:
-                path: /api/v1/cloud/accounts/gcp-prod
-                method: GET
-        steps:
-            - name: validate
-              type: step.cloud_validate
-              config:
-                account: "gcp-prod"
-            - name: respond
-              type: step.json_response
-              config:
-                status: 200
-                body:
-                    name: gcp-prod
-                    provider: gcp
-                    region: us-central1
-                    project_id: my-gcp-project
-                    valid: "{{.valid}}"
-    # GET /api/v1/cloud/accounts/azure-prod
-    get-account-azure-prod:
-        trigger:
-            type: http
-            config:
-                path: /api/v1/cloud/accounts/azure-prod
-                method: GET
-        steps:
-            - name: validate
-              type: step.cloud_validate
-              config:
-                account: "azure-prod"
-            - name: respond
-              type: step.json_response
-              config:
-                status: 200
-                body:
-                    name: azure-prod
-                    provider: azure
-                    region: eastus
-                    subscription_id: "00000000-0000-0000-0000-000000000001"
-                    valid: "{{.valid}}"
+                body_from: steps.validate

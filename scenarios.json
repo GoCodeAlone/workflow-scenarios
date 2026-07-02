@@ -442,10 +442,10 @@
       "status": "passed",
       "namespace": "wf-scenario-35",
       "deployed": true,
-      "lastTested": "2026-03-28T22:22:43.979056Z",
+      "lastTested": "2026-07-02T01:20:53.107536Z",
       "lastResult": "pass",
-      "testCount": 17,
-      "passCount": 17,
+      "testCount": 38,
+      "passCount": 38,
       "failCount": 0,
       "notes": "GCP and Azure credential types added to cloud.account module. Service account, managed identity, workload identity support.",
       "blockers": []
@@ -1263,5 +1263,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-02T01:04:59.088667Z"
+  "lastUpdated": "2026-07-02T01:20:53.107536Z"
 }
