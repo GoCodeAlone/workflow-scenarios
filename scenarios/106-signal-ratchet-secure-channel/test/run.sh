@@ -71,6 +71,14 @@ base64_encode() {
   base64 | tr -d '\n'
 }
 
+base64_decode() {
+  if printf '' | base64 --decode >/dev/null 2>&1; then
+    base64 --decode
+  else
+    base64 -D
+  fi
+}
+
 sha256_file() {
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$1" | awk '{print $1}'
@@ -141,9 +149,14 @@ build_plugin() {
 build_ratchet() {
   local bin="$1"
   local ratchet_repo
-  ratchet_repo="$(find_repo "${RATCHET_CLI_REPO:-}")" || ratchet_repo=""
-  if [ -n "$ratchet_repo" ] && ! ratchet_repo_supports_flow_bundles "$ratchet_repo"; then
-    return 1
+  if [ -n "${RATCHET_CLI_REPO:-}" ]; then
+    ratchet_repo="$(find_repo "$RATCHET_CLI_REPO")" || return 1
+    ratchet_repo_supports_flow_bundles "$ratchet_repo" || return 1
+  else
+    ratchet_repo="$(find_repo "" "$REPO_ROOT/../ratchet-cli" "$REPO_ROOT/../../../ratchet-cli")" || ratchet_repo=""
+    if [ -n "$ratchet_repo" ] && ! ratchet_repo_supports_flow_bundles "$ratchet_repo"; then
+      ratchet_repo=""
+    fi
   fi
   if [ -z "$ratchet_repo" ]; then
     ratchet_repo="$DATA_DIR/repos/ratchet-cli"
@@ -368,7 +381,7 @@ else
   fail "recipient plaintext mismatch"
 fi
 
-DECRYPTED_DESCRIPTOR="$(printf '%s' "$DECRYPTED_B64" | base64 --decode 2>/dev/null || true)"
+DECRYPTED_DESCRIPTOR="$(printf '%s' "$DECRYPTED_B64" | base64_decode 2>/dev/null || true)"
 if [ "$(printf '%s' "$DECRYPTED_DESCRIPTOR" | jq -r '.marker // empty' 2>/dev/null)" = "$MARKER" ] &&
    [ "$(printf '%s' "$DECRYPTED_DESCRIPTOR" | jq -r '.run_id // empty' 2>/dev/null)" = "$RUN_ID" ] &&
    [ "$(printf '%s' "$DECRYPTED_DESCRIPTOR" | jq -r '.flow_manifest.schema // empty' 2>/dev/null)" = "acpx.flow-run-bundle.v1" ]; then

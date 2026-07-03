@@ -1266,7 +1266,7 @@
       "status": "passed",
       "namespace": "local",
       "deployed": false,
-      "lastTested": "2026-07-03T10:53:17.034267Z",
+      "lastTested": "2026-07-03T10:58:04.158290Z",
       "lastResult": "pass",
       "testCount": 28,
       "passCount": 28,
@@ -1276,5 +1276,5 @@
       "blockers": []
     }
   },
-  "lastUpdated": "2026-07-03T10:53:17.034267Z"
+  "lastUpdated": "2026-07-03T10:58:04.158290Z"
 }
