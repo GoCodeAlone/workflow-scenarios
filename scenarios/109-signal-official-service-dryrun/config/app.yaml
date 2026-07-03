@@ -1,0 +1,120 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":18109"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: custody_tenant_a
+    type: signal.key_custody
+    config:
+      custody_ref: custody://signal/tenant-a/device-1
+      account_ref: account://tenant-a
+      non_exportable_key_ref: kms://signal/tenant-a/device-1
+
+  - name: account_tenant_a
+    type: signal.account_ref
+    config:
+      account_ref: account://tenant-a
+      device_ref: device://signal/tenant-a/device-1
+      custody_ref: custody://signal/tenant-a/device-1
+      credential_ref: secret://signal/tenant-a/credential
+      consent_ref: consent://signal/tenant-a/consent
+      audit_ref: audit://signal/tenant-a/audit
+
+  - name: custody_tenant_b
+    type: signal.key_custody
+    config:
+      custody_ref: custody://signal/tenant-b/device-1
+      account_ref: account://tenant-b
+      non_exportable_key_ref: kms://signal/tenant-b/device-1
+
+  - name: account_tenant_b
+    type: signal.account_ref
+    config:
+      account_ref: account://tenant-b
+      device_ref: device://signal/tenant-b/device-1
+      custody_ref: custody://signal/tenant-b/device-1
+      credential_ref: secret://signal/tenant-b/credential
+      consent_ref: consent://signal/tenant-b/consent
+      audit_ref: audit://signal/tenant-b/audit
+
+workflows:
+  http:
+    server: server
+    router: router
+
+pipelines:
+  healthz:
+    trigger: { type: http, config: { path: /healthz, method: GET } }
+    steps:
+      - name: ok
+        type: step.json_response
+        config:
+          status: 200
+          body: { status: ok, scenario: "109-signal-official-service-dryrun" }
+
+  approval-validate:
+    trigger:
+      type: http
+      config:
+        path: /service/approval/validate
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse
+          expression: '{mode: (.body.mode // "live"), requested_actions: (.body.requested_actions // ["send"]), approval: .body.approval}'
+      - name: validate
+        type: step.signal_service_approval_validate
+      - name: response_body
+        type: step.jq
+        config:
+          input_from: steps.validate
+          expression: '{mode: .mode, live_transport_allowed: (.live_transport_allowed // false), live_service_disabled: (.live_service_disabled // false), requested_actions: (.requested_actions // []), denied_reasons: (.denied_reasons // [])}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: steps.response_body
+    on_error: stop
+
+  service-submit:
+    trigger:
+      type: http
+      config:
+        path: /service/submit
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse
+          expression: '{mode: (.body.mode // "fake"), sandbox_endpoint: .body.sandbox_endpoint, operation: (.body.operation // "send"), account_ref: .body.account_ref, device_ref: .body.device_ref, custody_ref: .body.custody_ref, idempotency_key: .body.idempotency_key, recipient_ref: .body.recipient_ref, payload_ref: .body.payload_ref, cursor_ref: .body.cursor_ref, username: .body.username, backup_ref: .body.backup_ref, backup_id: .body.backup_id, challenge_ref: .body.challenge_ref, challenge_response_ref: .body.challenge_response_ref, consent_ref: .body.consent_ref, audit_ref: .body.audit_ref, credential_ref: .body.credential_ref, non_exportable_key_ref: .body.non_exportable_key_ref, approval: .body.approval}'
+      - name: submit
+        type: step.signal_service_live_submit
+      - name: response_body
+        type: step.jq
+        config:
+          input_from: steps.submit
+          expression: '{transport_ref: (.transport_ref // ""), transport_mode: (.transport_mode // ""), operation: (.operation // ""), account_ref: (.account_ref // ""), device_ref: (.device_ref // ""), request_id: (.request_id // ""), status: (.status // ""), challenge_ref: (.challenge_ref // ""), secret_refs: (.secret_refs // {}), credential_ref: (.credential_ref // ""), audit_ref: (.audit_ref // ""), live_egress_attempted: (.live_egress_attempted // false), denied_reasons: (.denied_reasons // []), approval_ready: (.approval_ready // false), egress_dry_run: (.egress_dry_run // false)}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body_from: steps.response_body
+    on_error: stop
