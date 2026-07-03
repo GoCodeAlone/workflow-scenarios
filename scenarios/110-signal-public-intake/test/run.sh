@@ -118,6 +118,10 @@ resolve_server() {
 build_plugin() {
   local plugin_dir="$1"
   local plugin_repo
+  if [ -n "${SIGNAL_PLUGIN_REPO:-}" ] && [ ! -d "$SIGNAL_PLUGIN_REPO" ]; then
+    echo "SIGNAL_PLUGIN_REPO is set but is not a directory: $SIGNAL_PLUGIN_REPO" >&2
+    return 1
+  fi
   plugin_repo="$(find_repo "${SIGNAL_PLUGIN_REPO:-}" "$REPO_ROOT/../workflow-plugin-signal" "$REPO_ROOT/../../../workflow-plugin-signal")" || plugin_repo=""
   if [ -z "$plugin_repo" ] || ! plugin_repo_supports_public_intake "$plugin_repo"; then
     plugin_repo="$DATA_DIR/repos/workflow-plugin-signal"
