@@ -1,0 +1,33 @@
+name: Encrypted Spaces Private Membership
+id: "108-encrypted-spaces-private-membership"
+category: C
+description: |
+  Local-only Workflow app proof that the Encrypted Spaces Workflow plugin can
+  issue opaque private membership credentials, let a client present one for an
+  operation, and verify that presentation without returning plaintext member
+  IDs or issuer secret material.
+
+  The scenario builds workflow-plugin-encrypted-spaces as an external plugin,
+  loads it through the Workflow server data/plugins path, and starts
+  config/app.yaml with HTTP routes for credential issue, presentation, accepted
+  verification, revoked-commitment verification, and operation-mismatch
+  verification. Two independent clients supply participant IDs and operation
+  IDs through route params and request bodies; the Workflow app does not bake
+  participant IDs into its pipeline config. No official Signal service is
+  contacted.
+components:
+  - workflow-plugin-encrypted-spaces
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - encrypted-spaces-go zkgroup private membership subset
+  - step.encrypted_space_membership_issue
+  - step.encrypted_space_membership_present
+  - step.encrypted_space_private_membership_verify
+status: testable
+tags:
+  - encrypted-spaces
+  - private-membership
+  - workflow-plugin
+  - local-only
+runtime: local
