@@ -8,7 +8,7 @@ set -uo pipefail
 
 PLUGIN_NAME="workflow-plugin-signal"
 BASE_URL="${BASE_URL:-http://127.0.0.1:18109}"
-SIGNAL_PLUGIN_REF="${SIGNAL_PLUGIN_REF:-v0.14.0}"
+SIGNAL_PLUGIN_REF="${SIGNAL_PLUGIN_REF:-v0.14.1}"
 if [ -z "${PLUGIN_VERSION:-}" ]; then
   case "$SIGNAL_PLUGIN_REF" in
     v[0-9]*) PLUGIN_VERSION="${SIGNAL_PLUGIN_REF#v}" ;;
@@ -23,6 +23,7 @@ OPERATION="${OPERATION:-send}"
 REQUEST_ID="${REQUEST_ID:-scenario-109-request}"
 SANDBOX_ENDPOINT="${SANDBOX_ENDPOINT:-https://signal-sandbox.invalid}"
 RAW_CREDENTIAL_REF="${RAW_CREDENTIAL_REF:-credential-raw-secret}"
+SCHEME_RAW_CREDENTIAL_REF="${SCHEME_RAW_CREDENTIAL_REF:-foo://caller-provided-credential-secret}"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-2}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-10}"
 CURL_HEALTH_MAX_TIME="${CURL_HEALTH_MAX_TIME:-3}"
@@ -361,6 +362,21 @@ else
 fi
 assert_no_raw_service_data "fake service submit output" "$fake_submit"
 assert_raw_credential_redacted "fake service submit output" "$fake_submit"
+
+original_raw_credential_ref="$RAW_CREDENTIAL_REF"
+RAW_CREDENTIAL_REF="$SCHEME_RAW_CREDENTIAL_REF"
+scheme_raw_submit="$(post_json /service/submit "$(submit_body fake "$SECOND_ACCOUNT_REF" scheme-raw-send null)")" \
+  && pass "scheme-shaped raw credential submit API returned output" \
+  || fail "scheme-shaped raw credential submit API failed"
+assert_status "scheme-shaped raw credential submit" "$scheme_raw_submit" accepted
+if printf '%s' "$scheme_raw_submit" | jq -e '.transport_mode == "fake" and .live_egress_attempted == false' >/dev/null 2>&1; then
+  pass "scheme-shaped raw credential submit used fake transport without live egress"
+else
+  fail "scheme-shaped raw credential submit output unexpected: $scheme_raw_submit"
+fi
+assert_no_raw_service_data "scheme-shaped raw credential submit output" "$scheme_raw_submit"
+assert_raw_credential_redacted "scheme-shaped raw credential submit output" "$scheme_raw_submit"
+RAW_CREDENTIAL_REF="$original_raw_credential_ref"
 
 sandbox_submit="$(post_json /service/submit "$(submit_body sandbox "$SECOND_ACCOUNT_REF" sandbox-send null "$SANDBOX_ENDPOINT")")" \
   && pass "sandbox service submit API returned output" \
