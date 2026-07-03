@@ -1326,7 +1326,20 @@
       "testCount": 45,
       "passCount": 45,
       "failCount": 0
+    },
+    "111-signal-public-directory-file": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Builds workflow-plugin-signal v0.16.0 as an external plugin, launches workflow-server, drives file-backed public-directory HTTP APIs, verifies public pre-key snapshot schema/checksum/hash evidence, resolves the persisted bundle after restart, rejects corrupt snapshots, exercises encrypted message/blob submission, wrong-principal decrypt denial, and authorized operator decrypt. No official Signal service egress.",
+      "blockers": [],
+      "lastTested": "2026-07-03T19:55:12.917629Z",
+      "lastResult": "pass",
+      "testCount": 64,
+      "passCount": 64,
+      "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-03T18:23:01.021355Z"
+  "lastUpdated": "2026-07-03T19:55:12.917629Z"
 }
