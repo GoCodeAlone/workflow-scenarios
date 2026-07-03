@@ -1,0 +1,321 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":18112"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: host_intake_identity
+    type: signal.identity_store
+    config:
+      identity_ref: host-intake
+      local_id: host-intake@example.test
+      device_id: 1
+      registration_id: 4110
+
+  - name: caller_a_identity
+    type: signal.identity_store
+    config:
+      identity_ref: caller-a
+      local_id: caller-a@example.test
+      device_id: 1
+      registration_id: 5110
+
+  - name: caller_b_identity
+    type: signal.identity_store
+    config:
+      identity_ref: caller-b
+      local_id: caller-b@example.test
+      device_id: 1
+      registration_id: 5111
+
+  - name: tenant_a_identity
+    type: signal.identity_store
+    config:
+      identity_ref: tenant-a
+      local_id: tenant-a@example.test
+      device_id: 1
+      registration_id: 5112
+
+  - name: tenant_b_identity
+    type: signal.identity_store
+    config:
+      identity_ref: tenant-b
+      local_id: tenant-b@example.test
+      device_id: 1
+      registration_id: 5113
+
+  - name: public_intake_directory
+    type: signal.public_prekey_directory
+    config:
+      directory_ref: public_intake
+      backend: http
+      endpoint_url: __PUBLIC_DIRECTORY_ENDPOINT__
+      allow_insecure_http: true
+      auth_header_name: X-Directory-Token
+      auth_header_env: SIGNAL_HTTP_DIRECTORY_TOKEN
+      default_ttl_seconds: 600
+      max_entries: 8
+
+workflows:
+  http:
+    server: server
+    router: router
+
+pipelines:
+  healthz:
+    trigger: { type: http, config: { path: /healthz, method: GET } }
+    steps:
+      - name: ok
+        type: step.json_response
+        config:
+          status: 200
+          body: { status: ok, scenario: "112-signal-http-directory" }
+
+  operator-publish:
+    trigger:
+      type: http
+      config:
+        path: /operator/{intake_ref}/publish
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [intake_ref]
+          parse_body: true
+      - name: publish_input
+        type: step.set
+        config:
+          values:
+            directory_ref: public_intake
+            intake_ref: '{{ index .steps "parse" "path_params" "intake_ref" }}'
+            identity_ref: host-intake
+            audience_ref: '{{ index .steps "parse" "body" "audience_ref" }}'
+            expires_at_unix: '{{ index .steps "parse" "body" "expires_at_unix" }}'
+            allowed_purpose: '{{ index .steps "parse" "body" "allowed_purpose" }}'
+            metadata_refs:
+              - "public://signal/intake/{{ index .steps \"parse\" \"path_params\" \"intake_ref\" }}"
+            requested_at_unix: '{{ index .steps "parse" "body" "requested_at_unix" }}'
+      - name: publish
+        type: step.signal_public_prekey_publish
+        config:
+          directory_ref: public_intake
+      - name: respond
+        type: step.json_response
+        config:
+          status: 201
+          body:
+            intake_ref: '{{ index .steps "parse" "path_params" "intake_ref" }}'
+            status:
+              _from: steps.publish.status
+            bundle:
+              _from: steps.publish.bundle
+            bundle_sha256:
+              _from: steps.publish.bundle_sha256
+            identity_key_fingerprint:
+              _from: steps.publish.identity_key_fingerprint
+            public_metadata:
+              _from: steps.publish.public_metadata
+    on_error: stop
+
+  public-resolve:
+    trigger:
+      type: http
+      config:
+        path: /intake/{intake_ref}/bundle
+        method: GET
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [intake_ref]
+          query_params: [audience_ref, requested_at_unix]
+      - name: resolve_input
+        type: step.set
+        config:
+          values:
+            directory_ref: public_intake
+            intake_ref: '{{ index .steps "parse" "path_params" "intake_ref" }}'
+            audience_ref: '{{ index .steps "parse" "query" "audience_ref" }}'
+            requested_at_unix: '{{ index .steps "parse" "query" "requested_at_unix" }}'
+      - name: resolve
+        type: step.signal_public_prekey_resolve
+        config:
+          directory_ref: public_intake
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            intake_ref: '{{ index .steps "parse" "path_params" "intake_ref" }}'
+            status:
+              _from: steps.resolve.status
+            bundle:
+              _from: steps.resolve.bundle
+            bundle_sha256:
+              _from: steps.resolve.bundle_sha256
+            identity_key_fingerprint:
+              _from: steps.resolve.identity_key_fingerprint
+            public_metadata:
+              _from: steps.resolve.public_metadata
+    on_error: stop
+
+  public-message-submit:
+    trigger:
+      type: http
+      config:
+        path: /intake/{intake_ref}/messages/{caller}
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [intake_ref, caller]
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: "."
+      - name: encrypt
+        type: step.signal_encrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "caller" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 202
+          body:
+            intake_ref: '{{ index .steps "parse" "path_params" "intake_ref" }}'
+            caller: '{{ index .steps "parse" "path_params" "caller" }}'
+            envelope:
+              _from: steps.encrypt.envelope
+    on_error: stop
+
+  public-blob-submit:
+    trigger:
+      type: http
+      config:
+        path: /intake/{intake_ref}/blobs/{caller}
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [intake_ref, caller]
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: "."
+      - name: encrypt
+        type: step.signal_blob_encrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "caller" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 202
+          body:
+            intake_ref: '{{ index .steps "parse" "path_params" "intake_ref" }}'
+            caller: '{{ index .steps "parse" "path_params" "caller" }}'
+            blob:
+              _from: steps.encrypt.blob
+            manifest_envelope:
+              _from: steps.encrypt.manifest_envelope
+            manifest_ref:
+              _from: steps.encrypt.manifest_ref
+    on_error: stop
+
+  operator-message-decrypt:
+    trigger:
+      type: http
+      config:
+        path: /operator/{intake_ref}/messages/decrypt
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [intake_ref]
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: "."
+      - name: decrypt
+        type: step.signal_decrypt
+        config:
+          identity_ref: host-intake
+          required_principal: operator://host-intake
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            intake_ref: '{{ index .steps "parse" "path_params" "intake_ref" }}'
+            denied:
+              _from: steps.decrypt.denied
+            error:
+              _from: steps.decrypt.error
+            plaintext:
+              _from: steps.decrypt.plaintext
+    on_error: stop
+
+  operator-blob-decrypt:
+    trigger:
+      type: http
+      config:
+        path: /operator/{intake_ref}/blobs/decrypt
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [intake_ref]
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: "."
+      - name: decrypt
+        type: step.signal_blob_decrypt
+        config:
+          identity_ref: host-intake
+          required_principal: operator://host-intake
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            intake_ref: '{{ index .steps "parse" "path_params" "intake_ref" }}'
+            denied:
+              _from: steps.decrypt.denied
+            error:
+              _from: steps.decrypt.error
+            blob_ref:
+              _from: steps.decrypt.blob_ref
+            filename:
+              _from: steps.decrypt.filename
+            content_type:
+              _from: steps.decrypt.content_type
+            plaintext:
+              _from: steps.decrypt.plaintext
+            plaintext_sha256:
+              _from: steps.decrypt.plaintext_sha256
+            ciphertext_sha256:
+              _from: steps.decrypt.ciphertext_sha256
+            verified:
+              _from: steps.decrypt.verified
+    on_error: stop

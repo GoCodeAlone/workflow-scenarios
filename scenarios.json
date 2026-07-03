@@ -1339,7 +1339,20 @@
       "testCount": 64,
       "passCount": 64,
       "failCount": 0
+    },
+    "112-signal-http-directory": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Builds workflow-plugin-signal v0.17.0 as an external plugin, launches a committed fake HTTP public directory and workflow-server, drives HTTP-directory public-intake APIs, verifies authenticated publish/resolve evidence, resolves the fake-hosted bundle after Workflow restart, rejects tampered fake HTTP responses, exercises encrypted message/blob submission, wrong-principal decrypt denial, and authorized operator decrypt. No official Signal service egress.",
+      "blockers": [],
+      "lastTested": "2026-07-03T22:54:35.777753Z",
+      "lastResult": "pass",
+      "testCount": 68,
+      "passCount": 68,
+      "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-03T19:55:12.917629Z"
+  "lastUpdated": "2026-07-03T22:54:35.777753Z"
 }
