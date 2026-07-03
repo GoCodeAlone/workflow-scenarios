@@ -1282,12 +1282,12 @@
       "localOnly": true,
       "notes": "Builds workflow-plugin-signal as an external plugin, launches workflow-server, and drives participant-parametric HTTP APIs for Signal session prepare plus encrypted blob upload/download. Proves sender encrypts blob bytes, a mock object-store boundary persists only encrypted blob JSON and Signal manifest envelope without plaintext/plaintext digest/content key, and recipient decrypts the original blob through a separate Workflow API call. No official Signal service egress or official Signal media upload/download.",
       "blockers": [],
-      "lastTested": "2026-07-03T11:30:39.279650Z",
+      "lastTested": "2026-07-03T11:39:04.682313Z",
       "lastResult": "pass",
-      "testCount": 19,
-      "passCount": 19,
+      "testCount": 20,
+      "passCount": 20,
       "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-03T11:30:39.279650Z"
+  "lastUpdated": "2026-07-03T11:39:04.682313Z"
 }

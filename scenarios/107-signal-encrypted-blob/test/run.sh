@@ -245,6 +245,11 @@ if grep -q "$MARKER" "$OBJECT_FILE" || grep -q "$PLAINTEXT_B64" "$OBJECT_FILE" |
 else
   pass "mock object store did not expose plaintext or plaintext digest"
 fi
+if jq -e '[.. | objects | select(has("key") or has("content_key") or has("contentKey"))] | length == 0' "$OBJECT_FILE" >/dev/null 2>&1; then
+  pass "mock object store did not expose clear content key material"
+else
+  fail "mock object store exposed clear content key material"
+fi
 if jq -e '.blob.ciphertext and .blob.nonce and .manifest_envelope.ciphertext and .manifest_ref' "$OBJECT_FILE" >/dev/null 2>&1; then
   pass "mock object store contains encrypted blob and Signal manifest envelope"
 else

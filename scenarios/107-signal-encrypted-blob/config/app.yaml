@@ -1,7 +1,3 @@
-plugins:
-  external:
-    - name: workflow-plugin-signal
-
 modules:
   - name: server
     type: http.server
