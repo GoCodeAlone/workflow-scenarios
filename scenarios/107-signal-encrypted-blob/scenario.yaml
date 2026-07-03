@@ -1,0 +1,36 @@
+name: Signal Encrypted Blob Handoff
+id: "107-signal-encrypted-blob"
+category: C
+description: |
+  Local-only Workflow app proof that blob bytes can be encrypted by one
+  participant, stored across a mock object-store boundary without plaintext or
+  content keys, and decrypted by another participant through Workflow and
+  workflow-plugin-signal.
+
+  The scenario builds workflow-plugin-signal as an external plugin, starts
+  config/app.yaml with HTTP routes for participant session prep and encrypted
+  blob upload/download, chooses two participants from the local identity pool,
+  sends blob content through the sender API, stores only the encrypted blob JSON
+  in a local object-store mock, verifies that stored object has no plaintext,
+  plaintext digest, or content key, and verifies the recipient decrypts the
+  original blob through a separate API call. It does not contact the official
+  Signal service or use official Signal media upload/download.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - libsignal-go session/pre-key primitives
+  - step.signal_session_prepare
+  - step.signal_blob_encrypt
+  - step.signal_blob_decrypt
+  - mock object-store boundary
+status: testable
+tags:
+  - signal
+  - encrypted-blob
+  - object-store
+  - e2e-encryption
+  - workflow-plugin
+  - local-only
+runtime: local
