@@ -1313,7 +1313,20 @@
       "testCount": 44,
       "passCount": 44,
       "failCount": 0
+    },
+    "110-signal-public-intake": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Builds workflow-plugin-signal v0.15.0 as an external plugin, launches workflow-server, and drives public-intake HTTP APIs for operator bundle publish, unauthenticated public bundle resolve, encrypted message/blob submission, mock queue/object-store ciphertext persistence, wrong-principal decrypt denial, expired/audience-mismatched resolve denial, and authorized operator decrypt. No official Signal service egress.",
+      "blockers": [],
+      "lastTested": "2026-07-03T18:23:01.021355Z",
+      "lastResult": "pass",
+      "testCount": 45,
+      "passCount": 45,
+      "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-03T14:27:11.827579Z"
+  "lastUpdated": "2026-07-03T18:23:01.021355Z"
 }
