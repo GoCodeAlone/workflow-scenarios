@@ -1306,14 +1306,14 @@
       "namespace": "local",
       "deployed": false,
       "localOnly": true,
-      "notes": "Builds workflow-plugin-signal v0.14.0 as an external plugin, launches workflow-server, and drives caller-parametric HTTP APIs for approval validation and service submit. Proves incomplete live approval denial, complete no-dry-run denial, complete dry-run acceptance without egress, fake/sandbox accepted operations, challenge handling, and output redaction. No official Signal service egress.",
+      "notes": "Builds workflow-plugin-signal v0.14.1 as an external plugin, launches workflow-server, and drives caller-parametric HTTP APIs for approval validation and service submit. Proves incomplete live approval denial, complete no-dry-run denial, complete dry-run acceptance without egress, fake/sandbox accepted operations, challenge handling, scheme-shaped raw credential redaction, and output redaction. No official Signal service egress.",
       "blockers": [],
-      "lastTested": "2026-07-03T13:53:52.253494Z",
+      "lastTested": "2026-07-03T14:27:11.827579Z",
       "lastResult": "pass",
-      "testCount": 39,
-      "passCount": 39,
+      "testCount": 44,
+      "passCount": 44,
       "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-03T13:53:52.253494Z"
+  "lastUpdated": "2026-07-03T14:27:11.827579Z"
 }

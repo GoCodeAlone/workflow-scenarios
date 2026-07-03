@@ -6,13 +6,15 @@ description: |
   service readiness and live-submit dry-run primitives without contacting the
   official Signal service.
 
-  The scenario builds workflow-plugin-signal v0.14.0 as an external plugin,
+  The scenario builds workflow-plugin-signal v0.14.1 as an external plugin,
   loads it through the Workflow server data/plugins path, and starts
   config/app.yaml with HTTP routes for approval validation and service submit.
   Clients supply account refs, recipient refs, payload refs, operations, and
   approval packages in HTTP request bodies. The Workflow app registers a small
   local account pool for deterministic custody/account refs but does not bake
-  the tested interaction into pipeline logic.
+  the tested interaction into pipeline logic. One request supplies a
+  scheme-shaped raw credential to prove unknown credential-like schemes are
+  redacted by the plugin output contract.
 components:
   - workflow-plugin-signal
   - workflow-server
