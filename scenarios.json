@@ -1274,7 +1274,20 @@
       "localOnly": true,
       "notes": "Builds or resolves the real ratchet CLI, creates an acpx.flow-run-bundle.v1 run directory, builds workflow-plugin-signal as an external plugin, launches workflow-server, and drives participant-parametric HTTP APIs for Signal session prepare plus queued outbox/inbox delivery. Proves a Ratchet flow-run bundle descriptor can be sent from one caller-supplied participant to another as Signal ciphertext, that the queue response does not expose the descriptor marker or plaintext, and that the recipient decrypts the descriptor back to the real Ratchet bundle manifest. No official Signal service egress.",
       "blockers": []
+    },
+    "107-signal-encrypted-blob": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Builds workflow-plugin-signal as an external plugin, launches workflow-server, and drives participant-parametric HTTP APIs for Signal session prepare plus encrypted blob upload/download. Proves sender encrypts blob bytes, a mock object-store boundary persists only encrypted blob JSON and Signal manifest envelope without plaintext/plaintext digest/content key, and recipient decrypts the original blob through a separate Workflow API call. No official Signal service egress or official Signal media upload/download.",
+      "blockers": [],
+      "lastTested": "2026-07-03T11:30:39.279650Z",
+      "lastResult": "pass",
+      "testCount": 19,
+      "passCount": 19,
+      "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-03T10:58:04.158290Z"
+  "lastUpdated": "2026-07-03T11:30:39.279650Z"
 }

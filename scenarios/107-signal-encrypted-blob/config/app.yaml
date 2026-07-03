@@ -1,0 +1,151 @@
+plugins:
+  external:
+    - name: workflow-plugin-signal
+
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":18107"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: participant_a_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-a
+      local_id: user-a@example.test
+      device_id: 1
+      registration_id: 1101
+
+  - name: participant_b_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-b
+      local_id: user-b@example.test
+      device_id: 1
+      registration_id: 2202
+
+workflows:
+  http:
+    server: server
+    router: router
+
+pipelines:
+  healthz:
+    trigger: { type: http, config: { path: /healthz, method: GET } }
+    steps:
+      - name: ok
+        type: step.json_response
+        config:
+          status: 200
+          body: { status: ok, scenario: "107-signal-encrypted-blob" }
+
+  prepare-session:
+    trigger:
+      type: http
+      config:
+        path: /participants/{participant}/session
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [participant]
+      - name: prepare
+        type: step.signal_session_prepare
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "participant" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            participant: '{{ index .steps "parse" "path_params" "participant" }}'
+            bundle:
+              _from: steps.prepare.bundle
+    on_error: stop
+
+  encrypt-blob:
+    trigger:
+      type: http
+      config:
+        path: /participants/{sender}/blobs/{recipient}
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [sender, recipient]
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: "."
+      - name: encrypt
+        type: step.signal_blob_encrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "sender" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 202
+          body:
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            blob:
+              _from: steps.encrypt.blob
+            manifest_envelope:
+              _from: steps.encrypt.manifest_envelope
+            manifest_ref:
+              _from: steps.encrypt.manifest_ref
+    on_error: stop
+
+  decrypt-blob:
+    trigger:
+      type: http
+      config:
+        path: /participants/{recipient}/blobs/decrypt
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [recipient]
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: "."
+      - name: decrypt
+        type: step.signal_blob_decrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "recipient" }}'
+          required_principal: "{{ .principal }}"
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            blob_ref:
+              _from: steps.decrypt.blob_ref
+            filename:
+              _from: steps.decrypt.filename
+            content_type:
+              _from: steps.decrypt.content_type
+            plaintext:
+              _from: steps.decrypt.plaintext
+            plaintext_sha256:
+              _from: steps.decrypt.plaintext_sha256
+            ciphertext_sha256:
+              _from: steps.decrypt.ciphertext_sha256
+            verified:
+              _from: steps.decrypt.verified
+    on_error: stop
