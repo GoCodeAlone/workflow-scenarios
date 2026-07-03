@@ -173,7 +173,8 @@ if ! DATA_DIR="$(mktemp -d)"; then
   exit 1
 fi
 RUNTIME_CONFIG="$DATA_DIR/app.yaml"
-if sed "s#__ISSUER_SECRET__#$ISSUER_SECRET#g" "$CONFIG" >"$RUNTIME_CONFIG"; then
+ESCAPED_ISSUER_SECRET="$(printf '%s' "$ISSUER_SECRET" | sed 's/[#&\\]/\\&/g')"
+if sed "s#__ISSUER_SECRET__#$ESCAPED_ISSUER_SECRET#g" "$CONFIG" >"$RUNTIME_CONFIG"; then
   pass "generated Workflow app config with per-run issuer secret"
 else
   fail "could not generate runtime Workflow app config"

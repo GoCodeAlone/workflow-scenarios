@@ -1295,12 +1295,12 @@
       "localOnly": true,
       "notes": "Builds workflow-plugin-encrypted-spaces as an external plugin, launches workflow-server, and drives participant-parametric HTTP APIs for private membership credential issue, presentation, accepted verification, revoked-commitment rejection, and operation-mismatch rejection. Proves two caller-supplied members receive distinct opaque commitments, responses do not expose plaintext member IDs or issuer secret material, and accepted reports remain marked as a local non-official-ZK subset. No official Signal service egress.",
       "blockers": [],
-      "lastTested": "2026-07-03T12:38:07.154771Z",
+      "lastTested": "2026-07-03T12:46:34.490944Z",
       "lastResult": "pass",
       "testCount": 35,
       "passCount": 35,
       "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-03T12:38:07.154771Z"
+  "lastUpdated": "2026-07-03T12:46:34.490944Z"
 }
