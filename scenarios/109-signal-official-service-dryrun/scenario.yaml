@@ -1,0 +1,32 @@
+name: Signal Official Service Dry-Run Boundary
+id: "109-signal-official-service-dryrun"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal exposes official
+  service readiness and live-submit dry-run primitives without contacting the
+  official Signal service.
+
+  The scenario builds workflow-plugin-signal v0.14.0 as an external plugin,
+  loads it through the Workflow server data/plugins path, and starts
+  config/app.yaml with HTTP routes for approval validation and service submit.
+  Clients supply account refs, recipient refs, payload refs, operations, and
+  approval packages in HTTP request bodies. The Workflow app registers a small
+  local account pool for deterministic custody/account refs but does not bake
+  the tested interaction into pipeline logic.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.key_custody
+  - signal.account_ref
+  - step.signal_service_approval_validate
+  - step.signal_service_live_submit
+status: testable
+tags:
+  - signal
+  - official-service
+  - dry-run
+  - workflow-plugin
+  - local-only
+runtime: local
