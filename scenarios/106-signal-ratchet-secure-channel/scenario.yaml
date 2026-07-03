@@ -1,0 +1,40 @@
+name: Signal Ratchet Secure Channel
+id: "106-signal-ratchet-secure-channel"
+category: C
+description: |
+  Local-only Workflow app proof that a real ratchet-cli flow-run bundle
+  descriptor can move through a Signal-encrypted Workflow channel without
+  exposing plaintext in the Workflow queue response.
+
+  The scenario builds workflow-plugin-signal as an external plugin, builds or
+  resolves the real ratchet CLI, executes ratchet acp client flow run to create
+  an acpx.flow-run-bundle.v1 directory, and starts config/app.yaml with HTTP
+  routes for participant session prep and queued outbox/inbox delivery. The
+  test chooses two participants from the app's local identity pool, sends a
+  Ratchet bundle descriptor through separate sender and recipient API calls,
+  verifies the queued encrypted envelope does not expose the descriptor marker,
+  and verifies the recipient decrypts the descriptor back to the real Ratchet
+  run bundle manifest. It does not contact the official Signal service.
+components:
+  - ratchet-cli
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - acpx.flow-run-bundle.v1
+  - libsignal-go session/pre-key primitives
+  - signal.envelope_store
+  - step.signal_session_prepare
+  - step.signal_outbox_enqueue
+  - step.signal_outbox_claim
+  - step.signal_inbox_receive
+  - step.signal_inbox_decrypt
+status: testable
+tags:
+  - signal
+  - ratchet-cli
+  - secure-channel
+  - e2e-encryption
+  - workflow-plugin
+  - local-only
+runtime: local
