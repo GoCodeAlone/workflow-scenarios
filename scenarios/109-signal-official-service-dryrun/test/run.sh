@@ -23,6 +23,9 @@ OPERATION="${OPERATION:-send}"
 REQUEST_ID="${REQUEST_ID:-scenario-109-request}"
 SANDBOX_ENDPOINT="${SANDBOX_ENDPOINT:-https://signal-sandbox.invalid}"
 RAW_CREDENTIAL_REF="${RAW_CREDENTIAL_REF:-credential-raw-secret}"
+CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-2}"
+CURL_MAX_TIME="${CURL_MAX_TIME:-10}"
+CURL_HEALTH_MAX_TIME="${CURL_HEALTH_MAX_TIME:-3}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCENARIO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -115,7 +118,7 @@ wait_for_server() {
   local url="$1"
   local i
   for i in $(seq 1 80); do
-    curl -fs "$url/healthz" >/dev/null 2>&1 && return 0
+    curl -fsS --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_HEALTH_MAX_TIME" "$url/healthz" >/dev/null 2>&1 && return 0
     if [ -n "$SERVER_PID" ] && ! kill -0 "$SERVER_PID" >/dev/null 2>&1; then
       return 1
     fi
@@ -127,7 +130,7 @@ wait_for_server() {
 post_json() {
   local path="$1"
   local body="$2"
-  curl -fsS -X POST "$BASE_URL$path" -H 'Content-Type: application/json' -d "$body"
+  curl -fsS --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" -X POST "$BASE_URL$path" -H 'Content-Type: application/json' -d "$body"
 }
 
 complete_approval() {
@@ -211,7 +214,7 @@ assert_no_raw_service_data() {
 assert_raw_credential_redacted() {
   local label="$1"
   local json="$2"
-  if printf '%s' "$RAW_CREDENTIAL_REF" | grep -Fq '://'; then
+  if printf '%s' "$RAW_CREDENTIAL_REF" | grep -Eq '^secret://'; then
     pass "$label used a host-managed credential reference"
     return
   fi
