@@ -1,0 +1,162 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":18108"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+workflows:
+  http:
+    server: server
+    router: router
+
+pipelines:
+  healthz:
+    trigger: { type: http, config: { path: /healthz, method: GET } }
+    steps:
+      - name: ok
+        type: step.json_response
+        config:
+          status: 200
+          body: { status: ok, scenario: "108-encrypted-spaces-private-membership" }
+
+  issue-private-membership:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/members/{member}/private-credential
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, member]
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse
+          expression: '{group_id: .path_params.space, member_id: .path_params.member, membership_epoch: (.body.membership_epoch // 2), expires_at: (.body.expires_at // 1893456000)}'
+      - name: issue
+        type: step.encrypted_space_membership_issue
+        config:
+          issuer: scenario-108-issuer
+          issuer_secret: __ISSUER_SECRET__
+          upstream_path: java/shared/java/org/signal/libsignal/zkgroup/groups
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            credential:
+              _from: steps.issue.credential
+    on_error: stop
+
+  present-private-membership:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/private-memberships/present
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space]
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse
+          expression: '{credential: .body.credential, operation_id: .body.operation_id}'
+      - name: present
+        type: step.encrypted_space_membership_present
+        config:
+          audience: workflow-scenario-108
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            presentation:
+              _from: steps.present.presentation
+    on_error: stop
+
+  verify-private-membership:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/private-memberships/verify
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space]
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse
+          expression: '{presentation: .body.presentation, operation_id: .body.operation_id}'
+      - name: verify
+        type: step.encrypted_space_private_membership_verify
+        config:
+          issuer_secret: __ISSUER_SECRET__
+          audience: workflow-scenario-108
+          current_membership_epoch: 2
+          now_unix: 1890000000
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            report:
+              _from: steps.verify.report
+    on_error: stop
+
+  verify-revoked-private-membership:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/private-memberships/verify-revoked
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space]
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse
+          expression: '{presentation: .body.presentation, operation_id: .body.operation_id}'
+      - name: verify
+        type: step.encrypted_space_private_membership_verify
+        config:
+          issuer_secret: __ISSUER_SECRET__
+          audience: workflow-scenario-108
+          current_membership_epoch: 2
+          revoked_member_commitments:
+            - '{{ index .steps "parse" "body" "presentation" "member_commitment" }}'
+          now_unix: 1890000000
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            report:
+              _from: steps.verify.report
+    on_error: stop
