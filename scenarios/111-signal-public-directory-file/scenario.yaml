@@ -1,0 +1,47 @@
+name: Signal Public Directory File
+id: "111-signal-public-directory-file"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal can publish a
+  host-owned public pre-key bundle into an explicit file-backed public
+  directory, resolve the persisted bundle through an unauthenticated public
+  route after Workflow server restart, and accept encrypted message/blob
+  submissions without plaintext crossing public storage boundaries.
+
+  The scenario builds workflow-plugin-signal v0.16.0 as an external plugin,
+  launches workflow-server, calls an operator publish route, calls a public
+  bundle route with caller-supplied intake/audience refs, verifies the directory
+  JSON snapshot schema/checksum/hash evidence, restarts workflow-server against
+  the same directory file, verifies corrupt snapshot rejection, submits encrypted
+  message and blob payloads from caller-selected identities, persists only
+  ciphertext JSON in local mock queue/object-store files, rejects wrong-principal
+  decrypt, verifies expired and audience-mismatched bundle denials, and verifies
+  the authorized operator recovers the original plaintext through Workflow APIs.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.public_prekey_directory
+  - file-backed public pre-key directory
+  - step.signal_public_prekey_publish
+  - step.signal_public_prekey_resolve
+  - step.signal_encrypt
+  - step.signal_decrypt
+  - step.signal_blob_encrypt
+  - step.signal_blob_decrypt
+  - mock queue boundary
+  - mock object-store boundary
+status: testable
+tags:
+  - signal
+  - public-intake
+  - encrypted-blob
+  - e2e-encryption
+  - workflow-plugin
+  - local-only
+  - file-backend
+  - restart-survival
+  - corrupt-snapshot-rejection
+runtime: local
