@@ -27,8 +27,8 @@ github.com/GoCodeAlone/modular/modules/jsonschema v1.17.0 h1:zoWioqUvuNNDfnjHA1s
 github.com/GoCodeAlone/modular/modules/jsonschema v1.17.0/go.mod h1:GDU/jsD6AddmXKedj0wZwieUIaQsTBSGMzuj+XHXMrw=
 github.com/GoCodeAlone/modular/modules/reverseproxy/v2 v2.10.0 h1:+2M/ecyCxDiXfJM4ibcERuu/BBeIbLTQNcVgRsllR64=
 github.com/GoCodeAlone/modular/modules/reverseproxy/v2 v2.10.0/go.mod h1:tlVH1mA5yuU8CB7R7+HXIRaBixZoNid6h+5tew5u3FU=
-github.com/GoCodeAlone/workflow v0.84.4 h1:07j0xjl232op4ZFr7bnmtRgRHUUhGZvirBs9gNzeEYA=
-github.com/GoCodeAlone/workflow v0.84.4/go.mod h1:vBi/HkWBt8LrZ/J3E61bx/Q4MSh15ieXy8sIEqK5lNU=
+github.com/GoCodeAlone/workflow v0.84.5 h1:PndTK0MrNMFGLcFTLB5r4peJOG8PCGD3KIseDY0xYpw=
+github.com/GoCodeAlone/workflow v0.84.5/go.mod h1:vBi/HkWBt8LrZ/J3E61bx/Q4MSh15ieXy8sIEqK5lNU=
 github.com/GoCodeAlone/workflow-plugin-control-plane v0.1.0 h1:XtogtQXVBING2iu5jQGzfubi9rOes/erVWH5uwiPsok=
 github.com/GoCodeAlone/workflow-plugin-control-plane v0.1.0/go.mod h1:2c3Ow7rncEZttzq3XddC+mTD0x5CBE4TdPdvbnH4iYk=
 github.com/GoCodeAlone/workflow-plugin-data-engineering v0.3.1 h1:NPdPpSc3PjYJ5Xzu0YKitMPqrnLB3DW5/pvKFXNHxTM=
