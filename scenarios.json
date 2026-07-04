@@ -1404,7 +1404,20 @@
       "testCount": 25,
       "passCount": 25,
       "failCount": 0
+    },
+    "117-signal-username-artifacts": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Builds workflow-plugin-signal v0.23.0 as an external plugin, launches workflow-server, drives account-parametric username artifact and hash-reserve HTTP APIs, verifies exact username hash compatibility evidence, nickname candidate hash validity by re-preparing a returned candidate username, second caller-supplied username hash variance, hash-only fake reserve metadata redaction, and malformed/missing hash rejection before idempotency-slot consumption. No official Signal service egress.",
+      "blockers": [],
+      "lastTested": "2026-07-04T18:40:24.988758Z",
+      "lastResult": "pass",
+      "testCount": 34,
+      "passCount": 34,
+      "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-04T07:27:30.832454Z"
+  "lastUpdated": "2026-07-04T18:40:24.988758Z"
 }

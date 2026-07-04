@@ -1,0 +1,31 @@
+name: Signal Username Artifacts
+id: "117-signal-username-artifacts"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal prepares
+  upstream-compatible Signal username reservation hash artifacts from
+  caller-supplied usernames and nicknames, then submits hash-only username
+  reserve requests to the fake Signal service boundary without storing or
+  returning plaintext usernames on the reserve metadata path. The scenario runs
+  workflow-server, loads workflow-plugin-signal v0.23.0 as an external plugin,
+  and drives account/caller-parametric HTTP routes.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.account_ref
+  - signal.key_custody
+  - step.signal_username_artifact_prepare
+  - step.signal_service_test_username_reserve
+status: testable
+tags:
+  - signal
+  - username
+  - username-hash
+  - service-test
+  - workflow-plugin
+  - local-only
+  - plaintext-redaction
+  - idempotency
+runtime: local
