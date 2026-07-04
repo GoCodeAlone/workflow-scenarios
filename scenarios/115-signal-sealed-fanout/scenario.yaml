@@ -1,0 +1,42 @@
+name: Signal Sealed Fanout
+id: "115-signal-sealed-fanout"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal can fan out a room
+  message into multiple recipient-specific Signal session envelopes, wrap each
+  with sealed-sender wire bytes, move only sealed transport through a mock
+  delivery boundary, and let each intended recipient reveal the sender only
+  after unseal and decrypt through recipient-scoped Workflow HTTP routes.
+
+  The scenario builds workflow-plugin-signal v0.20.0 as an external plugin,
+  launches workflow-server, prepares caller-selected participant bundles,
+  sends a two-recipient fanout through participant-parametric HTTP routes,
+  verifies the mock transport does not expose plaintext or sender identity,
+  rejects wrong-principal, wrong-recipient, duplicate-recipient, sealed-byte
+  tamper, and wrong-trust-root cases, then repeats the route flow with a second
+  participant set. No official Signal service egress and no group sender-key
+  crypto.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - step.signal_session_prepare
+  - step.signal_encrypt
+  - step.signal_sender_certificate_issue
+  - step.signal_sender_seal_fanout
+  - step.signal_sender_unseal
+  - step.signal_decrypt
+  - mock sealed transport boundary
+status: testable
+tags:
+  - signal
+  - sealed-sender
+  - fanout
+  - e2e-encryption
+  - workflow-plugin
+  - local-only
+  - sender-privacy
+  - tamper-rejection
+runtime: local
