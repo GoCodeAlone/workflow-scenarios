@@ -29,8 +29,9 @@ without HTTP if the scenario is explicitly a `wfctl`/CLI/tooling contract.
 - 0 scenarios have no first-pass proof marker.
 
 Current open state: no scenario is currently classified as package-test-only,
-static-only, or missing a proof marker. The only residual classifications are
-the explicit manual, fixture, and contract scenarios listed below.
+static-only, or missing a first-pass proof marker. The only residual
+classifications are the explicit manual, fixture, and contract scenarios listed
+below.
 
 ## Highest Priority: Package-Test-Only Scenarios
 
