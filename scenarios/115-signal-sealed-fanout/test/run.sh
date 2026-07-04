@@ -426,7 +426,8 @@ case "$TAMPERED_STATUS" in
   *) pass "tampered fanout sealed bytes were rejected with status $TAMPERED_STATUS" ;;
 esac
 
-DUP_BODY="$(printf '%s' "$FANOUT_RESPONSE" >/dev/null; fanout_body "$(printf '%s' "$FANOUT_MESSAGE_TEXT" | base64_encode)" "$FANOUT_GROUP_B64" "$RECIPIENT_ONE" "$(prepare_bundle "$RECIPIENT_ONE" | jq -c '.bundle')" "$RECIPIENT_ONE" "$(prepare_bundle "$RECIPIENT_TWO" | jq -c '.bundle')" resendable)" || DUP_BODY=""
+DUP_BUNDLE_ONE="$(prepare_bundle "$RECIPIENT_ONE" | jq -c '.bundle')" || DUP_BUNDLE_ONE=""
+DUP_BODY="$(fanout_body "$(printf '%s' "$FANOUT_MESSAGE_TEXT" | base64_encode)" "$FANOUT_GROUP_B64" "$RECIPIENT_ONE" "$DUP_BUNDLE_ONE" "$RECIPIENT_ONE" "$DUP_BUNDLE_ONE" resendable)" || DUP_BODY=""
 DUP_STATUS="$(http_status POST "$BASE_URL/rooms/$ROOM/participants/$SENDER/fanout" "$DUP_BODY")"
 case "$DUP_STATUS" in
   000|2*) fail "duplicate-recipient fanout was accepted with status $DUP_STATUS" ;;
