@@ -1,0 +1,35 @@
+name: Signal Trust Reset
+id: "118-signal-trust-reset"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal rejects a changed
+  Signal safety-number trust vector, requires caller approval metadata for a
+  trust reset, rotates the stored trust record with compare-and-set protection,
+  accepts the new key, rejects the old key, and persists the reset across a
+  Workflow server restart. The scenario runs workflow-server, loads
+  workflow-plugin-signal v0.24.0 as an external plugin, and drives
+  participant-parametric HTTP routes.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.trust_store
+  - signal.envelope_store
+  - step.signal_session_prepare
+  - step.signal_trust_observe
+  - step.signal_trust_reset
+  - step.signal_encrypt
+  - step.signal_outbox_enqueue
+status: testable
+tags:
+  - signal
+  - trust-reset
+  - safety-number
+  - tofu
+  - workflow-plugin
+  - local-only
+  - compare-and-set
+  - tamper-rejection
+runtime: local
