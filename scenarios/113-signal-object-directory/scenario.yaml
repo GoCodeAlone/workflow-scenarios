@@ -1,0 +1,49 @@
+name: Signal Object Directory
+id: "113-signal-object-directory"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal can publish a
+  host-owned public pre-key bundle into an explicit local object-store public
+  directory, resolve the persisted bundle through an unauthenticated public
+  route after Workflow server restart, reject a tampered object on restart, and
+  accept encrypted message/blob submissions without plaintext crossing public
+  storage boundaries.
+
+  The scenario builds workflow-plugin-signal v0.18.0 as an external plugin,
+  launches workflow-server, calls an operator publish route, calls a public
+  bundle route with caller-supplied intake/audience refs, verifies object-store
+  checksum/hash/fingerprint evidence, restarts workflow-server against the same
+  object-store root, verifies a tampered object is rejected on restart, submits
+  encrypted message and blob payloads from caller-selected identities, persists
+  only ciphertext JSON in local mock queue/object-store files, rejects
+  wrong-principal decrypt, verifies expired and audience-mismatched bundle
+  denials, and verifies the authorized operator recovers the original plaintext
+  through Workflow APIs.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.public_prekey_directory
+  - local object-store public pre-key directory
+  - step.signal_public_prekey_publish
+  - step.signal_public_prekey_resolve
+  - step.signal_encrypt
+  - step.signal_decrypt
+  - step.signal_blob_encrypt
+  - step.signal_blob_decrypt
+  - mock queue boundary
+  - mock object-store boundary
+status: testable
+tags:
+  - signal
+  - public-intake
+  - encrypted-blob
+  - e2e-encryption
+  - workflow-plugin
+  - local-only
+  - object-store-backend
+  - restart-survival
+  - tamper-rejection
+runtime: local
