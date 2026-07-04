@@ -1,0 +1,33 @@
+name: Signal Persistent Trust
+id: "116-signal-persistent-trust"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal persists a
+  file-backed trust-on-first-use safety-number decision, reloads it after a
+  Workflow server restart, accepts the same participant-supplied trust vector as
+  trusted, and rejects a changed remote identity key before encrypted outbox
+  emission. The scenario runs workflow-server, loads workflow-plugin-signal
+  v0.22.0 as an external plugin, and drives participant-parametric HTTP routes.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.trust_store
+  - signal.envelope_store
+  - step.signal_session_prepare
+  - step.signal_trust_observe
+  - step.signal_encrypt
+  - step.signal_outbox_enqueue
+status: testable
+tags:
+  - signal
+  - persistent-trust
+  - safety-number
+  - tofu
+  - e2e-encryption
+  - workflow-plugin
+  - local-only
+  - tamper-rejection
+runtime: local
