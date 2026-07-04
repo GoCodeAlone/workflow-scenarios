@@ -284,7 +284,15 @@ for forbidden in "$MESSAGE_MARKER" "$MESSAGE_B64" "$SENDER@example.test" "$SENDE
   fi
 done
 if [ -n "$SEALED_BYTES" ] && [ "$SEALED_BYTES" != "null" ]; then
-  if printf '%s' "$SEALED_BYTES" | base64_decode 2>/dev/null | grep -a -Fq -- "$SENDER@example.test"; then
+  SEALED_WIRE_FILE="$DATA_DIR/sealed-wire.bin"
+  if printf '%s' "$SEALED_BYTES" | base64_decode >"$SEALED_WIRE_FILE" 2>/dev/null; then
+    pass "sealed wire bytes decoded for sender-leak inspection"
+  else
+    fail "sealed wire bytes could not be decoded for sender-leak inspection"
+    finish
+    exit 1
+  fi
+  if grep -a -Fq -- "$SENDER@example.test" "$SEALED_WIRE_FILE"; then
     fail "decoded sealed wire bytes exposed sender id"
   else
     pass "decoded sealed wire bytes did not expose sender id"
@@ -324,7 +332,14 @@ else
   fail "recipient plaintext mismatch: $DECRYPTED"
 fi
 
-TAMPERED_MESSAGE="$(printf '%s' "$SEALED_MESSAGE" | jq -c '.sealed_message = (.sealed_message[0:-2] + "AA")' 2>/dev/null || true)"
+if TAMPERED_MESSAGE="$(printf '%s' "$SEALED_MESSAGE" | jq -ec '.sealed_message = (.sealed_message[0:-2] + "AA")' 2>/dev/null)" &&
+   [ -n "$TAMPERED_MESSAGE" ] && [ "$TAMPERED_MESSAGE" != "$SEALED_MESSAGE" ]; then
+  pass "constructed tampered sealed-byte payload"
+else
+  fail "could not construct tampered sealed-byte payload"
+  finish
+  exit 1
+fi
 TAMPERED_BODY="$(jq -cn --arg principal "principal://$RECIPIENT" --argjson sealed_message "$TAMPERED_MESSAGE" --arg trust_root_public_key "$TRUST_ROOT" \
   '{principal:$principal,sealed_message:$sealed_message,trust_root_public_key:$trust_root_public_key}')" || TAMPERED_BODY=""
 TAMPERED_STATUS="$(http_status POST "$BASE_URL/participants/$RECIPIENT/sealed/decrypt" "$TAMPERED_BODY")"
@@ -341,7 +356,14 @@ case "$WRONG_RECIPIENT_STATUS" in
   *) pass "wrong recipient was rejected with status $WRONG_RECIPIENT_STATUS" ;;
 esac
 
-ROUTING_TAMPERED="$(printf '%s' "$SEALED_MESSAGE" | jq -c --arg recipient_id "$THIRD_PARTY@example.test" '.recipient_id = $recipient_id' 2>/dev/null || true)"
+if ROUTING_TAMPERED="$(printf '%s' "$SEALED_MESSAGE" | jq -ec --arg recipient_id "$THIRD_PARTY@example.test" '.recipient_id = $recipient_id' 2>/dev/null)" &&
+   [ -n "$ROUTING_TAMPERED" ] && [ "$ROUTING_TAMPERED" != "$SEALED_MESSAGE" ]; then
+  pass "constructed tampered visible-routing payload"
+else
+  fail "could not construct tampered visible-routing payload"
+  finish
+  exit 1
+fi
 ROUTING_TAMPERED_BODY="$(jq -cn --arg principal "principal://$RECIPIENT" --argjson sealed_message "$ROUTING_TAMPERED" --arg trust_root_public_key "$TRUST_ROOT" \
   '{principal:$principal,sealed_message:$sealed_message,trust_root_public_key:$trust_root_public_key}')" || ROUTING_TAMPERED_BODY=""
 ROUTING_TAMPERED_STATUS="$(http_status POST "$BASE_URL/participants/$RECIPIENT/sealed/decrypt" "$ROUTING_TAMPERED_BODY")"
