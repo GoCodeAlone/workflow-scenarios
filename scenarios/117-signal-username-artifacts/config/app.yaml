@@ -1,0 +1,168 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":18117"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: account_a_custody
+    type: signal.key_custody
+    config:
+      custody_ref: custody://signal/account-a/device-1
+      account_ref: account-a
+      non_exportable_key_ref: kms://signal/account-a/device-1
+
+  - name: account_a
+    type: signal.account_ref
+    config:
+      account_ref: account-a
+      device_ref: device://signal/account-a/device-1
+      custody_ref: custody://signal/account-a/device-1
+      credential_ref: secret://signal/account-a/credential
+      consent_ref: consent://signal/account-a/consent
+      audit_ref: audit://signal/account-a/audit
+
+  - name: account_b_custody
+    type: signal.key_custody
+    config:
+      custody_ref: custody://signal/account-b/device-1
+      account_ref: account-b
+      non_exportable_key_ref: kms://signal/account-b/device-1
+
+  - name: account_b
+    type: signal.account_ref
+    config:
+      account_ref: account-b
+      device_ref: device://signal/account-b/device-1
+      custody_ref: custody://signal/account-b/device-1
+      credential_ref: secret://signal/account-b/credential
+      consent_ref: consent://signal/account-b/consent
+      audit_ref: audit://signal/account-b/audit
+
+workflows:
+  http:
+    server: server
+    router: router
+
+pipelines:
+  healthz:
+    trigger: { type: http, config: { path: /healthz, method: GET } }
+    steps:
+      - name: ok
+        type: step.json_response
+        config:
+          status: 200
+          body: { status: ok, scenario: "117-signal-username-artifacts" }
+
+  username-artifacts:
+    trigger:
+      type: http
+      config:
+        path: /accounts/{account}/username-artifacts
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [account]
+          parse_body: true
+          merge_body: true
+      - name: artifact_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: "."
+      - name: artifact
+        type: step.signal_username_artifact_prepare
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            account: '{{ index .steps "parse" "path_params" "account" }}'
+            request_ref: '{{ index .steps "parse" "body" "request_ref" }}'
+            artifact:
+              _from: steps.artifact
+    on_error: stop
+
+  username-reserve-from-username:
+    trigger:
+      type: http
+      config:
+        path: /accounts/{account}/username-reservations/from-username
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [account]
+          parse_body: true
+          merge_body: true
+      - name: artifact_input
+        type: step.set
+        config:
+          values:
+            username: '{{ index .steps "parse" "body" "username" }}'
+      - name: artifact
+        type: step.signal_username_artifact_prepare
+      - name: reserve_input
+        type: step.set
+        config:
+          values:
+            account_ref: '{{ index .steps "parse" "path_params" "account" }}'
+            idempotency_key: '{{ index .steps "parse" "body" "request_ref" }}'
+            username_hash_hexes:
+              - '{{ index .steps "artifact" "username_hash_hex" }}'
+            selected_username_hash_index: 0
+      - name: reserve
+        type: step.signal_service_test_username_reserve
+      - name: respond
+        type: step.json_response
+        config:
+          status: 202
+          body:
+            account: '{{ index .steps "parse" "path_params" "account" }}'
+            request_ref: '{{ index .steps "parse" "body" "request_ref" }}'
+            artifact:
+              _from: steps.artifact
+            reserve:
+              _from: steps.reserve
+    on_error: stop
+
+  username-reserve-hash:
+    trigger:
+      type: http
+      config:
+        path: /accounts/{account}/username-reservations/hash
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [account]
+          parse_body: true
+          merge_body: true
+      - name: reserve_input
+        type: step.set
+        config:
+          values:
+            account_ref: '{{ index .steps "parse" "path_params" "account" }}'
+            idempotency_key: '{{ index .steps "parse" "body" "request_ref" }}'
+            username_hash_hexes:
+              - '{{ index .steps "parse" "body" "username_hash_hex" }}'
+            selected_username_hash_index: 0
+      - name: reserve
+        type: step.signal_service_test_username_reserve
+      - name: respond
+        type: step.json_response
+        config:
+          status: 202
+          body:
+            account: '{{ index .steps "parse" "path_params" "account" }}'
+            request_ref: '{{ index .steps "parse" "body" "request_ref" }}'
+            reserve:
+              _from: steps.reserve
+    on_error: stop
