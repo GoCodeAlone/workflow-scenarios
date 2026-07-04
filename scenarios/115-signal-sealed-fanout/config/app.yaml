@@ -1,0 +1,307 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":18115"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: user_a_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-a
+      local_id: user-a@example.test
+      device_id: 1
+      registration_id: 6215
+
+  - name: user_b_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-b
+      local_id: user-b@example.test
+      device_id: 1
+      registration_id: 6216
+
+  - name: user_c_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-c
+      local_id: user-c@example.test
+      device_id: 1
+      registration_id: 6217
+
+  - name: tenant_a_identity
+    type: signal.identity_store
+    config:
+      identity_ref: tenant-a
+      local_id: tenant-a@example.test
+      device_id: 1
+      registration_id: 6218
+
+  - name: tenant_b_identity
+    type: signal.identity_store
+    config:
+      identity_ref: tenant-b
+      local_id: tenant-b@example.test
+      device_id: 1
+      registration_id: 6219
+
+workflows:
+  http:
+    server: server
+    router: router
+
+pipelines:
+  healthz:
+    trigger: { type: http, config: { path: /healthz, method: GET } }
+    steps:
+      - name: ok
+        type: step.json_response
+        config:
+          status: 200
+          body: { status: ok, scenario: "115-signal-sealed-fanout" }
+
+  prepare-session:
+    trigger:
+      type: http
+      config:
+        path: /participants/{participant}/session
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [participant]
+      - name: prepare
+        type: step.signal_session_prepare
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "participant" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            participant: '{{ index .steps "parse" "path_params" "participant" }}'
+            bundle:
+              _from: steps.prepare.bundle
+    on_error: stop
+
+  fanout-message:
+    trigger:
+      type: http
+      config:
+        path: /rooms/{room}/participants/{sender}/fanout
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [room, sender]
+          parse_body: true
+          merge_body: true
+      - name: recipient_one_input
+        type: step.set
+        config:
+          values:
+            remote_id: '{{ index .steps "parse" "body" "recipients" 0 "participant" }}@example.test'
+            remote_device_id: 1
+            plaintext: '{{ index .steps "parse" "body" "plaintext" }}'
+            remote_bundle:
+              identity_ref: '{{ index .steps "parse" "body" "recipients" 0 "bundle" "identity_ref" }}'
+              local_id: '{{ index .steps "parse" "body" "recipients" 0 "bundle" "local_id" }}'
+              device_id: '{{ index .steps "parse" "body" "recipients" 0 "bundle" "device_id" }}'
+              registration_id: '{{ index .steps "parse" "body" "recipients" 0 "bundle" "registration_id" }}'
+              pre_key_id: '{{ index .steps "parse" "body" "recipients" 0 "bundle" "pre_key_id" }}'
+              pre_key: '{{ index .steps "parse" "body" "recipients" 0 "bundle" "pre_key" }}'
+              signed_pre_key_id: '{{ index .steps "parse" "body" "recipients" 0 "bundle" "signed_pre_key_id" }}'
+              signed_pre_key: '{{ index .steps "parse" "body" "recipients" 0 "bundle" "signed_pre_key" }}'
+              signed_pre_key_signature: '{{ index .steps "parse" "body" "recipients" 0 "bundle" "signed_pre_key_signature" }}'
+              kyber_pre_key_id: '{{ index .steps "parse" "body" "recipients" 0 "bundle" "kyber_pre_key_id" }}'
+              kyber_pre_key: '{{ index .steps "parse" "body" "recipients" 0 "bundle" "kyber_pre_key" }}'
+              kyber_pre_key_signature: '{{ index .steps "parse" "body" "recipients" 0 "bundle" "kyber_pre_key_signature" }}'
+              identity_key: '{{ index .steps "parse" "body" "recipients" 0 "bundle" "identity_key" }}'
+      - name: encrypt_recipient_one
+        type: step.signal_encrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "sender" }}'
+      - name: recipient_two_input
+        type: step.set
+        config:
+          values:
+            remote_id: '{{ index .steps "parse" "body" "recipients" 1 "participant" }}@example.test'
+            remote_device_id: 1
+            plaintext: '{{ index .steps "parse" "body" "plaintext" }}'
+            remote_bundle:
+              identity_ref: '{{ index .steps "parse" "body" "recipients" 1 "bundle" "identity_ref" }}'
+              local_id: '{{ index .steps "parse" "body" "recipients" 1 "bundle" "local_id" }}'
+              device_id: '{{ index .steps "parse" "body" "recipients" 1 "bundle" "device_id" }}'
+              registration_id: '{{ index .steps "parse" "body" "recipients" 1 "bundle" "registration_id" }}'
+              pre_key_id: '{{ index .steps "parse" "body" "recipients" 1 "bundle" "pre_key_id" }}'
+              pre_key: '{{ index .steps "parse" "body" "recipients" 1 "bundle" "pre_key" }}'
+              signed_pre_key_id: '{{ index .steps "parse" "body" "recipients" 1 "bundle" "signed_pre_key_id" }}'
+              signed_pre_key: '{{ index .steps "parse" "body" "recipients" 1 "bundle" "signed_pre_key" }}'
+              signed_pre_key_signature: '{{ index .steps "parse" "body" "recipients" 1 "bundle" "signed_pre_key_signature" }}'
+              kyber_pre_key_id: '{{ index .steps "parse" "body" "recipients" 1 "bundle" "kyber_pre_key_id" }}'
+              kyber_pre_key: '{{ index .steps "parse" "body" "recipients" 1 "bundle" "kyber_pre_key" }}'
+              kyber_pre_key_signature: '{{ index .steps "parse" "body" "recipients" 1 "bundle" "kyber_pre_key_signature" }}'
+              identity_key: '{{ index .steps "parse" "body" "recipients" 1 "bundle" "identity_key" }}'
+      - name: encrypt_recipient_two
+        type: step.signal_encrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "sender" }}'
+      - name: issue
+        type: step.signal_sender_certificate_issue
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "sender" }}'
+          ttl_seconds: 3600
+      - name: fanout_input
+        type: step.set
+        config:
+          values:
+            sender_certificate: '{{ index .steps "issue" "sender_certificate" }}'
+            group_id: '{{ index .steps "parse" "body" "group_id" }}'
+            recipients:
+              - recipient_ref: 'principal://{{ index .steps "parse" "body" "recipients" 0 "participant" }}'
+                recipient_identity_key: '{{ index .steps "parse" "body" "recipients" 0 "bundle" "identity_key" }}'
+                envelope:
+                  sender_id: '{{ index .steps "encrypt_recipient_one" "envelope" "sender_id" }}'
+                  sender_device_id: '{{ index .steps "encrypt_recipient_one" "envelope" "sender_device_id" }}'
+                  recipient_id: '{{ index .steps "encrypt_recipient_one" "envelope" "recipient_id" }}'
+                  recipient_device_id: '{{ index .steps "encrypt_recipient_one" "envelope" "recipient_device_id" }}'
+                  message_type: '{{ index .steps "encrypt_recipient_one" "envelope" "message_type" }}'
+                  ciphertext: '{{ index .steps "encrypt_recipient_one" "envelope" "ciphertext" }}'
+              - recipient_ref: 'principal://{{ index .steps "parse" "body" "recipients" 1 "participant" }}'
+                recipient_identity_key: '{{ index .steps "parse" "body" "recipients" 1 "bundle" "identity_key" }}'
+                envelope:
+                  sender_id: '{{ index .steps "encrypt_recipient_two" "envelope" "sender_id" }}'
+                  sender_device_id: '{{ index .steps "encrypt_recipient_two" "envelope" "sender_device_id" }}'
+                  recipient_id: '{{ index .steps "encrypt_recipient_two" "envelope" "recipient_id" }}'
+                  recipient_device_id: '{{ index .steps "encrypt_recipient_two" "envelope" "recipient_device_id" }}'
+                  message_type: '{{ index .steps "encrypt_recipient_two" "envelope" "message_type" }}'
+                  ciphertext: '{{ index .steps "encrypt_recipient_two" "envelope" "ciphertext" }}'
+      - name: fanout
+        type: step.signal_sender_seal_fanout
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "sender" }}'
+          content_hint: '{{ index .steps "parse" "body" "content_hint" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 202
+          body:
+            room: '{{ index .steps "parse" "path_params" "room" }}'
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
+            message_count:
+              _from: steps.fanout.message_count
+            sealed_message_total_size:
+              _from: steps.fanout.sealed_message_total_size
+            messages:
+              _from: steps.fanout.messages
+            trust_root_public_key:
+              _from: steps.issue.trust_root_public_key
+            certificate_expires_at_unix:
+              _from: steps.issue.expires_at_unix
+    on_error: stop
+
+  unseal-fanout-message:
+    trigger:
+      type: http
+      config:
+        path: /rooms/{room}/participants/{recipient}/fanout/unseal
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [room, recipient]
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: "."
+      - name: unseal
+        type: step.signal_sender_unseal
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "recipient" }}'
+          required_principal: 'principal://{{ index .steps "parse" "path_params" "recipient" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            room: '{{ index .steps "parse" "path_params" "room" }}'
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            denied:
+              _from: steps.unseal.denied
+            error:
+              _from: steps.unseal.error
+            sender_id:
+              _from: steps.unseal.sender_id
+            sender_device_id:
+              _from: steps.unseal.sender_device_id
+            group_id:
+              _from: steps.unseal.group_id
+            envelope:
+              _from: steps.unseal.envelope
+    on_error: stop
+
+  decrypt-fanout-message:
+    trigger:
+      type: http
+      config:
+        path: /rooms/{room}/participants/{recipient}/fanout/decrypt
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [room, recipient]
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: "."
+      - name: unseal
+        type: step.signal_sender_unseal
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "recipient" }}'
+          required_principal: 'principal://{{ index .steps "parse" "path_params" "recipient" }}'
+      - name: decrypt_input
+        type: step.set
+        config:
+          values:
+            principal: '{{ index .steps "parse" "body" "principal" }}'
+            envelope:
+              sender_id: '{{ index .steps "unseal" "envelope" "sender_id" }}'
+              sender_device_id: '{{ index .steps "unseal" "envelope" "sender_device_id" }}'
+              recipient_id: '{{ index .steps "unseal" "envelope" "recipient_id" }}'
+              recipient_device_id: '{{ index .steps "unseal" "envelope" "recipient_device_id" }}'
+              message_type: '{{ index .steps "unseal" "envelope" "message_type" }}'
+              ciphertext: '{{ index .steps "unseal" "envelope" "ciphertext" }}'
+      - name: decrypt
+        type: step.signal_decrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "recipient" }}'
+          required_principal: 'principal://{{ index .steps "parse" "path_params" "recipient" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            room: '{{ index .steps "parse" "path_params" "room" }}'
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            sender_id:
+              _from: steps.unseal.sender_id
+            sender_device_id:
+              _from: steps.unseal.sender_device_id
+            group_id:
+              _from: steps.unseal.group_id
+            plaintext:
+              _from: steps.decrypt.plaintext
+    on_error: stop
