@@ -1360,12 +1360,12 @@
       "localOnly": true,
       "notes": "Builds workflow-plugin-signal v0.18.0 as an external plugin, launches workflow-server, drives object-store public-intake APIs, verifies checksum-protected hash-derived object evidence, resolves the object-stored bundle after Workflow restart, rejects a tampered object on restart, exercises encrypted message/blob submission, wrong-principal decrypt denial, and authorized operator decrypt. No official Signal service egress.",
       "blockers": [],
-      "lastTested": "2026-07-04T00:26:43.611962Z",
+      "lastTested": "2026-07-04T00:35:31.394873Z",
       "lastResult": "pass",
       "testCount": 65,
       "passCount": 65,
       "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-04T00:26:43.611962Z"
+  "lastUpdated": "2026-07-04T00:35:31.394873Z"
 }

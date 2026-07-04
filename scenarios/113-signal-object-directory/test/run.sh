@@ -196,15 +196,15 @@ for step_type in \
   step.signal_blob_encrypt \
   step.signal_blob_decrypt
 do
-  if grep -q "type: $step_type" "$CONFIG"; then
+  if grep -Fq -- "type: $step_type" "$CONFIG"; then
     pass "Workflow app config exercises $step_type"
   else
     fail "Workflow app config does not exercise $step_type"
   fi
 done
-if grep -q 'backend: object_store' "$CONFIG" &&
-   grep -q 'storage_path: __OBJECT_DIRECTORY_ROOT__' "$CONFIG" &&
-   grep -q 'allow_object_store_backend: true' "$CONFIG"; then
+if grep -Fq -- 'backend: object_store' "$CONFIG" &&
+   grep -Fq -- 'storage_path: __OBJECT_DIRECTORY_ROOT__' "$CONFIG" &&
+   grep -Fq -- 'allow_object_store_backend: true' "$CONFIG"; then
   pass "Workflow app config declares explicit object-store public directory"
 else
   fail "Workflow app config does not declare explicit object-store public directory"
@@ -269,7 +269,7 @@ else
   fail "publish response missing public bundle evidence: $PUBLISHED"
 fi
 for forbidden in 'custody://' 'credential://' 'operator://host-intake' 'private-key' 'plaintext'; do
-  if printf '%s' "$PUBLISHED" | grep -q "$forbidden"; then
+  if printf '%s' "$PUBLISHED" | grep -Fq -- "$forbidden"; then
     fail "publish response leaked forbidden marker $forbidden"
   else
     pass "publish response did not leak $forbidden"
@@ -306,7 +306,7 @@ if [ "$OBJECT_COUNT" = "1" ] && [ -s "$DIRECTORY_OBJECT_FILE" ]; then
 else
   fail "object-store public directory wrote $OBJECT_COUNT objects"
 fi
-if printf '%s' "$DIRECTORY_OBJECT_FILE" | grep -Eq 'intake|support'; then
+if printf '%s' "$DIRECTORY_OBJECT_FILE" | grep -Fq -- "$INTAKE_REF"; then
   fail "object-store key leaked raw intake ref: $DIRECTORY_OBJECT_FILE"
 else
   pass "object-store key did not leak raw intake ref"
@@ -324,7 +324,7 @@ else
   fail "object-store entry missing expected persisted evidence"
 fi
 for forbidden in "$MESSAGE_MARKER" "$BLOB_MARKER" 'custody://' 'credential://' 'operator://host-intake' 'private-key' 'plaintext'; do
-  if grep -R -q "$forbidden" "$OBJECT_DIRECTORY_ROOT"; then
+  if grep -R -F -q -- "$forbidden" "$OBJECT_DIRECTORY_ROOT"; then
     fail "object-store public directory leaked forbidden marker $forbidden"
   else
     pass "object-store public directory did not leak $forbidden"
@@ -401,7 +401,7 @@ MESSAGE_SUBMIT="$(curl -fsS -X POST "$BASE_URL/intake/$INTAKE_REF/messages/$CALL
 MESSAGE_FILE="$DATA_DIR/message-queue.json"
 printf '%s' "$MESSAGE_SUBMIT" >"$MESSAGE_FILE"
 [ -s "$MESSAGE_FILE" ] && pass "local queue mock persisted message submission JSON" || fail "message queue mock did not persist output"
-if grep -q "$MESSAGE_MARKER" "$MESSAGE_FILE" || grep -q "$MESSAGE_B64" "$MESSAGE_FILE"; then
+if grep -Fq -- "$MESSAGE_MARKER" "$MESSAGE_FILE" || grep -Fq -- "$MESSAGE_B64" "$MESSAGE_FILE"; then
   fail "message queue mock leaked plaintext"
 else
   pass "message queue mock stored no plaintext"
@@ -456,7 +456,9 @@ mkdir -p "$OBJECT_STORE"
 OBJECT_FILE="$OBJECT_STORE/scenario-113-object.json"
 printf '%s' "$BLOB_SUBMIT" >"$OBJECT_FILE"
 [ -s "$OBJECT_FILE" ] && pass "mock object store persisted encrypted blob JSON" || fail "mock object store did not persist encrypted blob JSON"
-if grep -q "$BLOB_MARKER" "$OBJECT_FILE" || grep -q "$BLOB_B64" "$OBJECT_FILE" || grep -q "$BLOB_SHA" "$OBJECT_FILE"; then
+if grep -Fq -- "$BLOB_MARKER" "$OBJECT_FILE" ||
+   grep -Fq -- "$BLOB_B64" "$OBJECT_FILE" ||
+   grep -Fq -- "$BLOB_SHA" "$OBJECT_FILE"; then
   fail "mock object store leaked blob plaintext or plaintext digest"
 else
   pass "mock object store did not expose blob plaintext or digest"
