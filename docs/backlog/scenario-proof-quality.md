@@ -1,7 +1,7 @@
 # Scenario Proof Quality Backlog
 
 This backlog tracks scenarios whose tests do not yet meet the repository proof
-standard. The audit was refreshed after scenarios 23-35 and 104-105 were
+standard. The audit was refreshed after scenarios 23-35 and 104-116 were
 converted to real Workflow app/API proofs.
 
 ## Audit Method
@@ -17,9 +17,9 @@ without HTTP if the scenario is explicitly a `wfctl`/CLI/tooling contract.
 
 ## Summary
 
-- 102 scenarios have `test/run.sh` scripts.
-- 66 scenarios currently exercise an API/application-style boundary.
-- 92 scenarios exercise a Workflow host or `wfctl` boundary.
+- 113 scenarios have `test/run.sh` scripts.
+- 77 scenarios currently exercise an API/application-style boundary.
+- 103 scenarios exercise a Workflow host or `wfctl` boundary.
 - 1 scenario is explicitly manual/out-of-band.
 - 4 scenarios exercise committed replay fixtures.
 - 1 scenario exercises a released plugin contract validator.
@@ -27,6 +27,11 @@ without HTTP if the scenario is explicitly a `wfctl`/CLI/tooling contract.
   behavior.
 - 0 scenarios were classified as static-only without a Workflow/API marker.
 - 0 scenarios have no first-pass proof marker.
+
+Current open state: no scenario is currently classified as package-test-only,
+static-only, or missing a first-pass proof marker. The only residual
+classifications are the explicit manual, fixture, and contract scenarios listed
+below.
 
 ## Highest Priority: Package-Test-Only Scenarios
 
