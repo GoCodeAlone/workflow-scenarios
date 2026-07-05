@@ -1456,7 +1456,20 @@
       "testCount": 77,
       "passCount": 77,
       "failCount": 0
+    },
+    "121-signal-trust-object-store": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Builds workflow-plugin-signal v0.27.0 as an external plugin, launches workflow-server with signal.trust_store backend object_store, drives participant-parametric trust observe/reset/history/policy HTTP APIs for two participant pairs, verifies trusted-send policy gating, changed-status enforcement denial, report-only denial metadata, stale required-record denial, missing-trust reporting, reset/trusted allow decisions, restart persistence, hash-derived object key, object checksum tamper rejection, wrong-key rejection, and no official Signal service egress.",
+      "blockers": [],
+      "lastTested": "2026-07-05T07:30:24.546234Z",
+      "lastResult": "pass",
+      "testCount": 76,
+      "passCount": 76,
+      "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-05T06:11:39.679911Z"
+  "lastUpdated": "2026-07-05T07:30:24.546234Z"
 }
