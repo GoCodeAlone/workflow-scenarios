@@ -1482,7 +1482,33 @@
       "testCount": 88,
       "passCount": 88,
       "failCount": 0
+    },
+    "123-signal-envelope-delivery": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Workflow app proof for workflow-plugin-signal v0.29.0 encrypted envelope delivery lifecycle: external plugin loading, participant-parametric sender/worker/recipient HTTP routes, claim/release/reclaim/deliver/ack/decrypt, ciphertext-only worker visibility, duplicate ack rejection, and reclaim-after-ack rejection.",
+      "blockers": [],
+      "lastTested": "2026-07-05T22:54:13.141602Z",
+      "lastResult": "pass",
+      "testCount": 37,
+      "passCount": 37,
+      "failCount": 0
+    },
+    "124-signal-envelope-sqlite": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Workflow app proof for workflow-plugin-signal v0.29.0 SQLite envelope-store persistence: external plugin loading, scenario-local SQLite file, participant-parametric sender/worker/recipient HTTP routes, pre-restart decrypt, queued/released restart survival, terminal ack persistence, and plaintext-marker absence from SQLite snapshot.",
+      "blockers": [],
+      "lastTested": "2026-07-05T23:04:11.644760Z",
+      "lastResult": "pass",
+      "testCount": 40,
+      "passCount": 40,
+      "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-05T18:23:04.920092Z"
+  "lastUpdated": "2026-07-05T23:04:11.644760Z"
 }
