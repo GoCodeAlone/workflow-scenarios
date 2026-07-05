@@ -1,0 +1,40 @@
+name: Signal Trust Policy Gate
+id: "120-signal-trust-policy-gate"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal uses an HTTP
+  trust-store backend with auth and uses step.signal_trust_policy_check as an
+  application gate before encrypted send/enqueue. The scenario runs
+  workflow-server, loads workflow-plugin-signal v0.26.0 as an external plugin,
+  drives two participant-parametric HTTP route pairs, verifies policy allow,
+  deny, report-only, record-mismatch, missing-trust, reset, and post-restart
+  decisions, and keeps policy output redacted.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.trust_store
+  - signal.envelope_store
+  - step.signal_session_prepare
+  - step.signal_trust_observe
+  - step.signal_trust_reset
+  - step.signal_trust_history
+  - step.signal_trust_policy_check
+  - step.signal_encrypt
+  - step.signal_outbox_enqueue
+status: testable
+tags:
+  - signal
+  - trust-reset
+  - trust-policy
+  - trust-history
+  - http-backend
+  - safety-number
+  - tofu
+  - workflow-plugin
+  - local-only
+  - compare-and-set
+  - tamper-rejection
+runtime: local

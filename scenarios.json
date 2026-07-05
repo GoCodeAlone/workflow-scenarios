@@ -1443,7 +1443,20 @@
       "testCount": 59,
       "passCount": 59,
       "failCount": 0
+    },
+    "120-signal-trust-policy-gate": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Builds workflow-plugin-signal v0.26.0 as an external plugin, launches workflow-server with a scenario fake HTTP trust backend, drives participant-parametric trust observe/reset/history/policy HTTP APIs for two participant pairs, verifies trusted-send policy gating, changed-status enforcement denial, report-only denial metadata, stale required-record denial, missing-trust reporting, reset/trusted allow decisions, restart persistence, and no official Signal service egress.",
+      "blockers": [],
+      "lastTested": "2026-07-05T06:11:39.679911Z",
+      "lastResult": "pass",
+      "testCount": 77,
+      "passCount": 77,
+      "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-05T04:57:28.932159Z"
+  "lastUpdated": "2026-07-05T06:11:39.679911Z"
 }
