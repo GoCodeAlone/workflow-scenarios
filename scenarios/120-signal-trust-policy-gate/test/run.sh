@@ -185,9 +185,19 @@ wait_for_backend() {
 
 start_backend() {
   BACKEND_LOG="$SCRIPT_DIR/artifacts/last-trust-backend.log"
+  local listen="${TRUST_BACKEND_LISTEN:-}"
+  if [ -z "$listen" ]; then
+    listen="${TRUST_BACKEND_URL#http://}"
+    listen="${listen#https://}"
+    listen="${listen%%/*}"
+  fi
+  if [ -z "$listen" ] || [ "$listen" = "$TRUST_BACKEND_URL" ]; then
+    echo "could not derive fake backend listen address from TRUST_BACKEND_URL=$TRUST_BACKEND_URL" >&2
+    return 1
+  fi
   mkdir -p "$(dirname "$BACKEND_LOG")"
   python3 "$SCRIPT_DIR/fake_trust_backend.py" \
-    --listen "127.0.0.1:19120" \
+    --listen "$listen" \
     --state "$BACKEND_STATE" \
     --store-ref persistent_trust \
     --token "$SIGNAL_TRUST_HTTP_TOKEN" >"$BACKEND_LOG" 2>&1 &
@@ -374,7 +384,7 @@ else
   exit 1
 fi
 
-if ! DATA_DIR="$(mktemp -d)"; then
+if ! DATA_DIR="$(mktemp -d "${TMPDIR:-/tmp}/scenario-120.XXXXXX")"; then
   fail "could not create temporary data directory"
   finish
   exit 1

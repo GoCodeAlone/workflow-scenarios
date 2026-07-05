@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -13,6 +14,7 @@ class Store:
         self.token = token
         self.force_conflict = False
         self.force_corrupt = False
+        self.lock = threading.Lock()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not self.path.exists():
             self._write({"generation_ref": "", "snapshot": None, "puts": 0})
@@ -26,36 +28,54 @@ class Store:
         tmp.replace(self.path)
 
     def state(self):
-        return self._read()
+        with self.lock:
+            return self._read()
 
     def snapshot_get(self):
-        state = self._read()
-        snapshot = state.get("snapshot")
-        if snapshot is None:
-            return {"status": "not_found", "generation_ref": state.get("generation_ref", "")}
-        return {
-            "status": "ok",
-            "generation_ref": state.get("generation_ref", ""),
-            "snapshot": snapshot,
-        }
+        with self.lock:
+            state = self._read()
+            snapshot = state.get("snapshot")
+            if snapshot is None:
+                return {"status": "not_found", "generation_ref": state.get("generation_ref", "")}
+            return {
+                "status": "ok",
+                "generation_ref": state.get("generation_ref", ""),
+                "snapshot": snapshot,
+            }
 
     def snapshot_put(self, req):
-        state = self._read()
-        if req.get("store_ref") != self.store_ref:
-            return 400, {"error": "wrong store"}
-        if self.force_conflict:
-            self.force_conflict = False
-            return 409, {"error": "generation conflict"}
-        if req.get("previous_generation_ref", "") != state.get("generation_ref", ""):
-            return 409, {"error": "generation conflict"}
-        puts = int(state.get("puts", 0)) + 1
-        next_state = {
-            "generation_ref": f"generation-{puts}",
-            "snapshot": req.get("snapshot"),
-            "puts": puts,
-        }
-        self._write(next_state)
-        return 200, {"status": "ok", "generation_ref": next_state["generation_ref"]}
+        with self.lock:
+            state = self._read()
+            if req.get("store_ref") != self.store_ref:
+                return 400, {"error": "wrong store"}
+            if self.force_conflict:
+                self.force_conflict = False
+                return 409, {"error": "generation conflict"}
+            if req.get("previous_generation_ref", "") != state.get("generation_ref", ""):
+                return 409, {"error": "generation conflict"}
+            puts = int(state.get("puts", 0)) + 1
+            next_state = {
+                "generation_ref": f"generation-{puts}",
+                "snapshot": req.get("snapshot"),
+                "puts": puts,
+            }
+            self._write(next_state)
+            return 200, {"status": "ok", "generation_ref": next_state["generation_ref"]}
+
+    def arm_conflict(self):
+        with self.lock:
+            self.force_conflict = True
+
+    def arm_corrupt(self):
+        with self.lock:
+            self.force_corrupt = True
+
+    def consume_corrupt(self):
+        with self.lock:
+            if not self.force_corrupt:
+                return False
+            self.force_corrupt = False
+            return True
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -96,8 +116,7 @@ class Handler(BaseHTTPRequestHandler):
         if query.get("store_ref", [""])[0] != self.store.store_ref:
             self._send(400, {"error": "wrong store"})
             return
-        if self.store.force_corrupt:
-            self.store.force_corrupt = False
+        if self.store.consume_corrupt():
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -108,11 +127,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         if parsed.path == "/control/conflict":
-            self.store.force_conflict = True
+            self.store.arm_conflict()
             self._send(200, {"status": "armed"})
             return
         if parsed.path == "/control/corrupt":
-            self.store.force_corrupt = True
+            self.store.arm_corrupt()
             self._send(200, {"status": "armed"})
             return
         self._send(404, {"error": "not found"})
