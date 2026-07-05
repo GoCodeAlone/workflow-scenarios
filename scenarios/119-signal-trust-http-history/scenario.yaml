@@ -1,0 +1,38 @@
+name: Signal HTTP Trust History
+id: "119-signal-trust-http-history"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal uses an HTTP
+  trust-store backend with auth, snapshot generation compare-and-set, and
+  redacted trust history. The scenario runs workflow-server, loads
+  workflow-plugin-signal v0.25.0 as an external plugin, drives two
+  participant-parametric HTTP route pairs, rejects changed keys and stale
+  resets, rotates a trust record, queries redacted history, restarts from the
+  same HTTP backend, and verifies auth/corrupt/conflict failure modes.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.trust_store
+  - signal.envelope_store
+  - step.signal_session_prepare
+  - step.signal_trust_observe
+  - step.signal_trust_reset
+  - step.signal_trust_history
+  - step.signal_encrypt
+  - step.signal_outbox_enqueue
+status: testable
+tags:
+  - signal
+  - trust-reset
+  - trust-history
+  - http-backend
+  - safety-number
+  - tofu
+  - workflow-plugin
+  - local-only
+  - compare-and-set
+  - tamper-rejection
+runtime: local
