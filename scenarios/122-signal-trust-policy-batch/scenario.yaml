@@ -1,0 +1,45 @@
+name: Signal Trust Policy Batch
+id: "122-signal-trust-policy-batch"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal v0.28.0 can use
+  step.signal_trust_policy_check_batch as an application gate before
+  multi-recipient encrypted send/enqueue. The scenario runs workflow-server,
+  loads workflow-plugin-signal as a released external plugin, drives
+  participant-parametric HTTP route pairs and a two-recipient group route,
+  verifies all-allowed batch admission, per-recipient encrypted outbox
+  artifacts, changed-recipient denial metadata, duplicate/oversized recipient
+  rejection, object-store restart/tamper/wrong-key fail-closed behavior, and
+  redacted outputs.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.trust_store
+  - signal.envelope_store
+  - step.signal_session_prepare
+  - step.signal_trust_observe
+  - step.signal_trust_reset
+  - step.signal_trust_history
+  - step.signal_trust_policy_check
+  - step.signal_trust_policy_check_batch
+  - step.signal_encrypt
+  - step.signal_outbox_enqueue
+status: testable
+tags:
+  - signal
+  - trust-reset
+  - trust-policy
+  - trust-policy-batch
+  - group-send
+  - trust-history
+  - object-store
+  - safety-number
+  - tofu
+  - workflow-plugin
+  - local-only
+  - compare-and-set
+  - tamper-rejection
+runtime: local

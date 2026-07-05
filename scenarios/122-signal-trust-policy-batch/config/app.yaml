@@ -1,0 +1,650 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":18122"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: user_a_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-a
+      local_id: user-a@example.test
+      device_id: 1
+      registration_id: 6316
+
+  - name: user_b_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-b
+      local_id: user-b@example.test
+      device_id: 1
+      registration_id: 6317
+
+  - name: user_c_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-c
+      local_id: user-c@example.test
+      device_id: 1
+      registration_id: 6318
+
+  - name: tenant_a_identity
+    type: signal.identity_store
+    config:
+      identity_ref: tenant-a
+      local_id: tenant-a@example.test
+      device_id: 1
+      registration_id: 6319
+
+  - name: tenant_b_identity
+    type: signal.identity_store
+    config:
+      identity_ref: tenant-b
+      local_id: tenant-b@example.test
+      device_id: 1
+      registration_id: 6320
+
+  - name: persistent_trust
+    type: signal.trust_store
+    config:
+      store_ref: persistent_trust
+      backend: object_store
+      storage_path: __TRUST_OBJECT_STORE_PATH__
+      allow_object_store_backend: true
+
+  - name: trusted_outbox
+    type: signal.envelope_store
+    config:
+      store_ref: trusted_outbox
+      backend: memory
+      retention_limit: 64
+
+workflows:
+  http:
+    server: server
+    router: router
+
+pipelines:
+  healthz:
+    trigger: { type: http, config: { path: /healthz, method: GET } }
+    steps:
+      - name: ok
+        type: step.json_response
+        config:
+          status: 200
+          body: { status: ok, scenario: "122-signal-trust-policy-batch" }
+
+  prepare-session:
+    trigger:
+      type: http
+      config:
+        path: /participants/{participant}/session
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [participant]
+      - name: prepare
+        type: step.signal_session_prepare
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "participant" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            participant: '{{ index .steps "parse" "path_params" "participant" }}'
+            bundle:
+              _from: steps.prepare.bundle
+    on_error: stop
+
+  trusted-send:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/participants/{sender}/trusted-send/{recipient}
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, sender, recipient]
+          parse_body: true
+          merge_body: true
+      - name: trust_input
+        type: step.set
+        config:
+          values:
+            trust_ref: 'space://{{ index .steps "parse" "path_params" "space" }}/{{ index .steps "parse" "path_params" "sender" }}/{{ index .steps "parse" "path_params" "recipient" }}'
+            local_id: '{{ index .steps "parse" "path_params" "sender" }}@example.test'
+            local_key: '{{ index .steps "parse" "body" "local_bundle" "identity_key" }}'
+            remote_id: '{{ index .steps "parse" "path_params" "recipient" }}@example.test'
+            remote_key: '{{ index .steps "parse" "body" "remote_bundle" "identity_key" }}'
+            reason_ref: 'message://{{ index .steps "parse" "path_params" "space" }}/{{ index .steps "parse" "body" "message_ref" }}'
+      - name: trust
+        type: step.signal_trust_observe
+        config:
+          store_ref: persistent_trust
+          policy: trust_on_first_use
+          version: 1
+          iterations: 5200
+      - name: policy_gate_input
+        type: step.set
+        config:
+          values:
+            trust_ref: 'space://{{ index .steps "parse" "path_params" "space" }}/{{ index .steps "parse" "path_params" "sender" }}/{{ index .steps "parse" "path_params" "recipient" }}'
+            required_record_ref: '{{ index .steps "trust" "record_ref" }}'
+      - name: policy_gate
+        type: step.signal_trust_policy_check
+        config:
+          store_ref: persistent_trust
+      - name: encrypt_input
+        type: step.set
+        config:
+          values:
+            remote_id: '{{ index .steps "parse" "path_params" "recipient" }}@example.test'
+            remote_device_id: 1
+            plaintext: '{{ index .steps "parse" "body" "plaintext" }}'
+            remote_bundle:
+              identity_ref: '{{ index .steps "parse" "body" "remote_bundle" "identity_ref" }}'
+              local_id: '{{ index .steps "parse" "body" "remote_bundle" "local_id" }}'
+              device_id: '{{ index .steps "parse" "body" "remote_bundle" "device_id" }}'
+              registration_id: '{{ index .steps "parse" "body" "remote_bundle" "registration_id" }}'
+              pre_key_id: '{{ index .steps "parse" "body" "remote_bundle" "pre_key_id" }}'
+              pre_key: '{{ index .steps "parse" "body" "remote_bundle" "pre_key" }}'
+              signed_pre_key_id: '{{ index .steps "parse" "body" "remote_bundle" "signed_pre_key_id" }}'
+              signed_pre_key: '{{ index .steps "parse" "body" "remote_bundle" "signed_pre_key" }}'
+              signed_pre_key_signature: '{{ index .steps "parse" "body" "remote_bundle" "signed_pre_key_signature" }}'
+              kyber_pre_key_id: '{{ index .steps "parse" "body" "remote_bundle" "kyber_pre_key_id" }}'
+              kyber_pre_key: '{{ index .steps "parse" "body" "remote_bundle" "kyber_pre_key" }}'
+              kyber_pre_key_signature: '{{ index .steps "parse" "body" "remote_bundle" "kyber_pre_key_signature" }}'
+              identity_key: '{{ index .steps "parse" "body" "remote_bundle" "identity_key" }}'
+      - name: encrypt
+        type: step.signal_encrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "sender" }}'
+      - name: enqueue_input
+        type: step.set
+        config:
+          values:
+            envelope:
+              sender_id: '{{ index .steps "encrypt" "envelope" "sender_id" }}'
+              sender_device_id: '{{ index .steps "encrypt" "envelope" "sender_device_id" }}'
+              recipient_id: '{{ index .steps "encrypt" "envelope" "recipient_id" }}'
+              recipient_device_id: '{{ index .steps "encrypt" "envelope" "recipient_device_id" }}'
+              message_type: '{{ index .steps "encrypt" "envelope" "message_type" }}'
+              ciphertext: '{{ index .steps "encrypt" "envelope" "ciphertext" }}'
+            sender_ref: 'participant://{{ index .steps "parse" "path_params" "sender" }}'
+            recipient_ref: 'participant://{{ index .steps "parse" "path_params" "recipient" }}'
+            custody_ref: 'custody://{{ index .steps "parse" "path_params" "sender" }}/device-1'
+            authz_ref: 'authz://signal/{{ index .steps "parse" "path_params" "sender" }}/send/{{ index .steps "parse" "path_params" "recipient" }}'
+            message_ref: '{{ index .steps "parse" "body" "message_ref" }}'
+            idempotency_key: '{{ index .steps "parse" "path_params" "space" }}-{{ index .steps "parse" "path_params" "sender" }}-{{ index .steps "parse" "path_params" "recipient" }}-{{ index .steps "parse" "body" "message_ref" }}'
+      - name: enqueue
+        type: step.signal_outbox_enqueue
+        config:
+          store_ref: trusted_outbox
+      - name: respond
+        type: step.json_response
+        config:
+          status: 202
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            trust:
+              _from: steps.trust
+            policy:
+              _from: steps.policy_gate
+            envelope_ref:
+              _from: steps.enqueue.envelope_ref
+            status:
+              _from: steps.enqueue.status
+            envelope:
+              _from: steps.encrypt.envelope
+    on_error: stop
+
+  group-send:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/participants/{sender}/group-send
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, sender]
+          parse_body: true
+          merge_body: true
+      - name: trust_input_a
+        type: step.set
+        config:
+          values:
+            trust_ref: 'space://{{ index .steps "parse" "path_params" "space" }}/{{ index .steps "parse" "path_params" "sender" }}/{{ index .steps "parse" "body" "recipient_a" }}'
+            local_id: '{{ index .steps "parse" "path_params" "sender" }}@example.test'
+            local_key: '{{ index .steps "parse" "body" "local_bundle" "identity_key" }}'
+            remote_id: '{{ index .steps "parse" "body" "recipient_a" }}@example.test'
+            remote_key: '{{ index .steps "parse" "body" "remote_bundle_a" "identity_key" }}'
+            reason_ref: 'message://{{ index .steps "parse" "path_params" "space" }}/{{ index .steps "parse" "body" "message_ref" }}/{{ index .steps "parse" "body" "recipient_a" }}'
+      - name: trust_a
+        type: step.signal_trust_observe
+        config:
+          store_ref: persistent_trust
+          policy: trust_on_first_use
+          version: 1
+          iterations: 5200
+      - name: trust_input_b
+        type: step.set
+        config:
+          values:
+            trust_ref: 'space://{{ index .steps "parse" "path_params" "space" }}/{{ index .steps "parse" "path_params" "sender" }}/{{ index .steps "parse" "body" "recipient_b" }}'
+            local_id: '{{ index .steps "parse" "path_params" "sender" }}@example.test'
+            local_key: '{{ index .steps "parse" "body" "local_bundle" "identity_key" }}'
+            remote_id: '{{ index .steps "parse" "body" "recipient_b" }}@example.test'
+            remote_key: '{{ index .steps "parse" "body" "remote_bundle_b" "identity_key" }}'
+            reason_ref: 'message://{{ index .steps "parse" "path_params" "space" }}/{{ index .steps "parse" "body" "message_ref" }}/{{ index .steps "parse" "body" "recipient_b" }}'
+      - name: trust_b
+        type: step.signal_trust_observe
+        config:
+          store_ref: persistent_trust
+          policy: trust_on_first_use
+          version: 1
+          iterations: 5200
+      - name: batch_policy_input
+        type: step.set
+        config:
+          values:
+            subjects:
+              - trust_ref: 'space://{{ index .steps "parse" "path_params" "space" }}/{{ index .steps "parse" "path_params" "sender" }}/{{ index .steps "parse" "body" "recipient_a" }}'
+                required_record_ref: '{{ index .steps "trust_a" "record_ref" }}'
+              - trust_ref: 'space://{{ index .steps "parse" "path_params" "space" }}/{{ index .steps "parse" "path_params" "sender" }}/{{ index .steps "parse" "body" "recipient_b" }}'
+                required_record_ref: '{{ index .steps "trust_b" "record_ref" }}'
+      - name: batch_policy
+        type: step.signal_trust_policy_check_batch
+        config:
+          store_ref: persistent_trust
+      - name: encrypt_input_a
+        type: step.set
+        config:
+          values:
+            remote_id: '{{ index .steps "parse" "body" "recipient_a" }}@example.test'
+            remote_device_id: 1
+            plaintext: '{{ index .steps "parse" "body" "plaintext" }}'
+            remote_bundle:
+              identity_ref: '{{ index .steps "parse" "body" "remote_bundle_a" "identity_ref" }}'
+              local_id: '{{ index .steps "parse" "body" "remote_bundle_a" "local_id" }}'
+              device_id: '{{ index .steps "parse" "body" "remote_bundle_a" "device_id" }}'
+              registration_id: '{{ index .steps "parse" "body" "remote_bundle_a" "registration_id" }}'
+              pre_key_id: '{{ index .steps "parse" "body" "remote_bundle_a" "pre_key_id" }}'
+              pre_key: '{{ index .steps "parse" "body" "remote_bundle_a" "pre_key" }}'
+              signed_pre_key_id: '{{ index .steps "parse" "body" "remote_bundle_a" "signed_pre_key_id" }}'
+              signed_pre_key: '{{ index .steps "parse" "body" "remote_bundle_a" "signed_pre_key" }}'
+              signed_pre_key_signature: '{{ index .steps "parse" "body" "remote_bundle_a" "signed_pre_key_signature" }}'
+              kyber_pre_key_id: '{{ index .steps "parse" "body" "remote_bundle_a" "kyber_pre_key_id" }}'
+              kyber_pre_key: '{{ index .steps "parse" "body" "remote_bundle_a" "kyber_pre_key" }}'
+              kyber_pre_key_signature: '{{ index .steps "parse" "body" "remote_bundle_a" "kyber_pre_key_signature" }}'
+              identity_key: '{{ index .steps "parse" "body" "remote_bundle_a" "identity_key" }}'
+      - name: encrypt_a
+        type: step.signal_encrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "sender" }}'
+      - name: enqueue_input_a
+        type: step.set
+        config:
+          values:
+            envelope:
+              sender_id: '{{ index .steps "encrypt_a" "envelope" "sender_id" }}'
+              sender_device_id: '{{ index .steps "encrypt_a" "envelope" "sender_device_id" }}'
+              recipient_id: '{{ index .steps "encrypt_a" "envelope" "recipient_id" }}'
+              recipient_device_id: '{{ index .steps "encrypt_a" "envelope" "recipient_device_id" }}'
+              message_type: '{{ index .steps "encrypt_a" "envelope" "message_type" }}'
+              ciphertext: '{{ index .steps "encrypt_a" "envelope" "ciphertext" }}'
+            sender_ref: 'participant://{{ index .steps "parse" "path_params" "sender" }}'
+            recipient_ref: 'participant://{{ index .steps "parse" "body" "recipient_a" }}'
+            custody_ref: 'custody://{{ index .steps "parse" "path_params" "sender" }}/device-1'
+            authz_ref: 'authz://signal/{{ index .steps "parse" "path_params" "sender" }}/send/{{ index .steps "parse" "body" "recipient_a" }}'
+            message_ref: '{{ index .steps "parse" "body" "message_ref" }}-a'
+            idempotency_key: '{{ index .steps "parse" "path_params" "space" }}-{{ index .steps "parse" "path_params" "sender" }}-{{ index .steps "parse" "body" "recipient_a" }}-{{ index .steps "parse" "body" "message_ref" }}'
+      - name: enqueue_a
+        type: step.signal_outbox_enqueue
+        config:
+          store_ref: trusted_outbox
+      - name: encrypt_input_b
+        type: step.set
+        config:
+          values:
+            remote_id: '{{ index .steps "parse" "body" "recipient_b" }}@example.test'
+            remote_device_id: 1
+            plaintext: '{{ index .steps "parse" "body" "plaintext" }}'
+            remote_bundle:
+              identity_ref: '{{ index .steps "parse" "body" "remote_bundle_b" "identity_ref" }}'
+              local_id: '{{ index .steps "parse" "body" "remote_bundle_b" "local_id" }}'
+              device_id: '{{ index .steps "parse" "body" "remote_bundle_b" "device_id" }}'
+              registration_id: '{{ index .steps "parse" "body" "remote_bundle_b" "registration_id" }}'
+              pre_key_id: '{{ index .steps "parse" "body" "remote_bundle_b" "pre_key_id" }}'
+              pre_key: '{{ index .steps "parse" "body" "remote_bundle_b" "pre_key" }}'
+              signed_pre_key_id: '{{ index .steps "parse" "body" "remote_bundle_b" "signed_pre_key_id" }}'
+              signed_pre_key: '{{ index .steps "parse" "body" "remote_bundle_b" "signed_pre_key" }}'
+              signed_pre_key_signature: '{{ index .steps "parse" "body" "remote_bundle_b" "signed_pre_key_signature" }}'
+              kyber_pre_key_id: '{{ index .steps "parse" "body" "remote_bundle_b" "kyber_pre_key_id" }}'
+              kyber_pre_key: '{{ index .steps "parse" "body" "remote_bundle_b" "kyber_pre_key" }}'
+              kyber_pre_key_signature: '{{ index .steps "parse" "body" "remote_bundle_b" "kyber_pre_key_signature" }}'
+              identity_key: '{{ index .steps "parse" "body" "remote_bundle_b" "identity_key" }}'
+      - name: encrypt_b
+        type: step.signal_encrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "sender" }}'
+      - name: enqueue_input_b
+        type: step.set
+        config:
+          values:
+            envelope:
+              sender_id: '{{ index .steps "encrypt_b" "envelope" "sender_id" }}'
+              sender_device_id: '{{ index .steps "encrypt_b" "envelope" "sender_device_id" }}'
+              recipient_id: '{{ index .steps "encrypt_b" "envelope" "recipient_id" }}'
+              recipient_device_id: '{{ index .steps "encrypt_b" "envelope" "recipient_device_id" }}'
+              message_type: '{{ index .steps "encrypt_b" "envelope" "message_type" }}'
+              ciphertext: '{{ index .steps "encrypt_b" "envelope" "ciphertext" }}'
+            sender_ref: 'participant://{{ index .steps "parse" "path_params" "sender" }}'
+            recipient_ref: 'participant://{{ index .steps "parse" "body" "recipient_b" }}'
+            custody_ref: 'custody://{{ index .steps "parse" "path_params" "sender" }}/device-1'
+            authz_ref: 'authz://signal/{{ index .steps "parse" "path_params" "sender" }}/send/{{ index .steps "parse" "body" "recipient_b" }}'
+            message_ref: '{{ index .steps "parse" "body" "message_ref" }}-b'
+            idempotency_key: '{{ index .steps "parse" "path_params" "space" }}-{{ index .steps "parse" "path_params" "sender" }}-{{ index .steps "parse" "body" "recipient_b" }}-{{ index .steps "parse" "body" "message_ref" }}'
+      - name: enqueue_b
+        type: step.signal_outbox_enqueue
+        config:
+          store_ref: trusted_outbox
+      - name: respond
+        type: step.json_response
+        config:
+          status: 202
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
+            recipients:
+              - '{{ index .steps "parse" "body" "recipient_a" }}'
+              - '{{ index .steps "parse" "body" "recipient_b" }}'
+            batch_policy:
+              _from: steps.batch_policy
+            trust:
+              a:
+                _from: steps.trust_a
+              b:
+                _from: steps.trust_b
+            envelopes:
+              a:
+                envelope_ref:
+                  _from: steps.enqueue_a.envelope_ref
+                envelope:
+                  _from: steps.encrypt_a.envelope
+              b:
+                envelope_ref:
+                  _from: steps.enqueue_b.envelope_ref
+                envelope:
+                  _from: steps.encrypt_b.envelope
+    on_error: stop
+
+  trust-check:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/participants/{sender}/trust-check/{recipient}
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, sender, recipient]
+          parse_body: true
+          merge_body: true
+      - name: trust_input
+        type: step.set
+        config:
+          values:
+            trust_ref: 'space://{{ index .steps "parse" "path_params" "space" }}/{{ index .steps "parse" "path_params" "sender" }}/{{ index .steps "parse" "path_params" "recipient" }}'
+            local_id: '{{ index .steps "parse" "path_params" "sender" }}@example.test'
+            local_key: '{{ index .steps "parse" "body" "local_bundle" "identity_key" }}'
+            remote_id: '{{ index .steps "parse" "path_params" "recipient" }}@example.test'
+            remote_key: '{{ index .steps "parse" "body" "remote_bundle" "identity_key" }}'
+            reason_ref: '{{ index .steps "parse" "body" "reason_ref" }}'
+      - name: trust
+        type: step.signal_trust_observe
+        config:
+          store_ref: persistent_trust
+          policy: require_existing
+          version: 1
+          iterations: 5200
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            trust:
+              _from: steps.trust
+    on_error: stop
+
+  trust-policy:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/participants/{sender}/trust-policy/{recipient}
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, sender, recipient]
+          parse_body: true
+          merge_body: true
+      - name: policy_input
+        type: step.set
+        config:
+          values:
+            trust_ref: 'space://{{ index .steps "parse" "path_params" "space" }}/{{ index .steps "parse" "path_params" "sender" }}/{{ index .steps "parse" "path_params" "recipient" }}'
+            required_record_ref: '{{ index .steps "parse" "body" "required_record_ref" }}'
+      - name: policy
+        type: step.signal_trust_policy_check
+        config:
+          store_ref: persistent_trust
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            policy:
+              _from: steps.policy
+    on_error: stop
+
+  trust-policy-report:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/participants/{sender}/trust-policy-report/{recipient}
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, sender, recipient]
+          parse_body: true
+          merge_body: true
+      - name: policy_input
+        type: step.set
+        config:
+          values:
+            trust_ref: 'space://{{ index .steps "parse" "path_params" "space" }}/{{ index .steps "parse" "path_params" "sender" }}/{{ index .steps "parse" "path_params" "recipient" }}'
+            required_record_ref: '{{ index .steps "parse" "body" "required_record_ref" }}'
+      - name: policy
+        type: step.signal_trust_policy_check
+        config:
+          store_ref: persistent_trust
+          report_only: true
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            policy:
+              _from: steps.policy
+    on_error: stop
+
+  batch-policy:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/participants/{sender}/batch-policy
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, sender]
+          parse_body: true
+          merge_body: true
+      - name: batch_policy_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: '{subjects: .subjects}'
+      - name: batch_policy
+        type: step.signal_trust_policy_check_batch
+        config:
+          store_ref: persistent_trust
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
+            batch_policy:
+              _from: steps.batch_policy
+    on_error: stop
+
+  batch-policy-report:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/participants/{sender}/batch-policy-report
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, sender]
+          parse_body: true
+          merge_body: true
+      - name: batch_policy_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: '{subjects: .subjects, report_only: true}'
+      - name: batch_policy
+        type: step.signal_trust_policy_check_batch
+        config:
+          store_ref: persistent_trust
+          report_only: true
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
+            batch_policy:
+              _from: steps.batch_policy
+    on_error: stop
+
+  trust-reset:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/participants/{sender}/trust-reset/{recipient}
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, sender, recipient]
+          parse_body: true
+          merge_body: true
+      - name: reset_input
+        type: step.set
+        config:
+          values:
+            trust_ref: 'space://{{ index .steps "parse" "path_params" "space" }}/{{ index .steps "parse" "path_params" "sender" }}/{{ index .steps "parse" "path_params" "recipient" }}'
+            local_id: '{{ index .steps "parse" "path_params" "sender" }}@example.test'
+            local_key: '{{ index .steps "parse" "body" "local_bundle" "identity_key" }}'
+            remote_id: '{{ index .steps "parse" "path_params" "recipient" }}@example.test'
+            remote_key: '{{ index .steps "parse" "body" "remote_bundle" "identity_key" }}'
+            reason_ref: '{{ index .steps "parse" "body" "reason_ref" }}'
+            previous_record_ref: '{{ index .steps "parse" "body" "previous_record_ref" }}'
+      - name: reset
+        type: step.signal_trust_reset
+        config:
+          store_ref: persistent_trust
+          policy: require_existing
+          version: 1
+          iterations: 5200
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            reset:
+              _from: steps.reset
+    on_error: stop
+
+  trust-history:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/participants/{sender}/trust-history/{recipient}
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, sender, recipient]
+          parse_body: true
+          merge_body: true
+      - name: history_input
+        type: step.set
+        config:
+          values:
+            trust_ref: 'space://{{ index .steps "parse" "path_params" "space" }}/{{ index .steps "parse" "path_params" "sender" }}/{{ index .steps "parse" "path_params" "recipient" }}'
+      - name: history
+        type: step.signal_trust_history
+        config:
+          store_ref: persistent_trust
+          limit: 20
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            history:
+              _from: steps.history
+    on_error: stop
