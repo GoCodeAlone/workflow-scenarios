@@ -1469,7 +1469,20 @@
       "testCount": 76,
       "passCount": 76,
       "failCount": 0
+    },
+    "122-signal-trust-policy-batch": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Builds workflow-plugin-signal v0.28.0 as an external plugin, launches workflow-server with signal.trust_store backend object_store, drives participant-parametric trusted-send and two-recipient group-send HTTP APIs, verifies step.signal_trust_policy_check_batch all-allowed admission, recipient-specific encrypted outbox artifacts, changed-recipient report-only denial metadata, enforcing batch denial, duplicate and oversized recipient rejection, restart persistence, hash-derived object key, object checksum tamper rejection, wrong-key rejection, and no official Signal service egress.",
+      "blockers": [],
+      "lastTested": "2026-07-05T18:23:04.920092Z",
+      "lastResult": "pass",
+      "testCount": 88,
+      "passCount": 88,
+      "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-05T07:30:24.546234Z"
+  "lastUpdated": "2026-07-05T18:23:04.920092Z"
 }
