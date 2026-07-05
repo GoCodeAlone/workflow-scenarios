@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Scenario 122 - Signal trust object store.
+# Scenario 122 - Signal trust policy batch.
 #
 # Demonstration-fidelity: this starts the real Workflow server, loads the real
 # workflow-plugin-signal subprocess from data/plugins, and drives
@@ -387,7 +387,7 @@ else
   exit 1
 fi
 
-if ! DATA_DIR="$(mktemp -d "${TMPDIR:-/tmp}/scenario-121.XXXXXX")"; then
+if ! DATA_DIR="$(mktemp -d "${TMPDIR:-/tmp}/scenario-122.XXXXXX")"; then
   fail "could not create temporary data directory"
   finish
   exit 1
@@ -647,7 +647,7 @@ else
   fail "policy missing response was unexpected: $MISSING_POLICY_RESPONSE"
 fi
 if printf '%s' "$POLICY_REPORT_RESPONSE$MISMATCH_POLICY_RESPONSE$MISSING_POLICY_RESPONSE" | grep -Fq "$MESSAGE_MARKER" ||
-   printf '%s' "$POLICY_REPORT_RESPONSE$MISMATCH_POLICY_RESPONSE$MISSING_POLICY_RESPONSE" | grep -Eq 'display|scannable|private_key|plaintext|Authorization|scenario-121-token'; then
+   printf '%s' "$POLICY_REPORT_RESPONSE$MISMATCH_POLICY_RESPONSE$MISSING_POLICY_RESPONSE" | grep -Eq 'display|scannable|private_key|plaintext|Authorization|scenario-122-token'; then
   fail "policy responses exposed key material, plaintext, auth, or raw fingerprint evidence"
 else
   pass "policy responses expose only trust decision metadata"
@@ -780,7 +780,7 @@ if printf '%s' "$HISTORY_RESPONSE" | grep -Fq "$SENDER_KEY" ||
    printf '%s' "$HISTORY_RESPONSE" | grep -Fq "$OLD_KEY" ||
    printf '%s' "$HISTORY_RESPONSE" | grep -Fq "$NEW_KEY" ||
    printf '%s' "$HISTORY_RESPONSE" | grep -Fq "$MESSAGE_MARKER" ||
-   printf '%s' "$HISTORY_RESPONSE" | grep -Eq 'display|scannable|private_key|plaintext|Authorization|scenario-121-token'; then
+   printf '%s' "$HISTORY_RESPONSE" | grep -Eq 'display|scannable|private_key|plaintext|Authorization|scenario-122-token'; then
   fail "history response exposed key material, plaintext, auth, or raw fingerprint evidence"
 else
   pass "history response is redacted to decision metadata"
