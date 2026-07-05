@@ -1503,12 +1503,12 @@
       "localOnly": true,
       "notes": "Workflow app proof for workflow-plugin-signal v0.29.0 SQLite envelope-store persistence: external plugin loading, scenario-local SQLite file, participant-parametric sender/worker/recipient HTTP routes, pre-restart decrypt, queued/released restart survival, terminal ack persistence, and plaintext-marker absence from SQLite snapshot.",
       "blockers": [],
-      "lastTested": "2026-07-05T22:55:21.712892Z",
+      "lastTested": "2026-07-05T23:04:11.644760Z",
       "lastResult": "pass",
       "testCount": 40,
       "passCount": 40,
       "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-05T22:55:21.712892Z"
+  "lastUpdated": "2026-07-05T23:04:11.644760Z"
 }

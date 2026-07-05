@@ -78,7 +78,12 @@ plugin_repo_supports_sqlite_lifecycle() {
   [ -f "$repo/plugin.json" ] || return 1
   jq -e '
     (.capabilities.moduleTypes | index("signal.envelope_store")) and
+    (.capabilities.stepTypes | index("step.signal_session_prepare")) and
+    (.capabilities.stepTypes | index("step.signal_encrypt")) and
+    (.capabilities.stepTypes | index("step.signal_outbox_enqueue")) and
+    (.capabilities.stepTypes | index("step.signal_outbox_claim")) and
     (.capabilities.stepTypes | index("step.signal_outbox_release")) and
+    (.capabilities.stepTypes | index("step.signal_inbox_receive")) and
     (.capabilities.stepTypes | index("step.signal_outbox_ack")) and
     (.capabilities.stepTypes | index("step.signal_inbox_decrypt"))
   ' "$repo/plugin.json" >/dev/null 2>&1 || return 1
