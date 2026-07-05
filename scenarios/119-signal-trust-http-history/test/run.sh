@@ -304,11 +304,16 @@ http_status() {
   local method="$1"
   local url="$2"
   local body="${3:-}"
+  local status
   if [ -n "$body" ]; then
-    curl -sS -o /dev/null -w "%{http_code}" -X "$method" "$url" -H 'Content-Type: application/json' -d "$body" 2>/dev/null || echo "000"
+    status="$(curl -sS -o /dev/null -w "%{http_code}" -X "$method" "$url" -H 'Content-Type: application/json' -d "$body" 2>/dev/null || true)"
   else
-    curl -sS -o /dev/null -w "%{http_code}" -X "$method" "$url" 2>/dev/null || echo "000"
+    status="$(curl -sS -o /dev/null -w "%{http_code}" -X "$method" "$url" 2>/dev/null || true)"
   fi
+  case "$status" in
+    [0-9][0-9][0-9]) printf '%s\n' "$status" ;;
+    *) printf '000\n' ;;
+  esac
 }
 
 echo ""
@@ -647,6 +652,13 @@ else
 fi
 
 stop_server
+if start_server_without_auth_env; then
+  fail "workflow server started despite missing HTTP trust backend auth env"
+  stop_server
+else
+  pass "HTTP trust backend auth env is required during app startup"
+fi
+
 OLD_TOKEN="$SIGNAL_TRUST_HTTP_TOKEN"
 SIGNAL_TRUST_HTTP_TOKEN="wrong-token"
 if start_server; then
