@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/GoCodeAlone/workflow v0.85.1
+	github.com/GoCodeAlone/workflow v0.85.2
 	github.com/GoCodeAlone/workflow-plugin-control-plane v0.1.0
 	github.com/GoCodeAlone/workflow-plugin-data-engineering v0.3.1
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
@@ -18,7 +18,7 @@ require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.43.0 // indirect
 	github.com/DataDog/datadog-go/v5 v5.8.3 // indirect
 	github.com/GoCodeAlone/go-plugin v1.7.0 // indirect
-	github.com/GoCodeAlone/modular v1.13.4 // indirect
+	github.com/GoCodeAlone/modular v1.13.5 // indirect
 	github.com/GoCodeAlone/modular/modules/auth v1.17.0 // indirect
 	github.com/GoCodeAlone/modular/modules/cache v1.17.0 // indirect
 	github.com/GoCodeAlone/modular/modules/eventbus/v2 v2.10.0 // indirect
