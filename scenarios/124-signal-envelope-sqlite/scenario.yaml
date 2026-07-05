@@ -1,0 +1,39 @@
+name: Signal Envelope SQLite
+id: "124-signal-envelope-sqlite"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal v0.29.0 persists
+  encrypted envelope delivery state with signal.envelope_store backend sqlite.
+  The scenario loads the released external plugin, starts workflow-server with a
+  scenario-local SQLite file, drives sender/worker/recipient API calls for
+  queued, released, and acked envelopes, restarts Workflow, and proves queued
+  and released envelopes survive while acked envelopes remain terminal. It
+  proves decrypt before restart for the acked path and inspects the SQLite
+  snapshot to verify ciphertext state exists without the plaintext markers.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.envelope_store
+  - SQLite local store
+  - step.signal_session_prepare
+  - step.signal_encrypt
+  - step.signal_outbox_enqueue
+  - step.signal_outbox_claim
+  - step.signal_outbox_release
+  - step.signal_inbox_receive
+  - step.signal_outbox_ack
+  - step.signal_inbox_decrypt
+status: testable
+tags:
+  - signal
+  - envelope-delivery
+  - sqlite
+  - persistence
+  - encrypted-transport
+  - workflow-plugin
+  - local-only
+  - restart
+runtime: local
