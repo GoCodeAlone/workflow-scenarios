@@ -1,0 +1,829 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":18140"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: participant_a_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-a
+      local_id: user-a@example.test
+      device_id: 1
+      registration_id: 7140
+
+  - name: participant_b_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-b
+      local_id: user-b@example.test
+      device_id: 1
+      registration_id: 7141
+
+  - name: participant_c_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-c
+      local_id: user-c@example.test
+      device_id: 1
+      registration_id: 7142
+
+  - name: signal_envelopes
+    type: signal.envelope_store
+    config:
+      store_ref: signal_envelopes
+      backend: sqlite
+      storage_path: __SQLITE_PATH__
+      allow_sqlite_backend: true
+      retention_limit: 128
+
+  - name: signal_devices
+    type: signal.device_directory
+    config:
+      directory_ref: signal_devices
+      backend: local_file
+      storage_path: __DEVICE_DIR_PATH__
+      allow_local_file: true
+      redaction_audit_token: credential://scenario/140/must-not-persist
+
+workflows:
+  http:
+    server: server
+    router: router
+
+pipelines:
+  healthz:
+    trigger: { type: http, config: { path: /healthz, method: GET } }
+    steps:
+      - name: ok
+        type: step.json_response
+        config:
+          status: 200
+          body: { status: ok, scenario: "140-signal-device-directory-fanout" }
+
+  prepare-session:
+    trigger:
+      type: http
+      config:
+        path: /participants/{participant}/session
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [participant]
+      - name: prepare
+        type: step.signal_session_prepare
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "participant" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            participant: '{{ index .steps "parse" "path_params" "participant" }}'
+            bundle:
+              _from: steps.prepare.bundle
+    on_error: stop
+
+  device-publish:
+    trigger:
+      type: http
+      config:
+        path: /accounts/{account}/devices/{device}/publish
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [account, device]
+          parse_body: true
+          merge_body: true
+      - name: publish_input
+        type: step.set
+        config:
+          values:
+            account_ref: 'account://{{ index .steps "parse" "path_params" "account" }}'
+            device_ref: 'device://{{ index .steps "parse" "path_params" "account" }}/{{ index .steps "parse" "path_params" "device" }}'
+            identity_ref: '{{ index .steps "parse" "body" "identity_ref" }}'
+            device_id: '{{ index .steps "parse" "body" "device_id" }}'
+            bundle:
+              identity_ref: '{{ index .steps "parse" "body" "bundle" "identity_ref" }}'
+              local_id: '{{ index .steps "parse" "body" "bundle" "local_id" }}'
+              device_id: '{{ index .steps "parse" "body" "bundle" "device_id" }}'
+              registration_id: '{{ index .steps "parse" "body" "bundle" "registration_id" }}'
+              pre_key_id: '{{ index .steps "parse" "body" "bundle" "pre_key_id" }}'
+              pre_key: '{{ index .steps "parse" "body" "bundle" "pre_key" }}'
+              signed_pre_key_id: '{{ index .steps "parse" "body" "bundle" "signed_pre_key_id" }}'
+              signed_pre_key: '{{ index .steps "parse" "body" "bundle" "signed_pre_key" }}'
+              signed_pre_key_signature: '{{ index .steps "parse" "body" "bundle" "signed_pre_key_signature" }}'
+              kyber_pre_key_id: '{{ index .steps "parse" "body" "bundle" "kyber_pre_key_id" }}'
+              kyber_pre_key: '{{ index .steps "parse" "body" "bundle" "kyber_pre_key" }}'
+              kyber_pre_key_signature: '{{ index .steps "parse" "body" "bundle" "kyber_pre_key_signature" }}'
+              identity_key: '{{ index .steps "parse" "body" "bundle" "identity_key" }}'
+            idempotency_key: '{{ index .steps "parse" "body" "idempotency_key" }}'
+            published_by_ref: 'operator://{{ default "scenario-140" (index .steps "parse" "body" "operator") }}'
+            requested_at_unix: '{{ default 1000 (index .steps "parse" "body" "requested_at_unix") }}'
+      - name: publish
+        type: step.signal_device_publish
+        config:
+          directory_ref: signal_devices
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            account_ref:
+              _from: steps.publish.account_ref
+            device_ref:
+              _from: steps.publish.device_ref
+            identity_ref:
+              _from: steps.publish.identity_ref
+            device_id:
+              _from: steps.publish.device_id
+            status:
+              _from: steps.publish.status
+            existing:
+              _from: steps.publish.existing
+            record_ref:
+              _from: steps.publish.record_ref
+            bundle:
+              _from: steps.publish.bundle
+    on_error: stop
+
+  device-list:
+    trigger:
+      type: http
+      config:
+        path: /accounts/{account}/devices
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [account]
+          parse_body: true
+          merge_body: true
+      - name: list_input
+        type: step.set
+        config:
+          values:
+            account_ref: 'account://{{ index .steps "parse" "path_params" "account" }}'
+            status: '{{ default "" (index .steps "parse" "body" "status") }}'
+            limit: '{{ default 10 (index .steps "parse" "body" "limit") }}'
+      - name: list
+        type: step.signal_device_list
+        config:
+          directory_ref: signal_devices
+          limit: 10
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            devices:
+              _from: steps.list.devices
+            count:
+              _from: steps.list.count
+            truncated:
+              _from: steps.list.truncated
+    on_error: stop
+
+  device-revoke:
+    trigger:
+      type: http
+      config:
+        path: /accounts/{account}/devices/{device}/revoke
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [account, device]
+          parse_body: true
+          merge_body: true
+      - name: revoke_input
+        type: step.set
+        config:
+          values:
+            account_ref: 'account://{{ index .steps "parse" "path_params" "account" }}'
+            device_ref: 'device://{{ index .steps "parse" "path_params" "account" }}/{{ index .steps "parse" "path_params" "device" }}'
+            revoked_by_ref: 'operator://{{ default "scenario-140" (index .steps "parse" "body" "operator") }}'
+            reason_ref: '{{ index .steps "parse" "body" "reason_ref" }}'
+            requested_at_unix: '{{ default 2000 (index .steps "parse" "body" "requested_at_unix") }}'
+      - name: revoke
+        type: step.signal_device_revoke
+        config:
+          directory_ref: signal_devices
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            account_ref:
+              _from: steps.revoke.account_ref
+            device_ref:
+              _from: steps.revoke.device_ref
+            status:
+              _from: steps.revoke.status
+            reason_ref:
+              _from: steps.revoke.reason_ref
+    on_error: stop
+
+  device-fanout:
+    trigger:
+      type: http
+      config:
+        path: /accounts/{account}/fanout
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [account]
+          parse_body: true
+          merge_body: true
+      - name: fanout_input
+        type: step.set
+        config:
+          values:
+            account_ref: 'account://{{ index .steps "parse" "path_params" "account" }}'
+            message_ref: '{{ index .steps "parse" "body" "message_ref" }}'
+            limit: '{{ default 10 (index .steps "parse" "body" "limit") }}'
+      - name: fanout
+        type: step.signal_device_fanout_prepare
+        config:
+          directory_ref: signal_devices
+          limit: 10
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            recipients:
+              _from: steps.fanout.recipients
+            recipient_count:
+              _from: steps.fanout.recipient_count
+            message_ref:
+              _from: steps.fanout.message_ref
+    on_error: stop
+
+  send-envelope:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/participants/{sender}/outbox/{recipient}
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, sender, recipient]
+          parse_body: true
+          merge_body: true
+      - name: encrypt_input
+        type: step.set
+        config:
+          values:
+            remote_id: '{{ index .steps "parse" "path_params" "recipient" }}@example.test'
+            remote_device_id: 1
+            plaintext: '{{ index .steps "parse" "body" "plaintext" }}'
+            remote_bundle:
+              identity_ref: '{{ index .steps "parse" "body" "remote_bundle" "identity_ref" }}'
+              local_id: '{{ index .steps "parse" "body" "remote_bundle" "local_id" }}'
+              device_id: '{{ index .steps "parse" "body" "remote_bundle" "device_id" }}'
+              registration_id: '{{ index .steps "parse" "body" "remote_bundle" "registration_id" }}'
+              pre_key_id: '{{ index .steps "parse" "body" "remote_bundle" "pre_key_id" }}'
+              pre_key: '{{ index .steps "parse" "body" "remote_bundle" "pre_key" }}'
+              signed_pre_key_id: '{{ index .steps "parse" "body" "remote_bundle" "signed_pre_key_id" }}'
+              signed_pre_key: '{{ index .steps "parse" "body" "remote_bundle" "signed_pre_key" }}'
+              signed_pre_key_signature: '{{ index .steps "parse" "body" "remote_bundle" "signed_pre_key_signature" }}'
+              kyber_pre_key_id: '{{ index .steps "parse" "body" "remote_bundle" "kyber_pre_key_id" }}'
+              kyber_pre_key: '{{ index .steps "parse" "body" "remote_bundle" "kyber_pre_key" }}'
+              kyber_pre_key_signature: '{{ index .steps "parse" "body" "remote_bundle" "kyber_pre_key_signature" }}'
+              identity_key: '{{ index .steps "parse" "body" "remote_bundle" "identity_key" }}'
+      - name: encrypt
+        type: step.signal_encrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "sender" }}'
+      - name: enqueue_input
+        type: step.set
+        config:
+          values:
+            envelope:
+              sender_id: '{{ index .steps "encrypt" "envelope" "sender_id" }}'
+              sender_device_id: '{{ index .steps "encrypt" "envelope" "sender_device_id" }}'
+              recipient_id: '{{ index .steps "encrypt" "envelope" "recipient_id" }}'
+              recipient_device_id: '{{ index .steps "encrypt" "envelope" "recipient_device_id" }}'
+              message_type: '{{ index .steps "encrypt" "envelope" "message_type" }}'
+              ciphertext: '{{ index .steps "encrypt" "envelope" "ciphertext" }}'
+            sender_ref: 'participant://{{ index .steps "parse" "path_params" "sender" }}'
+            recipient_ref: 'participant://{{ index .steps "parse" "path_params" "recipient" }}'
+            custody_ref: 'custody://{{ index .steps "parse" "path_params" "sender" }}/device-1'
+            authz_ref: 'authz://signal/{{ index .steps "parse" "path_params" "sender" }}/send/{{ index .steps "parse" "path_params" "recipient" }}'
+            message_ref: '{{ index .steps "parse" "body" "message_ref" }}'
+            idempotency_key: '{{ index .steps "parse" "path_params" "space" }}-{{ index .steps "parse" "path_params" "sender" }}-{{ index .steps "parse" "path_params" "recipient" }}-{{ index .steps "parse" "body" "message_ref" }}'
+      - name: enqueue
+        type: step.signal_outbox_enqueue
+        config:
+          store_ref: signal_envelopes
+      - name: respond
+        type: step.json_response
+        config:
+          status: 202
+          body:
+            envelope_ref:
+              _from: steps.enqueue.envelope_ref
+            status:
+              _from: steps.enqueue.status
+    on_error: stop
+
+  send-batch:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/participants/{sender}/outbox-batch/{recipient}
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, sender, recipient]
+          parse_body: true
+          merge_body: true
+      - name: encrypt_first_input
+        type: step.set
+        config:
+          values:
+            remote_id: '{{ index .steps "parse" "path_params" "recipient" }}@example.test'
+            remote_device_id: 1
+            plaintext: '{{ index .steps "parse" "body" "messages" 0 "plaintext" }}'
+            remote_bundle:
+              identity_ref: '{{ index .steps "parse" "body" "remote_bundle" "identity_ref" }}'
+              local_id: '{{ index .steps "parse" "body" "remote_bundle" "local_id" }}'
+              device_id: '{{ index .steps "parse" "body" "remote_bundle" "device_id" }}'
+              registration_id: '{{ index .steps "parse" "body" "remote_bundle" "registration_id" }}'
+              pre_key_id: '{{ index .steps "parse" "body" "remote_bundle" "pre_key_id" }}'
+              pre_key: '{{ index .steps "parse" "body" "remote_bundle" "pre_key" }}'
+              signed_pre_key_id: '{{ index .steps "parse" "body" "remote_bundle" "signed_pre_key_id" }}'
+              signed_pre_key: '{{ index .steps "parse" "body" "remote_bundle" "signed_pre_key" }}'
+              signed_pre_key_signature: '{{ index .steps "parse" "body" "remote_bundle" "signed_pre_key_signature" }}'
+              kyber_pre_key_id: '{{ index .steps "parse" "body" "remote_bundle" "kyber_pre_key_id" }}'
+              kyber_pre_key: '{{ index .steps "parse" "body" "remote_bundle" "kyber_pre_key" }}'
+              kyber_pre_key_signature: '{{ index .steps "parse" "body" "remote_bundle" "kyber_pre_key_signature" }}'
+              identity_key: '{{ index .steps "parse" "body" "remote_bundle" "identity_key" }}'
+      - name: encrypt_first
+        type: step.signal_encrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "sender" }}'
+      - name: encrypt_second_input
+        type: step.set
+        config:
+          values:
+            remote_id: '{{ index .steps "parse" "path_params" "recipient" }}@example.test'
+            remote_device_id: 1
+            plaintext: '{{ index .steps "parse" "body" "messages" 1 "plaintext" }}'
+            remote_bundle:
+              identity_ref: '{{ index .steps "parse" "body" "remote_bundle" "identity_ref" }}'
+              local_id: '{{ index .steps "parse" "body" "remote_bundle" "local_id" }}'
+              device_id: '{{ index .steps "parse" "body" "remote_bundle" "device_id" }}'
+              registration_id: '{{ index .steps "parse" "body" "remote_bundle" "registration_id" }}'
+              pre_key_id: '{{ index .steps "parse" "body" "remote_bundle" "pre_key_id" }}'
+              pre_key: '{{ index .steps "parse" "body" "remote_bundle" "pre_key" }}'
+              signed_pre_key_id: '{{ index .steps "parse" "body" "remote_bundle" "signed_pre_key_id" }}'
+              signed_pre_key: '{{ index .steps "parse" "body" "remote_bundle" "signed_pre_key" }}'
+              signed_pre_key_signature: '{{ index .steps "parse" "body" "remote_bundle" "signed_pre_key_signature" }}'
+              kyber_pre_key_id: '{{ index .steps "parse" "body" "remote_bundle" "kyber_pre_key_id" }}'
+              kyber_pre_key: '{{ index .steps "parse" "body" "remote_bundle" "kyber_pre_key" }}'
+              kyber_pre_key_signature: '{{ index .steps "parse" "body" "remote_bundle" "kyber_pre_key_signature" }}'
+              identity_key: '{{ index .steps "parse" "body" "remote_bundle" "identity_key" }}'
+      - name: encrypt_second
+        type: step.signal_encrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "sender" }}'
+      - name: batch_input
+        type: step.set
+        config:
+          values:
+            batch_ref: '{{ index .steps "parse" "body" "batch_ref" }}'
+            requested_at_unix: '{{ default 4000 (index .steps "parse" "body" "requested_at_unix") }}'
+            items:
+              - envelope:
+                  sender_id: '{{ index .steps "encrypt_first" "envelope" "sender_id" }}'
+                  sender_device_id: '{{ index .steps "encrypt_first" "envelope" "sender_device_id" }}'
+                  recipient_id: '{{ index .steps "encrypt_first" "envelope" "recipient_id" }}'
+                  recipient_device_id: '{{ index .steps "encrypt_first" "envelope" "recipient_device_id" }}'
+                  message_type: '{{ index .steps "encrypt_first" "envelope" "message_type" }}'
+                  ciphertext: '{{ index .steps "encrypt_first" "envelope" "ciphertext" }}'
+                message_ref: '{{ index .steps "parse" "body" "messages" 0 "message_ref" }}'
+                sender_ref: 'participant://{{ index .steps "parse" "path_params" "sender" }}'
+                recipient_ref: 'participant://{{ index .steps "parse" "path_params" "recipient" }}'
+                custody_ref: 'custody://{{ index .steps "parse" "path_params" "sender" }}/device-1'
+                authz_ref: 'authz://signal/{{ index .steps "parse" "path_params" "sender" }}/send/{{ index .steps "parse" "path_params" "recipient" }}'
+                idempotency_key: '{{ index .steps "parse" "body" "messages" 0 "idempotency_key" }}'
+              - envelope:
+                  sender_id: '{{ index .steps "encrypt_second" "envelope" "sender_id" }}'
+                  sender_device_id: '{{ index .steps "encrypt_second" "envelope" "sender_device_id" }}'
+                  recipient_id: '{{ index .steps "encrypt_second" "envelope" "recipient_id" }}'
+                  recipient_device_id: '{{ index .steps "encrypt_second" "envelope" "recipient_device_id" }}'
+                  message_type: '{{ index .steps "encrypt_second" "envelope" "message_type" }}'
+                  ciphertext: '{{ index .steps "encrypt_second" "envelope" "ciphertext" }}'
+                message_ref: '{{ index .steps "parse" "body" "messages" 1 "message_ref" }}'
+                sender_ref: 'participant://{{ index .steps "parse" "path_params" "sender" }}'
+                recipient_ref: 'participant://{{ index .steps "parse" "path_params" "recipient" }}'
+                custody_ref: 'custody://{{ index .steps "parse" "path_params" "sender" }}/device-1'
+                authz_ref: 'authz://signal/{{ index .steps "parse" "path_params" "sender" }}/send/{{ index .steps "parse" "path_params" "recipient" }}'
+                idempotency_key: '{{ index .steps "parse" "body" "messages" 1 "idempotency_key" }}'
+      - name: enqueue_batch
+        type: step.signal_outbox_enqueue_batch
+        config:
+          store_ref: signal_envelopes
+          max_items: 8
+      - name: respond
+        type: step.json_response
+        config:
+          status: 202
+          body:
+            batch_ref:
+              _from: steps.enqueue_batch.batch_ref
+            items:
+              _from: steps.enqueue_batch.items
+            enqueued_count:
+              _from: steps.enqueue_batch.enqueued_count
+            existing_count:
+              _from: steps.enqueue_batch.existing_count
+            rejected_count:
+              _from: steps.enqueue_batch.rejected_count
+    on_error: stop
+
+  claim-envelope:
+    trigger:
+      type: http
+      config:
+        path: /workers/{worker}/outbox/claim
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [worker]
+          parse_body: true
+          merge_body: true
+      - name: claim_input
+        type: step.set
+        config:
+          values:
+            envelope_ref: '{{ index .steps "parse" "body" "envelope_ref" }}'
+            claimant_ref: 'worker://{{ index .steps "parse" "path_params" "worker" }}'
+            lease_id: '{{ index .steps "parse" "body" "lease_id" }}'
+            requested_at_unix: '{{ default 1000 (index .steps "parse" "body" "requested_at_unix") }}'
+      - name: claim
+        type: step.signal_outbox_claim
+        config:
+          store_ref: signal_envelopes
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            envelope_ref:
+              _from: steps.claim.envelope_ref
+            status:
+              _from: steps.claim.status
+            lease_ref:
+              _from: steps.claim.lease_ref
+            envelope:
+              _from: steps.claim.envelope
+    on_error: stop
+
+  release-envelope:
+    trigger:
+      type: http
+      config:
+        path: /workers/{worker}/outbox/release
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [worker]
+          parse_body: true
+          merge_body: true
+      - name: release_input
+        type: step.set
+        config:
+          values:
+            envelope_ref: '{{ index .steps "parse" "body" "envelope_ref" }}'
+            lease_ref: '{{ index .steps "parse" "body" "lease_ref" }}'
+            released_by_ref: 'worker://{{ index .steps "parse" "path_params" "worker" }}'
+            last_error_ref: '{{ index .steps "parse" "body" "last_error_ref" }}'
+            max_attempts: '{{ default 0 (index .steps "parse" "body" "max_attempts") }}'
+            dead_letter_on_max_attempts: '{{ default false (index .steps "parse" "body" "dead_letter_on_max_attempts") }}'
+            requested_at_unix: '{{ default 1100 (index .steps "parse" "body" "requested_at_unix") }}'
+      - name: release
+        type: step.signal_outbox_release
+        config:
+          store_ref: signal_envelopes
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            envelope_ref:
+              _from: steps.release.envelope_ref
+            status:
+              _from: steps.release.status
+    on_error: stop
+
+  handoff-envelope:
+    trigger:
+      type: http
+      config:
+        path: /workers/{worker}/outbox/handoff
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [worker]
+          parse_body: true
+          merge_body: true
+      - name: handoff_input
+        type: step.set
+        config:
+          values:
+            envelope_ref: '{{ index .steps "parse" "body" "envelope_ref" }}'
+            claimant_ref: 'worker://{{ index .steps "parse" "path_params" "worker" }}'
+            lease_id: '{{ index .steps "parse" "body" "lease_id" }}'
+            transport_ref: '{{ default "transport://scenario/140/local" (index .steps "parse" "body" "transport_ref") }}'
+            subject_ref: '{{ default "subject://scenario/140" (index .steps "parse" "body" "subject_ref") }}'
+            delivery_id: '{{ index .steps "parse" "body" "delivery_id" }}'
+            requested_at_unix: '{{ default 1150 (index .steps "parse" "body" "requested_at_unix") }}'
+            expires_at_unix: '{{ default 9999999999 (index .steps "parse" "body" "expires_at_unix") }}'
+      - name: handoff
+        type: step.signal_outbox_handoff
+        config:
+          store_ref: signal_envelopes
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            envelope_ref:
+              _from: steps.handoff.envelope_ref
+            status:
+              _from: steps.handoff.status
+            lease_ref:
+              _from: steps.handoff.lease_ref
+            delivery_ref:
+              _from: steps.handoff.delivery_ref
+    on_error: stop
+
+  dead-letter-envelope:
+    trigger:
+      type: http
+      config:
+        path: /workers/{worker}/outbox/dead-letter
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [worker]
+          parse_body: true
+          merge_body: true
+      - name: dead_letter_input
+        type: step.set
+        config:
+          values:
+            envelope_ref: '{{ index .steps "parse" "body" "envelope_ref" }}'
+            lease_ref: '{{ index .steps "parse" "body" "lease_ref" }}'
+            dead_lettered_by_ref: 'worker://{{ index .steps "parse" "path_params" "worker" }}'
+            reason_ref: '{{ index .steps "parse" "body" "reason_ref" }}'
+            requested_at_unix: '{{ default 2600 (index .steps "parse" "body" "requested_at_unix") }}'
+      - name: dead_letter
+        type: step.signal_outbox_dead_letter
+        config:
+          store_ref: signal_envelopes
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            envelope_ref:
+              _from: steps.dead_letter.envelope_ref
+            status:
+              _from: steps.dead_letter.status
+            metadata:
+              _from: steps.dead_letter.metadata
+    on_error: stop
+
+  ack-envelope:
+    trigger:
+      type: http
+      config:
+        path: /workers/{worker}/outbox/ack
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [worker]
+          parse_body: true
+          merge_body: true
+      - name: ack_input
+        type: step.set
+        config:
+          values:
+            envelope_ref: '{{ index .steps "parse" "body" "envelope_ref" }}'
+            lease_ref: '{{ index .steps "parse" "body" "lease_ref" }}'
+            acked_by_ref: 'worker://{{ index .steps "parse" "path_params" "worker" }}'
+            requested_at_unix: '{{ default 1200 (index .steps "parse" "body" "requested_at_unix") }}'
+      - name: ack
+        type: step.signal_outbox_ack
+        config:
+          store_ref: signal_envelopes
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            envelope_ref:
+              _from: steps.ack.envelope_ref
+            status:
+              _from: steps.ack.status
+    on_error: stop
+
+  receive-inbox:
+    trigger:
+      type: http
+      config:
+        path: /participants/{recipient}/inbox/receive
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [recipient]
+          parse_body: true
+          merge_body: true
+      - name: receive_input
+        type: step.set
+        config:
+          values:
+            envelope_ref: '{{ index .steps "parse" "body" "envelope_ref" }}'
+            recipient_ref: 'participant://{{ index .steps "parse" "path_params" "recipient" }}'
+            idempotency_key: '{{ index .steps "parse" "body" "idempotency_key" }}'
+            requested_at_unix: '{{ default 1300 (index .steps "parse" "body" "requested_at_unix") }}'
+            envelope:
+              sender_id: '{{ index .steps "parse" "body" "envelope" "sender_id" }}'
+              sender_device_id: '{{ index .steps "parse" "body" "envelope" "sender_device_id" }}'
+              recipient_id: '{{ index .steps "parse" "body" "envelope" "recipient_id" }}'
+              recipient_device_id: '{{ index .steps "parse" "body" "envelope" "recipient_device_id" }}'
+              message_type: '{{ index .steps "parse" "body" "envelope" "message_type" }}'
+              ciphertext: '{{ index .steps "parse" "body" "envelope" "ciphertext" }}'
+      - name: receive
+        type: step.signal_inbox_receive
+        config:
+          store_ref: signal_envelopes
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            envelope_ref:
+              _from: steps.receive.envelope_ref
+            status:
+              _from: steps.receive.status
+    on_error: stop
+
+  decrypt-inbox:
+    trigger:
+      type: http
+      config:
+        path: /participants/{recipient}/inbox/decrypt
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [recipient]
+          parse_body: true
+          merge_body: true
+      - name: decrypt_input
+        type: step.set
+        config:
+          values:
+            envelope_ref: '{{ index .steps "parse" "body" "envelope_ref" }}'
+            principal: '{{ index .steps "parse" "path_params" "recipient" }}'
+            custody_ref: 'custody://{{ index .steps "parse" "path_params" "recipient" }}/device-1'
+            authz_ref: 'authz://signal/{{ index .steps "parse" "path_params" "recipient" }}/decrypt/{{ index .steps "parse" "body" "envelope_ref" }}'
+      - name: decrypt
+        type: step.signal_inbox_decrypt
+        config:
+          store_ref: signal_envelopes
+          identity_ref: '{{ index .steps "parse" "path_params" "recipient" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            plaintext:
+              _from: steps.decrypt.plaintext
+    on_error: stop
+
+  envelope-status:
+    trigger:
+      type: http
+      config:
+        path: /status/envelopes
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          parse_body: true
+          merge_body: true
+      - name: status_input
+        type: step.set
+        config:
+          values:
+            queue: '{{ default "" (index .steps "parse" "body" "queue") }}'
+            status: '{{ default "" (index .steps "parse" "body" "status") }}'
+            envelope_ref: '{{ default "" (index .steps "parse" "body" "envelope_ref") }}'
+            message_ref: '{{ default "" (index .steps "parse" "body" "message_ref") }}'
+            sender_ref: '{{ default "" (index .steps "parse" "body" "sender_ref") }}'
+            recipient_ref: '{{ default "" (index .steps "parse" "body" "recipient_ref") }}'
+            limit: '{{ default 100 (index .steps "parse" "body" "limit") }}'
+      - name: status
+        type: step.signal_envelope_status
+        config:
+          store_ref: signal_envelopes
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            items:
+              _from: steps.status.items
+            count:
+              _from: steps.status.count
+            truncated:
+              _from: steps.status.truncated
+            status_ref:
+              _from: steps.status.status_ref
+    on_error: stop
+
+  purge-envelopes:
+    trigger:
+      type: http
+      config:
+        path: /operators/{operator}/envelopes/purge
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [operator]
+          parse_body: true
+          merge_body: true
+      - name: purge_input
+        type: step.set
+        config:
+          values:
+            queue: '{{ default "" (index .steps "parse" "body" "queue") }}'
+            status: '{{ default "" (index .steps "parse" "body" "status") }}'
+            envelope_ref: '{{ default "" (index .steps "parse" "body" "envelope_ref") }}'
+            message_ref: '{{ default "" (index .steps "parse" "body" "message_ref") }}'
+            sender_ref: '{{ default "" (index .steps "parse" "body" "sender_ref") }}'
+            recipient_ref: '{{ default "" (index .steps "parse" "body" "recipient_ref") }}'
+            older_than_unix: '{{ default 0 (index .steps "parse" "body" "older_than_unix") }}'
+            limit: '{{ default 100 (index .steps "parse" "body" "limit") }}'
+            execute_purge: '{{ default false (index .steps "parse" "body" "execute_purge") }}'
+            purged_by_ref: 'operator://{{ index .steps "parse" "path_params" "operator" }}'
+            reason_ref: '{{ index .steps "parse" "body" "reason_ref" }}'
+            requested_at_unix: '{{ default 3700 (index .steps "parse" "body" "requested_at_unix") }}'
+      - name: purge
+        type: step.signal_envelope_purge
+        config:
+          store_ref: signal_envelopes
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            items:
+              _from: steps.purge.items
+            matched_count:
+              _from: steps.purge.matched_count
+            purged_count:
+              _from: steps.purge.purged_count
+            preview:
+              _from: steps.purge.preview
+            purge_ref:
+              _from: steps.purge.purge_ref
+    on_error: stop
