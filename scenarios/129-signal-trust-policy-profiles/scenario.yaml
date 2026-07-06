@@ -1,0 +1,36 @@
+name: Signal Trust Policy Profiles
+id: "129-signal-trust-policy-profiles"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal v0.32.0 trust
+  policy profiles gate Signal encryption through participant-parametric HTTP
+  routes. The app proves established_only denies first-use trust and later
+  allows trusted/reset records, fresh_30d appears in report-only output for a
+  fresh record, reset_only admits an approved reset, and unsupported profiles
+  fail closed without exposing plaintext markers or custody refs.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.trust_store
+  - signal.envelope_store
+  - step.signal_session_prepare
+  - step.signal_trust_observe
+  - step.signal_trust_policy_check
+  - step.signal_trust_reset
+  - step.signal_encrypt
+  - step.signal_outbox_enqueue
+status: testable
+tags:
+  - signal
+  - trust-policy
+  - policy-profiles
+  - safety-number
+  - tofu
+  - workflow-plugin
+  - local-only
+  - fail-closed
+  - tamper-rejection
+runtime: local

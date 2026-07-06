@@ -1560,7 +1560,33 @@
       "failCount": 0,
       "lastTested": "2026-07-06T01:52:41.579430Z",
       "lastResult": "pass"
+    },
+    "129-signal-trust-policy-profiles": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Workflow app proof for workflow-plugin-signal v0.32.0 trust policy profiles: external plugin loading, participant-parametric observe/profile-check/reset/send HTTP routes, established_only denial for first-use trust and allowance for trusted/reset records, fresh_30d report output, reset_only approval after reset, unsupported-profile fail-closed behavior, encrypted send gating, and plaintext/custody-marker absence from responses and local trust state.",
+      "blockers": [],
+      "testCount": 52,
+      "passCount": 52,
+      "failCount": 0,
+      "lastTested": "2026-07-06T03:22:13.538010Z",
+      "lastResult": "pass"
+    },
+    "130-signal-eventbus-transport": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Workflow app proof for workflow-plugin-signal v0.32.0 and workflow-plugin-eventbus v0.3.8 encrypted eventbus transport: external plugin loading, scenario-local embedded NATS/JetStream, participant-parametric sender/worker/recipient HTTP routes, step.signal_outbox_handoff payload production, step.eventbus.publish/consume/ack delivery, step.signal_transport_admit recipient admission, terminal Signal ack, decrypt, duplicate ack rejection, empty consume rejection, and plaintext/HMAC/custody-marker absence from non-recipient transport responses.",
+      "blockers": [],
+      "testCount": 46,
+      "passCount": 46,
+      "failCount": 0,
+      "lastTested": "2026-07-06T03:22:31.139815Z",
+      "lastResult": "pass"
     }
   },
-  "lastUpdated": "2026-07-06T01:52:41.579430Z"
+  "lastUpdated": "2026-07-06T03:22:31.139815Z"
 }
