@@ -1,0 +1,33 @@
+name: Signal Device Directory Fanout
+id: "140-signal-device-directory-fanout"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal v0.36.0 persists
+  app-managed Signal device directory fanout in a scenario-owned local-file
+  directory. The app publishes three caller-addressed device bundles through
+  Workflow HTTP routes, rejects mismatched same-device replay, revokes one
+  device, fanout-prepares only active devices, verifies restart persistence,
+  and proves a corrupt snapshot fails closed without exposing private,
+  custody, authz, or credential markers.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.device_directory
+  - step.signal_session_prepare
+  - step.signal_device_publish
+  - step.signal_device_list
+  - step.signal_device_revoke
+  - step.signal_device_fanout_prepare
+status: testable
+tags:
+  - signal
+  - device-directory
+  - fanout
+  - workflow-plugin
+  - local-only
+  - local-file
+  - restart-persistence
+runtime: local

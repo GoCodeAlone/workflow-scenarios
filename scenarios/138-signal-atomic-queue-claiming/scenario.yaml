@@ -1,0 +1,39 @@
+name: Signal Atomic Queue Claiming
+id: "138-signal-atomic-queue-claiming"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal v0.36.0 persists
+  atomic queue polling behavior in a scenario-owned SQLite envelope store.
+  The app enqueues caller-supplied encrypted messages, claims oldest eligible
+  work through claim-next and claim-batch Workflow HTTP routes, rejects
+  claimed/terminal records, and verifies restart persistence without exposing
+  plaintext, custody refs, or authz refs from public responses.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.envelope_store
+  - step.signal_session_prepare
+  - step.signal_encrypt
+  - step.signal_outbox_enqueue
+  - step.signal_outbox_claim_next
+  - step.signal_outbox_claim_batch
+  - step.signal_outbox_release
+  - step.signal_outbox_ack
+  - step.signal_envelope_status
+status: testable
+tags:
+  - signal
+  - queue
+  - claim-next
+  - claim-batch
+  - atomicity
+  - lease
+  - workflow-plugin
+  - local-only
+  - encrypted
+  - sqlite
+  - restart-persistence
+runtime: local
