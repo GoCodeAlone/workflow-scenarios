@@ -1534,7 +1534,33 @@
       "failCount": 0,
       "lastTested": "2026-07-06T00:32:42.149018Z",
       "lastResult": "pass"
+    },
+    "127-signal-transport-handoff": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Workflow app proof for workflow-plugin-signal v0.31.0 transport handoff: external plugin loading, scenario-local HTTP transport mock, participant-parametric sender/worker/recipient HTTP routes, step.signal_outbox_handoff payload production, mock transport publish/fetch, step.signal_transport_admit recipient admission, terminal ack, decrypt, duplicate ack rejection, and plaintext/HMAC/custody-marker absence from transport state.",
+      "blockers": [],
+      "testCount": 45,
+      "passCount": 45,
+      "failCount": 0,
+      "lastTested": "2026-07-06T01:52:30.548557Z",
+      "lastResult": "pass"
+    },
+    "128-signal-transport-handoff-retry": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Workflow app proof for workflow-plugin-signal v0.31.0 transport handoff retry handling: external plugin loading, scenario-local HTTP transport mock, participant-parametric sender/worker/recipient HTTP routes, invalid admit rejection for wrong route, bad HMAC, ciphertext tamper, and expiry, no decrypt before valid admit, release and retry handoff, successful retry admit/ack/decrypt, terminal-state rejection, and plaintext/HMAC/custody-marker absence from transport state.",
+      "blockers": [],
+      "testCount": 55,
+      "passCount": 55,
+      "failCount": 0,
+      "lastTested": "2026-07-06T01:52:41.579430Z",
+      "lastResult": "pass"
     }
   },
-  "lastUpdated": "2026-07-06T00:32:42.149018Z"
+  "lastUpdated": "2026-07-06T01:52:41.579430Z"
 }

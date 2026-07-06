@@ -1,0 +1,35 @@
+name: Signal Transport Handoff
+id: "127-signal-transport-handoff"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal v0.31.0 drives
+  provider-neutral encrypted transport handoff through a running Workflow API.
+  The scenario loads the released external plugin, starts workflow-server and a
+  scenario-owned HTTP transport mock, and uses separate sender, worker,
+  transport, and recipient calls to encrypt, enqueue, handoff, publish opaque
+  JSON, fetch, admit, ack, and decrypt a participant-parametric encrypted
+  envelope. It verifies the transport mock never observes plaintext, HMAC
+  secrets, custody material, or private keys.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.envelope_store
+  - step.signal_session_prepare
+  - step.signal_encrypt
+  - step.signal_outbox_enqueue
+  - step.signal_outbox_handoff
+  - step.signal_transport_admit
+  - step.signal_outbox_ack
+  - step.signal_inbox_decrypt
+status: testable
+tags:
+  - signal
+  - transport-handoff
+  - encrypted-transport
+  - workflow-plugin
+  - local-only
+  - ack
+runtime: local

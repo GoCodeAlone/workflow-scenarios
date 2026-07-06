@@ -1,0 +1,36 @@
+name: Signal Transport Handoff Retry
+id: "128-signal-transport-handoff-retry"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal v0.31.0 rejects
+  invalid transport payloads before inbox mutation and preserves outbox retry
+  behavior. The scenario loads the released external plugin, starts
+  workflow-server and a scenario-owned HTTP transport mock, then drives route
+  mismatch, HMAC tamper, expiry, ciphertext tamper, release, re-handoff, valid
+  admit, final ack, and post-ack rejection through participant-parametric HTTP
+  calls.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.envelope_store
+  - step.signal_session_prepare
+  - step.signal_encrypt
+  - step.signal_outbox_enqueue
+  - step.signal_outbox_handoff
+  - step.signal_outbox_release
+  - step.signal_transport_admit
+  - step.signal_outbox_ack
+  - step.signal_inbox_decrypt
+status: testable
+tags:
+  - signal
+  - transport-handoff
+  - encrypted-transport
+  - workflow-plugin
+  - local-only
+  - retry
+  - ack
+runtime: local
