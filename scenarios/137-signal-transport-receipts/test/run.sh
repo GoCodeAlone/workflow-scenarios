@@ -232,6 +232,25 @@ post_status() {
     -X POST "$BASE_URL$path" -H 'Content-Type: application/json' -d "$body"
 }
 
+require_post_status() {
+  local out_var="$1"
+  local label="$2"
+  local path="$3"
+  local body="$4"
+  local code
+  if ! code="$(post_status "$path" "$body")"; then
+    fail "$label request failed before an HTTP response"
+    finish
+    exit 1
+  fi
+  if ! printf '%s' "$code" | grep -Eq '^[0-9]{3}$'; then
+    fail "$label returned invalid HTTP status '$code'"
+    finish
+    exit 1
+  fi
+  printf -v "$out_var" '%s' "$code"
+}
+
 assert_no_marker() {
   local label="$1"
   local value="$2"
@@ -367,14 +386,14 @@ assert_no_marker "eventbus receive response" "$RECEIVED" "$SIGNAL_TRANSPORT_HMAC
 RECEIPT_JSON="$(printf '%s' "$RECEIVED" | jq -r '.receipt_json // empty' 2>/dev/null)"
 TRANSPORT_PAYLOAD_JSON="$(printf '%s' "$RECEIVED" | jq -r '.transport_payload_json // empty' 2>/dev/null)"
 [ -n "$RECEIPT_JSON" ] && [ -n "$TRANSPORT_PAYLOAD_JSON" ] && pass "receipt proof material returned for replay check" || fail "receipt proof material missing: $RECEIVED"
-REPLAY_CODE="$(post_status "/workers/$WORKER/transport/receipt/verify" "$(jq -cn \
+require_post_status REPLAY_CODE "duplicate receipt verification" "/workers/$WORKER/transport/receipt/verify" "$(jq -cn \
   --arg receipt_json "$RECEIPT_JSON" \
   --arg transport_payload_json "$TRANSPORT_PAYLOAD_JSON" \
   --arg transport_ref "$TRANSPORT_REF" \
   --arg subject_ref "$SUBJECT_REF" \
   --arg recipient_ref "participant://$RECIPIENT" \
   --arg envelope_ref "$ENVELOPE_REF" \
-  '{receipt_json:$receipt_json,transport_payload_json:$transport_payload_json,expected_transport_ref:$transport_ref,expected_subject_ref:$subject_ref,expected_recipient_ref:$recipient_ref,expected_envelope_ref:$envelope_ref,requested_at_unix:1004}')")"
+  '{receipt_json:$receipt_json,transport_payload_json:$transport_payload_json,expected_transport_ref:$transport_ref,expected_subject_ref:$subject_ref,expected_recipient_ref:$recipient_ref,expected_envelope_ref:$envelope_ref,requested_at_unix:1004}')"
 [ "$REPLAY_CODE" != "200" ] && pass "duplicate receipt verification was rejected by replay cache" || fail "duplicate receipt verify unexpectedly succeeded: $(cat "$BODY_FILE")"
 assert_no_marker "eventbus receive response" "$RECEIVED" "custody://"
 
@@ -386,7 +405,7 @@ DECRYPTED="$(post_json "/participants/$RECIPIENT/inbox/decrypt" "$DECRYPT_BODY")
 assert_no_marker "recipient decrypt response" "$DECRYPTED" "$SIGNAL_TRANSPORT_HMAC"
 assert_no_marker "recipient decrypt response" "$DECRYPTED" "custody://"
 
-DUP_ACK_STATUS="$(post_status "/workers/$WORKER/outbox/ack" "$(jq -cn --arg envelope_ref "$ENVELOPE_REF" --arg lease_ref "$LEASE_REF" '{envelope_ref:$envelope_ref,lease_ref:$lease_ref}')")"
+require_post_status DUP_ACK_STATUS "duplicate outbox ack" "/workers/$WORKER/outbox/ack" "$(jq -cn --arg envelope_ref "$ENVELOPE_REF" --arg lease_ref "$LEASE_REF" '{envelope_ref:$envelope_ref,lease_ref:$lease_ref}')"
 [ "$DUP_ACK_STATUS" != "200" ] && pass "duplicate outbox ack was rejected" || fail "duplicate outbox ack unexpectedly succeeded: $(cat "$BODY_FILE")"
 
 EMPTY_RECEIVE="$(post_json "/workers/$WORKER/eventbus/receive" '{}' 2>/dev/null)" && EMPTY_STATUS=0 || EMPTY_STATUS=$?

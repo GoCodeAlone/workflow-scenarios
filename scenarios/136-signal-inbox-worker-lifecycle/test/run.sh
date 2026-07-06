@@ -169,6 +169,25 @@ post_status() {
   curl -sS -o "$BODY_FILE" -w "%{http_code}" -X POST "$BASE_URL$path" -H 'Content-Type: application/json' -d "$body"
 }
 
+require_post_status() {
+  local out_var="$1"
+  local label="$2"
+  local path="$3"
+  local body="$4"
+  local code
+  if ! code="$(post_status "$path" "$body")"; then
+    fail "$label request failed before an HTTP response"
+    finish
+    exit 1
+  fi
+  if ! printf '%s' "$code" | grep -Eq '^[0-9]{3}$'; then
+    fail "$label returned invalid HTTP status '$code'"
+    finish
+    exit 1
+  fi
+  printf -v "$out_var" '%s' "$code"
+}
+
 status_query() {
   local body="$1"
   post_json "/status/envelopes" "$body"
@@ -250,7 +269,7 @@ CLAIM_ACK="$(post_json "/workers/$WORKER/inbox/claim" "$(jq -cn --arg envelope_r
   && pass "worker claimed inbox item" || fail "inbox claim failed"
 INBOX_LEASE="$(printf '%s' "$CLAIM_ACK" | jq -r '.lease_ref // empty')"
 [ -n "$INBOX_LEASE" ] && pass "inbox claim returned lease ref" || fail "inbox claim lease missing: $CLAIM_ACK"
-NO_LEASE_CODE="$(post_status "/participants/$RECIPIENT/inbox/decrypt" "$(jq -cn --arg envelope_ref "$INBOX_ACK_REF" '{envelope_ref:$envelope_ref}')")"
+require_post_status NO_LEASE_CODE "decrypt of claimed inbox without lease" "/participants/$RECIPIENT/inbox/decrypt" "$(jq -cn --arg envelope_ref "$INBOX_ACK_REF" '{envelope_ref:$envelope_ref}')"
 assert_rejected_not_missing "decrypt of claimed inbox without lease" "$NO_LEASE_CODE"
 DECRYPTED="$(post_json "/participants/$RECIPIENT/inbox/decrypt" "$(jq -cn --arg envelope_ref "$INBOX_ACK_REF" --arg lease_ref "$INBOX_LEASE" '{envelope_ref:$envelope_ref,lease_ref:$lease_ref}')")" \
   && pass "recipient decrypted claimed inbox item with lease" || fail "leased decrypt failed"
@@ -277,7 +296,7 @@ REL2_LEASE="$(printf '%s' "$CLAIM_REL2" | jq -r '.lease_ref // empty')"
 RECLAIMED="$(post_json "/workers/$WORKER/inbox/reclaim-stale" "$(jq -cn --arg envelope_ref "$INBOX_REL_REF" '{envelope_ref:$envelope_ref,reason_ref:"reason://scenario/136/stale",requested_at_unix:3500}')")" \
   && pass "worker reclaimed stale inbox lease" || fail "stale reclaim failed"
 [ "$(printf '%s' "$RECLAIMED" | jq -r '.status // empty')" = "received" ] && pass "stale reclaim returned received state" || fail "stale reclaim status mismatch: $RECLAIMED"
-STALE_ACK_CODE="$(post_status "/workers/$WORKER/inbox/ack" "$(jq -cn --arg envelope_ref "$INBOX_REL_REF" --arg lease_ref "$REL2_LEASE" '{envelope_ref:$envelope_ref,lease_ref:$lease_ref}')")"
+require_post_status STALE_ACK_CODE "ack with stale pre-reclaim lease" "/workers/$WORKER/inbox/ack" "$(jq -cn --arg envelope_ref "$INBOX_REL_REF" --arg lease_ref "$REL2_LEASE" '{envelope_ref:$envelope_ref,lease_ref:$lease_ref}')"
 assert_rejected_not_missing "ack with stale pre-reclaim lease" "$STALE_ACK_CODE"
 
 CLAIM_DLQ="$(post_json "/workers/$WORKER/inbox/claim" "$(jq -cn --arg envelope_ref "$INBOX_REL_REF" '{envelope_ref:$envelope_ref,lease_id:"inbox-dlq-lease",requested_at_unix:3600}')")" \

@@ -1646,7 +1646,7 @@
       "localOnly": true,
       "notes": "Workflow app proof for workflow-plugin-signal v0.35.1 atomic outbox batch enqueue: external plugin loading, scenario-owned SQLite envelope store, participant-parametric HTTP routes, caller-supplied plaintext encryption, duplicate-idempotency rollback, same-recipient two-message batch persistence, idempotent retry, restart survival, and plaintext/ciphertext/custody/authz-marker absence from public status responses.",
       "blockers": [],
-      "lastTested": "2026-07-06T09:02:02.350759Z",
+      "lastTested": "2026-07-06T09:12:34.216911Z",
       "lastResult": "pass",
       "testCount": 37,
       "passCount": 37,
@@ -1659,7 +1659,7 @@
       "localOnly": true,
       "notes": "Workflow app proof for workflow-plugin-signal v0.35.1 inbox worker lifecycle: external plugin loading, scenario-owned SQLite envelope store, participant-parametric HTTP routes, inbox claim leases, lease-required decrypt, release, stale reclaim, dead-letter, operator requeue, ack, status lineage, restart persistence, and plaintext/ciphertext/custody/authz/lease-marker absence from public status responses.",
       "blockers": [],
-      "lastTested": "2026-07-06T09:02:08.865496Z",
+      "lastTested": "2026-07-06T09:12:40.612625Z",
       "lastResult": "pass",
       "testCount": 47,
       "passCount": 47,
@@ -1672,12 +1672,12 @@
       "localOnly": true,
       "notes": "Workflow app proof for workflow-plugin-signal v0.35.1 and workflow-plugin-eventbus v0.3.8 transport receipts: external plugin loading, scenario-owned embedded NATS/JetStream, participant-parametric sender/worker/recipient HTTP routes, encrypted Signal handoff, eventbus publish/consume, transport admit, receipt issue/verify, receipt replay rejection, Signal and eventbus ack coupling, decrypt, and plaintext/HMAC/custody-marker absence from non-recipient transport responses.",
       "blockers": [],
-      "lastTested": "2026-07-06T09:02:27.163978Z",
+      "lastTested": "2026-07-06T09:12:58.022468Z",
       "lastResult": "pass",
       "testCount": 53,
       "passCount": 53,
       "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-06T09:02:27.163978Z"
+  "lastUpdated": "2026-07-06T09:12:58.022468Z"
 }

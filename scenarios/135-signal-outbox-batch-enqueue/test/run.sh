@@ -165,6 +165,25 @@ post_status() {
   curl -sS -o "$BODY_FILE" -w "%{http_code}" -X POST "$BASE_URL$path" -H 'Content-Type: application/json' -d "$body"
 }
 
+require_post_status() {
+  local out_var="$1"
+  local label="$2"
+  local path="$3"
+  local body="$4"
+  local code
+  if ! code="$(post_status "$path" "$body")"; then
+    fail "$label request failed before an HTTP response"
+    finish
+    exit 1
+  fi
+  if ! printf '%s' "$code" | grep -Eq '^[0-9]{3}$'; then
+    fail "$label returned invalid HTTP status '$code'"
+    finish
+    exit 1
+  fi
+  printf -v "$out_var" '%s' "$code"
+}
+
 status_query() {
   local body="$1"
   post_json "/status/envelopes" "$body"
@@ -276,12 +295,12 @@ RECIPIENT_SESSION="$(post_json "/participants/$RECIPIENT/session" '{}')" && pass
 RECIPIENT_BUNDLE="$(printf '%s' "$RECIPIENT_SESSION" | jq -c '.bundle // empty')"
 [ -n "$RECIPIENT_BUNDLE" ] && pass "recipient response included bundle" || fail "recipient bundle missing: $RECIPIENT_SESSION"
 
-BAD_CODE="$(post_status "/spaces/$SPACE/participants/$SENDER/outbox-batch/$RECIPIENT" "$(batch_body "batch://scenario/135/bad" "batch-bad-one" "batch-bad-two" "duplicate-key" "duplicate-key")")"
+require_post_status BAD_CODE "duplicate idempotency batch" "/spaces/$SPACE/participants/$SENDER/outbox-batch/$RECIPIENT" "$(batch_body "batch://scenario/135/bad" "batch-bad-one" "batch-bad-two" "duplicate-key" "duplicate-key")"
 assert_rejected_not_missing "duplicate idempotency batch" "$BAD_CODE"
 BAD_STATUS="$(status_query "$(jq -cn '{message_ref:"batch-bad-one",limit:10}')")" && pass "status query after rejected batch succeeded" || fail "status query after rejected batch failed"
 [ "$(printf '%s' "$BAD_STATUS" | jq -r '.count // 0')" = "0" ] && pass "invalid batch rolled back first item" || fail "invalid batch persisted first item: $BAD_STATUS"
 
-BATCH_CODE="$(post_status "/spaces/$SPACE/participants/$SENDER/outbox-batch/$RECIPIENT" "$(batch_body "batch://scenario/135/good" "batch-good-one" "batch-good-two" "batch-good-one-key" "batch-good-two-key")")"
+require_post_status BATCH_CODE "valid batch enqueue" "/spaces/$SPACE/participants/$SENDER/outbox-batch/$RECIPIENT" "$(batch_body "batch://scenario/135/good" "batch-good-one" "batch-good-two" "batch-good-one-key" "batch-good-two-key")"
 BATCH="$(cat "$BODY_FILE")"
 if [ "$BATCH_CODE" = "202" ]; then
   pass "valid batch enqueued through Workflow API"
@@ -307,7 +326,7 @@ assert_no_marker "batch status" "$FIRST_STATUS$SECOND_STATUS" "$PLAINTEXT_TWO"
 assert_no_marker "batch status" "$FIRST_STATUS$SECOND_STATUS" "custody://"
 assert_no_marker "batch status" "$FIRST_STATUS$SECOND_STATUS" "authz://"
 
-DUP_CODE="$(post_status "/spaces/$SPACE/participants/$SENDER/outbox-batch/$RECIPIENT" "$(batch_body "batch://scenario/135/duplicate" "batch-good-one" "batch-good-two" "batch-good-one-key" "batch-good-two-key")")"
+require_post_status DUP_CODE "second encrypted batch with reused idempotency keys" "/spaces/$SPACE/participants/$SENDER/outbox-batch/$RECIPIENT" "$(batch_body "batch://scenario/135/duplicate" "batch-good-one" "batch-good-two" "batch-good-one-key" "batch-good-two-key")"
 assert_rejected_not_missing "second encrypted batch with reused idempotency keys" "$DUP_CODE"
 TOTAL_STATUS="$(status_query "$(jq -cn --arg sender "participant://$SENDER" '{queue:"outbox",sender_ref:$sender,limit:10}')")" && pass "sender status query succeeded" || fail "sender status query failed"
 [ "$(printf '%s' "$TOTAL_STATUS" | jq -r '.count // 0')" = "2" ] && pass "duplicate retry did not create extra items" || fail "duplicate retry mutated outbox: $TOTAL_STATUS"
