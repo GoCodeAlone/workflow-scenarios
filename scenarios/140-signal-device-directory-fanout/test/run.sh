@@ -18,8 +18,9 @@ if [ -z "${PLUGIN_VERSION:-}" ]; then
   esac
 fi
 
-SENDER="${SENDER:-user-a}"
-RECIPIENT="${RECIPIENT:-user-b}"
+DEVICE_ONE_PARTICIPANT="${DEVICE_ONE_PARTICIPANT:-${SENDER:-user-a}}"
+DEVICE_TWO_PARTICIPANT="${DEVICE_TWO_PARTICIPANT:-${RECIPIENT:-user-b}}"
+DEVICE_THREE_PARTICIPANT="${DEVICE_THREE_PARTICIPANT:-user-c}"
 SPACE="${SPACE:-private-space-140}"
 BASE_URL="${BASE_URL:-http://127.0.0.1:18140}"
 ACCOUNT="${ACCOUNT:-team-device-140}"
@@ -297,9 +298,9 @@ else
   exit 1
 fi
 
-BUNDLE_ONE="$(post_json "/participants/user-a/session" '{}')" && pass "prepared first device bundle through Workflow API" || fail "first bundle failed"
-BUNDLE_TWO="$(post_json "/participants/user-b/session" '{}')" && pass "prepared second device bundle through Workflow API" || fail "second bundle failed"
-BUNDLE_THREE="$(post_json "/participants/user-c/session" '{}')" && pass "prepared third device bundle through Workflow API" || fail "third bundle failed"
+BUNDLE_ONE="$(post_json "/participants/$DEVICE_ONE_PARTICIPANT/session" '{}')" && pass "prepared first device bundle through Workflow API" || fail "first bundle failed"
+BUNDLE_TWO="$(post_json "/participants/$DEVICE_TWO_PARTICIPANT/session" '{}')" && pass "prepared second device bundle through Workflow API" || fail "second bundle failed"
+BUNDLE_THREE="$(post_json "/participants/$DEVICE_THREE_PARTICIPANT/session" '{}')" && pass "prepared third device bundle through Workflow API" || fail "third bundle failed"
 DEVICE_ONE_BODY="$(printf '%s' "$BUNDLE_ONE" | jq -c --arg key "publish-$ACCOUNT-1" '{identity_ref:.bundle.identity_ref,device_id:.bundle.device_id,bundle:.bundle,idempotency_key:$key,operator:"scenario-140"}')"
 DEVICE_TWO_BODY="$(printf '%s' "$BUNDLE_TWO" | jq -c --arg key "publish-$ACCOUNT-2" '{identity_ref:.bundle.identity_ref,device_id:2,bundle:(.bundle + {device_id:2}),idempotency_key:$key,operator:"scenario-140"}')"
 DEVICE_THREE_BODY="$(printf '%s' "$BUNDLE_THREE" | jq -c --arg key "publish-$ACCOUNT-3" '{identity_ref:.bundle.identity_ref,device_id:3,bundle:(.bundle + {device_id:3}),idempotency_key:$key,operator:"scenario-140"}')"

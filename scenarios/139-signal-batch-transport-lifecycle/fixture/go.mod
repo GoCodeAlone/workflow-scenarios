@@ -1,4 +1,4 @@
-module scenario137nats
+module scenario139nats
 
 go 1.23.0
 

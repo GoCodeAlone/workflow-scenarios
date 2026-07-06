@@ -1685,7 +1685,7 @@
       "localOnly": true,
       "notes": "Workflow app proof for workflow-plugin-signal v0.36.0 atomic queue polling: external plugin loading, scenario-owned SQLite envelope store, participant-parametric HTTP routes, outbox claim-next and claim-batch worker selection, claimed/terminal rejection, restart persistence, and redaction of plaintext/custody/authz markers from public responses.",
       "blockers": [],
-      "lastTested": "2026-07-06T14:42:51.573058Z",
+      "lastTested": "2026-07-06T14:51:33.095559Z",
       "lastResult": "pass",
       "testCount": 39,
       "passCount": 39,
@@ -1696,9 +1696,9 @@
       "namespace": "local",
       "deployed": false,
       "localOnly": true,
-      "notes": "Workflow app proof for workflow-plugin-signal v0.36.0 batch transport lifecycle with workflow-plugin-eventbus v0.3.8: external plugin loading, scenario-owned embedded eventbus, participant-parametric HTTP routes, batch handoff/admit/receipt verification/outbox ack, duplicate/tamper rejection, inbox batch completion, restart persistence, and response redaction.",
+      "notes": "Workflow app proof for workflow-plugin-signal v0.36.0 batch transport lifecycle with workflow-plugin-eventbus v0.3.8: external plugin loading, scenario-owned embedded eventbus, participant-parametric HTTP routes, batch handoff/admit/receipt verification/outbox ack, duplicate/tamper rejection, inbox batch completion, and response redaction.",
       "blockers": [],
-      "lastTested": "2026-07-06T14:41:21.607647Z",
+      "lastTested": "2026-07-06T14:51:58.763871Z",
       "lastResult": "pass",
       "testCount": 65,
       "passCount": 65,
@@ -1711,12 +1711,12 @@
       "localOnly": true,
       "notes": "Workflow app proof for workflow-plugin-signal v0.36.0 device directory fanout: external plugin loading, local-file device directory, participant-parametric publish/list/revoke/fanout routes, active-device fanout, revoked-device exclusion, restart persistence, corrupt snapshot fail-closed behavior, and response/file redaction.",
       "blockers": [],
-      "lastTested": "2026-07-06T14:42:39.625839Z",
+      "lastTested": "2026-07-06T14:52:11.294780Z",
       "lastResult": "pass",
       "testCount": 38,
       "passCount": 38,
       "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-06T14:42:51.573058Z"
+  "lastUpdated": "2026-07-06T14:52:11.294780Z"
 }

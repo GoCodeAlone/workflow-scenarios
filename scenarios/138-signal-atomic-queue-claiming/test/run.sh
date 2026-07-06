@@ -23,7 +23,7 @@ RECIPIENT="${RECIPIENT:-user-b}"
 WORKER="${WORKER:-signal-queue-worker}"
 OPERATOR="${OPERATOR:-signal-queue-operator}"
 SPACE="${SPACE:-private-space-138}"
-PLAINTEXT_B64="${PLAINTEXT_B64:-c2lnbmFsIGluYm94IGxpZmVjeWNsZSBwcm9vZiAxMzY=}"
+PLAINTEXT_B64="${PLAINTEXT_B64:-c2lnbmFsIGF0b21pYyBxdWV1ZSBjbGFpbWluZyBwcm9vZiAxMzg=}"
 BASE_URL="${BASE_URL:-http://127.0.0.1:18138}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
