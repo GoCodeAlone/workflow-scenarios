@@ -1612,7 +1612,33 @@
       "failCount": 0,
       "lastTested": "2026-07-06T04:56:44.300731Z",
       "lastResult": "pass"
+    },
+    "133-signal-outbox-requeue": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Workflow app proof for workflow-plugin-signal v0.34.0 outbox dead-letter recovery: external plugin loading, scenario-owned SQLite envelope store, participant-parametric enqueue/claim/dead-letter/requeue/ack/status HTTP routes, operator-shaped requeue, terminal-state rejection before recovery, ack after requeue, restart persistence, and plaintext/ciphertext/custody/authz/lease-marker absence from public recovery/status responses.",
+      "blockers": [],
+      "lastTested": "2026-07-06T06:40:30.574534Z",
+      "lastResult": "pass",
+      "testCount": 69,
+      "passCount": 69,
+      "failCount": 0
+    },
+    "134-signal-envelope-purge": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Workflow app proof for workflow-plugin-signal v0.34.0 terminal envelope retention purge: external plugin loading, scenario-owned SQLite envelope store, participant-parametric enqueue/claim/dead-letter/ack/inbox-receive/status/purge HTTP routes, preview without deletion, destructive purge of terminal records only, active-record rejection, restart absence proof, and plaintext/ciphertext/custody/authz/lease-marker absence from public purge/status responses.",
+      "blockers": [],
+      "lastTested": "2026-07-06T06:40:35.362497Z",
+      "lastResult": "pass",
+      "testCount": 67,
+      "passCount": 67,
+      "failCount": 0
     }
   },
-  "lastUpdated": "2026-07-06T04:56:44.300731Z"
+  "lastUpdated": "2026-07-06T06:40:35.362497Z"
 }
