@@ -1,0 +1,595 @@
+modules:
+  - name: server
+    type: http.server
+    config:
+      address: ":18137"
+
+  - name: router
+    type: http.router
+    dependsOn: [server]
+
+  - name: participant_a_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-a
+      local_id: user-a@example.test
+      device_id: 1
+      registration_id: 7146
+
+  - name: participant_b_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-b
+      local_id: user-b@example.test
+      device_id: 1
+      registration_id: 7147
+
+  - name: participant_c_identity
+    type: signal.identity_store
+    config:
+      identity_ref: user-c
+      local_id: user-c@example.test
+      device_id: 1
+      registration_id: 7148
+
+  - name: signal_envelopes
+    type: signal.envelope_store
+    config:
+      store_ref: signal_envelopes
+      backend: memory
+      retention_limit: 64
+
+  - name: signal_eventbus
+    type: eventbus.broker
+    config:
+      provider: nats
+      deploy_target: self_hosted
+      version: "2.11.4"
+      replicas: 1
+      dsn: "nats://127.0.0.1:19137"
+      jetstream:
+        enabled: true
+
+  - name: signal_transport_stream
+    type: eventbus.stream
+    dependsOn: [signal_eventbus]
+    config:
+      broker_ref: signal_eventbus
+      name: SIGNAL_TRANSPORT
+      subjects:
+        - signal.transport.>
+      retention_policy: RETENTION_POLICY_WORKQUEUE
+      ack_wait: 30s
+
+  - name: signal_transport_consumer
+    type: eventbus.consumer
+    dependsOn: [signal_transport_stream]
+    config:
+      broker_ref: signal_eventbus
+      stream_name: SIGNAL_TRANSPORT
+      name: signal-transport-worker
+      deliver_policy: DELIVER_POLICY_ALL
+      ack_policy: ACK_POLICY_EXPLICIT
+      max_deliver: 3
+
+workflows:
+  http:
+    server: server
+    router: router
+
+pipelines:
+  healthz:
+    trigger: { type: http, config: { path: /healthz, method: GET } }
+    steps:
+      - name: ok
+        type: step.json_response
+        config:
+          status: 200
+          body: { status: ok, scenario: "137-signal-transport-receipts" }
+
+  prepare-session:
+    trigger:
+      type: http
+      config:
+        path: /participants/{participant}/session
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [participant]
+      - name: prepare
+        type: step.signal_session_prepare
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "participant" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            participant: '{{ index .steps "parse" "path_params" "participant" }}'
+            bundle:
+              _from: steps.prepare.bundle
+    on_error: stop
+
+  send-envelope:
+    trigger:
+      type: http
+      config:
+        path: /spaces/{space}/participants/{sender}/outbox/{recipient}
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [space, sender, recipient]
+          parse_body: true
+          merge_body: true
+      - name: request_input
+        type: step.jq
+        config:
+          input_from: steps.parse.body
+          expression: "."
+      - name: encrypt
+        type: step.signal_encrypt
+        config:
+          identity_ref: '{{ index .steps "parse" "path_params" "sender" }}'
+      - name: enqueue_input
+        type: step.set
+        config:
+          values:
+            envelope:
+              sender_id: '{{ index .steps "encrypt" "envelope" "sender_id" }}'
+              sender_device_id: '{{ index .steps "encrypt" "envelope" "sender_device_id" }}'
+              recipient_id: '{{ index .steps "encrypt" "envelope" "recipient_id" }}'
+              recipient_device_id: '{{ index .steps "encrypt" "envelope" "recipient_device_id" }}'
+              message_type: '{{ index .steps "encrypt" "envelope" "message_type" }}'
+              ciphertext: '{{ index .steps "encrypt" "envelope" "ciphertext" }}'
+            sender_ref: 'participant://{{ index .steps "parse" "path_params" "sender" }}'
+            recipient_ref: 'participant://{{ index .steps "parse" "path_params" "recipient" }}'
+            custody_ref: 'custody://{{ index .steps "parse" "path_params" "sender" }}/device-1'
+            authz_ref: 'authz://signal/{{ index .steps "parse" "path_params" "sender" }}/send/{{ index .steps "parse" "path_params" "recipient" }}'
+            message_ref: '{{ index .steps "parse" "body" "message_ref" }}'
+            idempotency_key: '{{ index .steps "parse" "path_params" "space" }}-{{ index .steps "parse" "path_params" "sender" }}-{{ index .steps "parse" "path_params" "recipient" }}-{{ index .steps "parse" "body" "message_ref" }}'
+      - name: enqueue
+        type: step.signal_outbox_enqueue
+        config:
+          store_ref: signal_envelopes
+      - name: respond
+        type: step.json_response
+        config:
+          status: 202
+          body:
+            space: '{{ index .steps "parse" "path_params" "space" }}'
+            sender: '{{ index .steps "parse" "path_params" "sender" }}'
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            envelope_ref:
+              _from: steps.enqueue.envelope_ref
+            status:
+              _from: steps.enqueue.status
+    on_error: stop
+
+  handoff-envelope:
+    trigger:
+      type: http
+      config:
+        path: /workers/{worker}/outbox/handoff
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [worker]
+          parse_body: true
+          merge_body: true
+      - name: handoff_input
+        type: step.set
+        config:
+          values:
+            envelope_ref: '{{ index .steps "parse" "body" "envelope_ref" }}'
+            claimant_ref: 'worker://{{ index .steps "parse" "path_params" "worker" }}'
+            lease_id: '{{ index .steps "parse" "body" "lease_id" }}'
+            transport_ref: '{{ index .steps "parse" "body" "transport_ref" }}'
+            subject_ref: '{{ index .steps "parse" "body" "subject_ref" }}'
+            delivery_id: '{{ index .steps "parse" "body" "delivery_id" }}'
+            requested_at_unix: '{{ index .steps "parse" "body" "requested_at_unix" }}'
+            expires_at_unix: '{{ index .steps "parse" "body" "expires_at_unix" }}'
+      - name: handoff
+        type: step.signal_outbox_handoff
+        config:
+          store_ref: signal_envelopes
+          integrity_secret_env: SIGNAL_TRANSPORT_HMAC
+          production_policy: true
+      - name: event_publish_input
+        type: step.set
+        config:
+          values:
+            broker_ref: signal_eventbus
+            subject: 'signal.transport.{{ index .steps "parse" "body" "space" }}'
+            payload: '{{ b64 (index .steps "handoff" "transport_payload_json") }}'
+            correlation_id: '{{ index .steps "handoff" "delivery_ref" }}'
+            headers:
+              envelope_ref: '{{ index .steps "handoff" "envelope_ref" }}'
+              delivery_ref: '{{ index .steps "handoff" "delivery_ref" }}'
+              lease_ref: '{{ index .steps "handoff" "lease_ref" }}'
+              transport_ref: '{{ index .steps "handoff" "transport_ref" }}'
+              subject_ref: '{{ index .steps "handoff" "subject_ref" }}'
+      - name: publish_transport
+        type: step.eventbus.publish
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            worker: '{{ index .steps "parse" "path_params" "worker" }}'
+            delivery_ref:
+              _from: steps.handoff.delivery_ref
+            envelope_ref:
+              _from: steps.handoff.envelope_ref
+            status:
+              _from: steps.handoff.status
+            lease_ref:
+              _from: steps.handoff.lease_ref
+            transport_ref:
+              _from: steps.handoff.transport_ref
+            subject_ref:
+              _from: steps.handoff.subject_ref
+            payload_sha256:
+              _from: steps.handoff.payload_sha256
+            eventbus_sequence:
+              _from: steps.publish_transport.sequence
+            eventbus_acked_at:
+              _from: steps.publish_transport.acked_at
+    on_error: stop
+
+  receive-eventbus-transport:
+    trigger:
+      type: http
+      config:
+        path: /workers/{worker}/eventbus/receive
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [worker]
+          parse_body: true
+          merge_body: true
+      - name: consume_input
+        type: step.set
+        config:
+          values:
+            broker_ref: signal_eventbus
+            consumer: '{{ index .steps "parse" "path_params" "worker" }}'
+            batch_size: 1
+            max_wait: 2s
+      - name: consume_transport
+        type: step.eventbus.consume
+      - name: event_message
+        type: step.jq
+        config:
+          input_from: steps.consume_transport
+          expression: '.messages[0] // error("no transport event available")'
+      - name: decoded_payload
+        type: step.jq
+        config:
+          input_from: steps.event_message.result.payload
+          expression: '. | @base64d'
+      - name: parsed_payload
+        type: step.jq
+        config:
+          input_from: steps.decoded_payload.result
+          expression: 'fromjson'
+      - name: admit_input
+        type: step.set
+        config:
+          values:
+            transport_payload_json: '{{ index .steps "decoded_payload" "result" }}'
+            expected_transport_ref: '{{ index .steps "parsed_payload" "result" "transport_ref" }}'
+            expected_subject_ref: '{{ index .steps "parsed_payload" "result" "subject_ref" }}'
+            expected_recipient_ref: '{{ index .steps "parsed_payload" "result" "recipient_ref" }}'
+            requested_at_unix: '{{ default 1000 (index .steps "parse" "body" "requested_at_unix") }}'
+            idempotency_key: '{{ index .steps "parsed_payload" "result" "delivery_ref" }}'
+      - name: admit
+        type: step.signal_transport_admit
+        config:
+          store_ref: signal_envelopes
+          integrity_secret_env: SIGNAL_TRANSPORT_HMAC
+          production_policy: true
+      - name: issue_receipt_input
+        type: step.set
+        config:
+          values:
+            transport_payload_json: '{{ index .steps "decoded_payload" "result" }}'
+            received_envelope_ref: '{{ index .steps "admit" "envelope_ref" }}'
+            status: received
+            issued_by_ref: 'worker://{{ index .steps "parse" "path_params" "worker" }}'
+            key_id_ref: receipt-key://scenario/137
+            nonce: '{{ default "receipt-nonce-137" (index .steps "parse" "body" "receipt_nonce") }}'
+            requested_at_unix: '{{ default 1002 (index .steps "parse" "body" "receipt_issued_at_unix") }}'
+      - name: issue_receipt
+        type: step.signal_transport_receipt_issue
+        config:
+          integrity_secret_env: SIGNAL_TRANSPORT_HMAC
+          production_policy: true
+          key_id_ref: receipt-key://scenario/137
+      - name: verify_receipt_input
+        type: step.set
+        config:
+          values:
+            receipt_json: '{{ index .steps "issue_receipt" "receipt_json" }}'
+            transport_payload_json: '{{ index .steps "decoded_payload" "result" }}'
+            expected_transport_ref: '{{ index .steps "parsed_payload" "result" "transport_ref" }}'
+            expected_subject_ref: '{{ index .steps "parsed_payload" "result" "subject_ref" }}'
+            expected_recipient_ref: '{{ index .steps "parsed_payload" "result" "recipient_ref" }}'
+            expected_envelope_ref: '{{ index .steps "admit" "envelope_ref" }}'
+            expected_status: received
+            expected_key_id_ref: receipt-key://scenario/137
+            replay_cache_ref: replay-cache://scenario/137/receipts
+            requested_at_unix: '{{ default 1003 (index .steps "parse" "body" "receipt_verified_at_unix") }}'
+      - name: verify_receipt
+        type: step.signal_transport_receipt_verify
+        config:
+          integrity_secret_env: SIGNAL_TRANSPORT_HMAC
+          production_policy: true
+          max_age_seconds: 60
+      - name: signal_ack_input
+        type: step.set
+        config:
+          values:
+            envelope_ref: '{{ index .steps "admit" "envelope_ref" }}'
+            lease_ref: '{{ index .steps "parsed_payload" "result" "lease_ref" }}'
+            acked_by_ref: 'worker://{{ index .steps "parse" "path_params" "worker" }}'
+      - name: signal_ack
+        type: step.signal_outbox_ack
+        config:
+          store_ref: signal_envelopes
+      - name: eventbus_ack_input
+        type: step.set
+        config:
+          values:
+            broker_ref: signal_eventbus
+            ack_token: '{{ index .steps "event_message" "result" "ack_token" }}'
+      - name: eventbus_ack
+        type: step.eventbus.ack
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            worker: '{{ index .steps "parse" "path_params" "worker" }}'
+            event_subject:
+              _from: steps.event_message.result.subject
+            event_sequence:
+              _from: steps.event_message.result.sequence
+            event_ack_token:
+              _from: steps.event_message.result.ack_token
+            delivery_ref:
+              _from: steps.admit.delivery_ref
+            envelope_ref:
+              _from: steps.admit.envelope_ref
+            lease_ref:
+              _from: steps.parsed_payload.result.lease_ref
+            signal_ack_status:
+              _from: steps.signal_ack.status
+            recipient_ref:
+              _from: steps.admit.recipient_ref
+            payload_sha256:
+              _from: steps.admit.payload_sha256
+            receipt_ref:
+              _from: steps.issue_receipt.receipt_ref
+            receipt_json:
+              _from: steps.issue_receipt.receipt_json
+            transport_payload_json:
+              _from: steps.decoded_payload.result
+            receipt_verified:
+              _from: steps.verify_receipt.verified
+            receipt_status:
+              _from: steps.verify_receipt.status
+    on_error: stop
+
+  verify-receipt:
+    trigger:
+      type: http
+      config:
+        path: /workers/{worker}/transport/receipt/verify
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [worker]
+          parse_body: true
+          merge_body: true
+      - name: verify_input
+        type: step.set
+        config:
+          values:
+            receipt_json: '{{ index .steps "parse" "body" "receipt_json" }}'
+            transport_payload_json: '{{ index .steps "parse" "body" "transport_payload_json" }}'
+            expected_transport_ref: '{{ index .steps "parse" "body" "expected_transport_ref" }}'
+            expected_subject_ref: '{{ index .steps "parse" "body" "expected_subject_ref" }}'
+            expected_recipient_ref: '{{ index .steps "parse" "body" "expected_recipient_ref" }}'
+            expected_envelope_ref: '{{ index .steps "parse" "body" "expected_envelope_ref" }}'
+            expected_status: '{{ default "received" (index .steps "parse" "body" "expected_status") }}'
+            expected_key_id_ref: receipt-key://scenario/137
+            replay_cache_ref: replay-cache://scenario/137/receipts
+            requested_at_unix: '{{ default 1004 (index .steps "parse" "body" "requested_at_unix") }}'
+      - name: verify
+        type: step.signal_transport_receipt_verify
+        config:
+          integrity_secret_env: SIGNAL_TRANSPORT_HMAC
+          production_policy: true
+          max_age_seconds: 60
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            verified:
+              _from: steps.verify.verified
+            receipt_ref:
+              _from: steps.verify.receipt_ref
+            status:
+              _from: steps.verify.status
+    on_error: stop
+
+  release-envelope:
+    trigger:
+      type: http
+      config:
+        path: /workers/{worker}/outbox/release
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [worker]
+          parse_body: true
+          merge_body: true
+      - name: release_input
+        type: step.set
+        config:
+          values:
+            envelope_ref: '{{ index .steps "parse" "body" "envelope_ref" }}'
+            lease_ref: '{{ index .steps "parse" "body" "lease_ref" }}'
+            released_by_ref: 'worker://{{ index .steps "parse" "path_params" "worker" }}'
+            last_error_ref: '{{ index .steps "parse" "body" "last_error_ref" }}'
+      - name: release
+        type: step.signal_outbox_release
+        config:
+          store_ref: signal_envelopes
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            worker: '{{ index .steps "parse" "path_params" "worker" }}'
+            envelope_ref:
+              _from: steps.release.envelope_ref
+            status:
+              _from: steps.release.status
+    on_error: stop
+
+  admit-transport:
+    trigger:
+      type: http
+      config:
+        path: /participants/{recipient}/transport/admit
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [recipient]
+          parse_body: true
+          merge_body: true
+      - name: admit_input
+        type: step.set
+        config:
+          values:
+            transport_payload_json: '{{ index .steps "parse" "body" "transport_payload_json" }}'
+            expected_transport_ref: '{{ index .steps "parse" "body" "transport_ref" }}'
+            expected_subject_ref: '{{ index .steps "parse" "body" "subject_ref" }}'
+            expected_recipient_ref: 'participant://{{ index .steps "parse" "path_params" "recipient" }}'
+            requested_at_unix: '{{ index .steps "parse" "body" "requested_at_unix" }}'
+            idempotency_key: '{{ index .steps "parse" "body" "idempotency_key" }}'
+      - name: admit
+        type: step.signal_transport_admit
+        config:
+          store_ref: signal_envelopes
+          integrity_secret_env: SIGNAL_TRANSPORT_HMAC
+          production_policy: true
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            delivery_ref:
+              _from: steps.admit.delivery_ref
+            envelope_ref:
+              _from: steps.admit.envelope_ref
+            status:
+              _from: steps.admit.status
+            transport_ref:
+              _from: steps.admit.transport_ref
+            subject_ref:
+              _from: steps.admit.subject_ref
+            recipient_ref:
+              _from: steps.admit.recipient_ref
+            payload_sha256:
+              _from: steps.admit.payload_sha256
+    on_error: stop
+
+  ack-envelope:
+    trigger:
+      type: http
+      config:
+        path: /workers/{worker}/outbox/ack
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [worker]
+          parse_body: true
+          merge_body: true
+      - name: ack_input
+        type: step.set
+        config:
+          values:
+            envelope_ref: '{{ index .steps "parse" "body" "envelope_ref" }}'
+            lease_ref: '{{ index .steps "parse" "body" "lease_ref" }}'
+            acked_by_ref: 'worker://{{ index .steps "parse" "path_params" "worker" }}'
+      - name: ack
+        type: step.signal_outbox_ack
+        config:
+          store_ref: signal_envelopes
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            worker: '{{ index .steps "parse" "path_params" "worker" }}'
+            envelope_ref:
+              _from: steps.ack.envelope_ref
+            status:
+              _from: steps.ack.status
+    on_error: stop
+
+  decrypt-inbox:
+    trigger:
+      type: http
+      config:
+        path: /participants/{recipient}/inbox/decrypt
+        method: POST
+    steps:
+      - name: parse
+        type: step.request_parse
+        config:
+          path_params: [recipient]
+          parse_body: true
+          merge_body: true
+      - name: decrypt_input
+        type: step.set
+        config:
+          values:
+            envelope_ref: '{{ index .steps "parse" "body" "envelope_ref" }}'
+            principal: '{{ index .steps "parse" "path_params" "recipient" }}'
+            custody_ref: 'custody://{{ index .steps "parse" "path_params" "recipient" }}/device-1'
+            authz_ref: 'authz://signal/{{ index .steps "parse" "path_params" "recipient" }}/decrypt/{{ index .steps "parse" "body" "envelope_ref" }}'
+      - name: decrypt
+        type: step.signal_inbox_decrypt
+        config:
+          store_ref: signal_envelopes
+          identity_ref: '{{ index .steps "parse" "path_params" "recipient" }}'
+      - name: respond
+        type: step.json_response
+        config:
+          status: 200
+          body:
+            recipient: '{{ index .steps "parse" "path_params" "recipient" }}'
+            plaintext:
+              _from: steps.decrypt.plaintext
+    on_error: stop
