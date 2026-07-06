@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Scenario 129 - Signal trust policy profiles.
 #
-# Demonstration-fidelity: this starts the real Workflow server, loads the real
-# workflow-plugin-signal subprocess from data/plugins, and drives
-# participant-parametric HTTP routes that execute signal.trust_store,
+# Demonstration-fidelity: this starts the real Workflow server, builds/loads the
+# real workflow-plugin-signal subprocess from a scenario-local plugin directory,
+# and drives participant-parametric HTTP routes that execute signal.trust_store,
 # step.signal_trust_observe, step.signal_trust_policy_check, and
 # step.signal_trust_reset before encryption and outbox enqueue.
 set -uo pipefail

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Scenario 130 - Signal eventbus transport.
 #
-# Demonstration-fidelity: this starts the real Workflow server, loads real
-# workflow-plugin-signal and workflow-plugin-eventbus subprocesses from
-# data/plugins, starts a scenario-owned embedded NATS/JetStream fixture, and
-# drives sender, worker, and recipient clients through participant-parametric
-# Workflow API routes.
+# Demonstration-fidelity: this starts the real Workflow server, builds/loads real
+# workflow-plugin-signal and workflow-plugin-eventbus subprocesses from a
+# scenario-local plugin directory, starts a scenario-owned embedded NATS/JetStream
+# fixture, and drives sender, worker, and recipient clients through
+# participant-parametric Workflow API routes.
 set -uo pipefail
 export LC_ALL=C
 export LANG=C

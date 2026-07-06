@@ -44,7 +44,7 @@ modules:
     config:
       provider: nats
       deploy_target: self_hosted
-      version: "2.10"
+      version: "2.11.4"
       replicas: 1
       dsn: "nats://127.0.0.1:19130"
       jetstream:
