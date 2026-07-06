@@ -34,6 +34,9 @@ func main() {
 	if *path == "" {
 		log.Fatal("--path is required")
 	}
+	if *authToken == "" {
+		log.Fatal("--auth-token is required")
+	}
 
 	s := &server{
 		path:       *path,
@@ -85,7 +88,10 @@ func (s *server) snapshot(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		s.state.GetCount++
-		s.writeStateLocked(w)
+		if err := s.writeStateLocked(); err != nil {
+			http.Error(w, "write state", http.StatusInternalServerError)
+			return
+		}
 		snapshot := s.state.Snapshots[storeRef]
 		if len(snapshot) == 0 {
 			_ = json.NewEncoder(w).Encode(map[string]string{
@@ -120,7 +126,10 @@ func (s *server) snapshot(w http.ResponseWriter, r *http.Request) {
 		s.state.PutCount++
 		s.state.GenerationRef = fmt.Sprintf("generation-%06d", s.state.PutCount)
 		s.state.Snapshots[storeRef] = append(json.RawMessage(nil), req.Snapshot...)
-		s.writeStateLocked(w)
+		if err := s.writeStateLocked(); err != nil {
+			http.Error(w, "write state", http.StatusInternalServerError)
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"status":         "ok",
 			"generation_ref": s.state.GenerationRef,
@@ -142,7 +151,10 @@ func (s *server) conflict(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.state.GenerationRef = fmt.Sprintf("generation-conflict-%06d", s.state.PutCount+1)
-	s.writeStateLocked(w)
+	if err := s.writeStateLocked(); err != nil {
+		http.Error(w, "write state", http.StatusInternalServerError)
+		return
+	}
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status":         "ok",
 		"generation_ref": s.state.GenerationRef,
@@ -165,8 +177,25 @@ func (s *server) corrupt(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.state.Snapshots[storeRef] = json.RawMessage(`{"schema_version":1,"store_ref":"` + storeRef + `","checksum":"sha256:bad","state":{"version":1,"outbox":{},"inbox":{}}}`)
-	s.writeStateLocked(w)
+	badSnapshot, err := json.Marshal(map[string]any{
+		"schema_version": 1,
+		"store_ref":      storeRef,
+		"checksum":       "sha256:bad",
+		"state": map[string]any{
+			"version": 1,
+			"outbox":  map[string]any{},
+			"inbox":   map[string]any{},
+		},
+	})
+	if err != nil {
+		http.Error(w, "encode snapshot", http.StatusInternalServerError)
+		return
+	}
+	s.state.Snapshots[storeRef] = append(json.RawMessage(nil), badSnapshot...)
+	if err := s.writeStateLocked(); err != nil {
+		http.Error(w, "write state", http.StatusInternalServerError)
+		return
+	}
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
@@ -194,18 +223,17 @@ func (s *server) load() error {
 	return nil
 }
 
-func (s *server) writeStateLocked(w http.ResponseWriter) {
+func (s *server) writeStateLocked() error {
 	raw, err := json.MarshalIndent(s.state, "", "  ")
 	if err != nil {
-		http.Error(w, "encode state", http.StatusInternalServerError)
-		return
+		return err
 	}
 	tmp := s.path + ".tmp"
 	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-		http.Error(w, "write state", http.StatusInternalServerError)
-		return
+		return err
 	}
 	if err := os.Rename(tmp, s.path); err != nil {
-		http.Error(w, "replace state", http.StatusInternalServerError)
+		return err
 	}
+	return nil
 }
