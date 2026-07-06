@@ -1586,7 +1586,33 @@
       "failCount": 0,
       "lastTested": "2026-07-06T03:30:09.933739Z",
       "lastResult": "pass"
+    },
+    "131-signal-envelope-status": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Workflow app proof for workflow-plugin-signal v0.33.0 redacted envelope status: external plugin loading, participant-parametric send/claim/release/ack/receive/decrypt/status HTTP routes, bounded status queries for queued/claimed/released/acked/received records, unsafe error hash/redaction, and plaintext/ciphertext/custody/authz/lease-marker absence from ordinary status responses.",
+      "blockers": [],
+      "testCount": 75,
+      "passCount": 75,
+      "failCount": 0,
+      "lastTested": "2026-07-06T04:46:40.719804Z",
+      "lastResult": "pass"
+    },
+    "132-signal-outbox-dlq": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Workflow app proof for workflow-plugin-signal v0.33.0 outbox dead-letter quarantine: external plugin loading, scenario-owned SQLite envelope store, participant-parametric enqueue/claim/handoff/release/dead-letter/status HTTP routes, lease-required explicit DLQ, dead_letter_on_max_attempts opt-in, default release compatibility, terminal-state rejection, restart persistence, plaintext absence from the persisted snapshot, and plaintext/ciphertext/custody/authz/lease-marker absence from public status responses.",
+      "blockers": [],
+      "testCount": 51,
+      "passCount": 51,
+      "failCount": 0,
+      "lastTested": "2026-07-06T04:56:44.300731Z",
+      "lastResult": "pass"
     }
   },
-  "lastUpdated": "2026-07-06T03:30:09.933739Z"
+  "lastUpdated": "2026-07-06T04:56:44.300731Z"
 }

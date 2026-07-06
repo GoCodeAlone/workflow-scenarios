@@ -1,0 +1,35 @@
+name: Signal Envelope Status
+id: "131-signal-envelope-status"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal v0.33.0 exposes
+  redacted outbox/inbox envelope status through participant-parametric HTTP
+  routes. The app exercises enqueue, claim, release, ack, inbox receive,
+  decrypt, and status queries without returning plaintext, ciphertext, custody
+  refs, authorization refs, active lease refs, or raw unsafe failure text from
+  status responses.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.envelope_store
+  - step.signal_session_prepare
+  - step.signal_encrypt
+  - step.signal_outbox_enqueue
+  - step.signal_outbox_claim
+  - step.signal_outbox_release
+  - step.signal_outbox_ack
+  - step.signal_inbox_receive
+  - step.signal_inbox_decrypt
+  - step.signal_envelope_status
+status: testable
+tags:
+  - signal
+  - envelope-status
+  - workflow-plugin
+  - local-only
+  - encrypted
+  - redaction
+runtime: local
