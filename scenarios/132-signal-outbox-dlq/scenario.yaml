@@ -21,7 +21,10 @@ components:
   - step.signal_outbox_claim
   - step.signal_outbox_handoff
   - step.signal_outbox_release
+  - step.signal_outbox_ack
   - step.signal_outbox_dead_letter
+  - step.signal_inbox_receive
+  - step.signal_inbox_decrypt
   - step.signal_envelope_status
 status: testable
 tags:

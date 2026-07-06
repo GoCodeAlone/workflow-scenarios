@@ -182,6 +182,18 @@ assert_no_marker() {
   fi
 }
 
+assert_rejected_not_missing() {
+  local label="$1"
+  local code="$2"
+  if [ "$code" = "200" ]; then
+    fail "$label unexpectedly succeeded"
+  elif [ "$code" = "404" ]; then
+    fail "$label returned 404; route may be missing: $(cat "$BODY_FILE")"
+  else
+    pass "$label was rejected with HTTP $code"
+  fi
+}
+
 status_for() {
   local ref="$1"
   post_json "/status/envelopes" "$(jq -cn --arg envelope_ref "$ref" '{queue:"outbox",status:"",envelope_ref:$envelope_ref,message_ref:"",sender_ref:"",recipient_ref:"",limit:100}')"
@@ -260,7 +272,7 @@ EXPLICIT_CLAIM="$(post_json "/workers/$WORKER/outbox/claim" "$(jq -cn --arg enve
   && pass "explicit DLQ fixture claimed" || fail "explicit DLQ claim failed"
 EXPLICIT_LEASE="$(printf '%s' "$EXPLICIT_CLAIM" | jq -r '.lease_ref // empty')"
 BAD_DLQ_CODE="$(post_status "/workers/$WORKER/outbox/dead-letter" "$(jq -cn --arg envelope_ref "$EXPLICIT_REF" --arg reason "$SAFE_REASON" '{envelope_ref:$envelope_ref,lease_ref:"lease://wrong",reason_ref:$reason}')")"
-[ "$BAD_DLQ_CODE" != "200" ] && pass "dead-letter with mismatched lease was rejected" || fail "dead-letter with mismatched lease succeeded: $(cat "$BODY_FILE")"
+assert_rejected_not_missing "dead-letter with mismatched lease" "$BAD_DLQ_CODE"
 EXPLICIT_DLQ="$(post_json "/workers/$WORKER/outbox/dead-letter" "$(jq -cn --arg envelope_ref "$EXPLICIT_REF" --arg lease_ref "$EXPLICIT_LEASE" --arg reason "$SAFE_REASON" '{envelope_ref:$envelope_ref,lease_ref:$lease_ref,reason_ref:$reason,requested_at_unix:3100}')")" \
   && pass "explicit dead-letter transitioned through Workflow API" || fail "explicit dead-letter failed"
 [ "$(printf '%s' "$EXPLICIT_DLQ" | jq -r '.status // empty')" = "dead_lettered" ] && pass "explicit dead-letter returned terminal status" || fail "explicit DLQ status mismatch: $EXPLICIT_DLQ"
@@ -280,7 +292,7 @@ for path in claim handoff ack release; do
     ack) code="$(post_status "/workers/$WORKER/outbox/ack" "$(jq -cn --arg envelope_ref "$EXPLICIT_REF" --arg lease_ref "$EXPLICIT_LEASE" '{envelope_ref:$envelope_ref,lease_ref:$lease_ref}')")" ;;
     release) code="$(post_status "/workers/$WORKER/outbox/release" "$(jq -cn --arg envelope_ref "$EXPLICIT_REF" --arg lease_ref "$EXPLICIT_LEASE" '{envelope_ref:$envelope_ref,lease_ref:$lease_ref,last_error_ref:"error://after-dlq"}')")" ;;
   esac
-  [ "$code" != "200" ] && pass "dead-lettered envelope rejected $path" || fail "dead-lettered envelope allowed $path"
+  assert_rejected_not_missing "dead-lettered envelope $path" "$code"
 done
 
 DEFAULT_SEND="$(send_envelope "dlq-default-max")" && pass "default max fixture enqueued" || fail "default max send failed"
@@ -289,7 +301,7 @@ DEFAULT_CLAIM="$(post_json "/workers/$WORKER/outbox/claim" "$(jq -cn --arg envel
   && pass "default max fixture claimed" || fail "default max claim failed"
 DEFAULT_LEASE="$(printf '%s' "$DEFAULT_CLAIM" | jq -r '.lease_ref // empty')"
 DEFAULT_CODE="$(post_status "/workers/$WORKER/outbox/release" "$(jq -cn --arg envelope_ref "$DEFAULT_REF" --arg lease_ref "$DEFAULT_LEASE" --arg raw "$RAW_ERROR" '{envelope_ref:$envelope_ref,lease_ref:$lease_ref,last_error_ref:$raw,max_attempts:1,requested_at_unix:3300}')")"
-[ "$DEFAULT_CODE" != "200" ] && pass "default max-attempt release still errors without DLQ transition" || fail "default max-attempt release unexpectedly succeeded"
+assert_rejected_not_missing "default max-attempt release without DLQ transition" "$DEFAULT_CODE"
 DEFAULT_STATUS="$(status_for "$DEFAULT_REF")"
 [ "$(printf '%s' "$DEFAULT_STATUS" | jq -r '.items[0].status // empty')" = "claimed" ] && pass "default max-attempt release left record claimed" || fail "default max status mismatch: $DEFAULT_STATUS"
 
