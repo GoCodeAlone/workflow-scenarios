@@ -1,0 +1,45 @@
+name: Signal Inbox Worker Lifecycle
+id: "136-signal-inbox-worker-lifecycle"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal v0.35.1 persists
+  inbox worker lifecycle behavior in a scenario-owned SQLite envelope store.
+  The app exercises inbox claim leases, lease-required decrypt, release, stale
+  reclaim, dead-letter, operator requeue, ack, status lineage, and restart
+  persistence through Workflow HTTP routes.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.envelope_store
+  - step.signal_session_prepare
+  - step.signal_encrypt
+  - step.signal_outbox_enqueue
+  - step.signal_outbox_claim
+  - step.signal_outbox_handoff
+  - step.signal_outbox_release
+  - step.signal_outbox_ack
+  - step.signal_outbox_dead_letter
+  - step.signal_inbox_receive
+  - step.signal_inbox_claim
+  - step.signal_inbox_reclaim_stale
+  - step.signal_inbox_release
+  - step.signal_inbox_ack
+  - step.signal_inbox_dead_letter
+  - step.signal_inbox_requeue
+  - step.signal_inbox_decrypt
+  - step.signal_envelope_status
+status: testable
+tags:
+  - signal
+  - inbox
+  - worker-lifecycle
+  - lease
+  - workflow-plugin
+  - local-only
+  - encrypted
+  - sqlite
+  - restart-persistence
+runtime: local

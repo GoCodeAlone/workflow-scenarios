@@ -1,0 +1,51 @@
+name: Signal Transport Receipts
+id: "137-signal-transport-receipts"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal v0.35.1 and
+  workflow-plugin-eventbus v0.3.8 move a provider-neutral encrypted Signal
+  transport payload through NATS/JetStream in a running Workflow API. The
+  scenario loads both released external plugins, starts workflow-server and a
+  scenario-owned embedded NATS/JetStream fixture, and uses separate sender,
+  worker, eventbus, and recipient calls to encrypt, enqueue, handoff, publish,
+  consume, admit, issue and verify a transport receipt, ack both systems, reject
+  receipt replay, and decrypt a participant-parametric encrypted envelope. It
+  verifies non-recipient transport responses never expose plaintext, HMAC
+  secrets, custody material, or private keys while the recipient decrypt route
+  recovers the original plaintext.
+components:
+  - workflow-plugin-signal
+  - workflow-plugin-eventbus
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - NATS/JetStream fixture
+  - signal.identity_store
+  - signal.envelope_store
+  - eventbus.broker
+  - eventbus.stream
+  - eventbus.consumer
+  - step.signal_session_prepare
+  - step.signal_encrypt
+  - step.signal_outbox_enqueue
+  - step.signal_outbox_handoff
+  - step.eventbus.publish
+  - step.eventbus.consume
+  - step.eventbus.ack
+  - step.signal_transport_admit
+  - step.signal_transport_receipt_issue
+  - step.signal_transport_receipt_verify
+  - step.signal_outbox_ack
+  - step.signal_inbox_decrypt
+status: testable
+tags:
+  - signal
+  - eventbus
+  - jetstream
+  - encrypted-transport
+  - receipts
+  - replay-cache
+  - workflow-plugin
+  - local-only
+  - ack
+runtime: local
