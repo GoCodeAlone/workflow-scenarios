@@ -219,7 +219,13 @@ echo ""
 echo "=== Scenario 133 - Signal Outbox Requeue ==="
 echo ""
 
-[ -f "$CONFIG_TEMPLATE" ] && pass "Workflow app config exists" || fail "Workflow app config missing"
+if [ -f "$CONFIG_TEMPLATE" ]; then
+  pass "Workflow app config exists"
+else
+  fail "Workflow app config missing"
+  finish
+  exit 1
+fi
 if grep -Eiq 'ali''ce|bo''b' "$CONFIG_TEMPLATE" "$0"; then
   fail "Workflow scenario should not bake fixed demo participant names"
 else

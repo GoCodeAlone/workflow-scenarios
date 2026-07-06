@@ -25,7 +25,6 @@ OPERATOR="${OPERATOR:-signal-retention-operator}"
 SPACE="${SPACE:-private-space-134}"
 PLAINTEXT_B64="${PLAINTEXT_B64:-c2lnbmFsIGVudmVsb3BlIHB1cmdlIHByb29mIDEzNA==}"
 BASE_URL="${BASE_URL:-http://127.0.0.1:18134}"
-RAW_ERROR="raw downstream failure with bearer-token"
 SAFE_REASON="reason://scenario/134/invalid-route"
 PURGE_REASON="reason://scenario/134/retention-window"
 
@@ -225,7 +224,13 @@ echo ""
 echo "=== Scenario 134 - Signal Envelope Purge ==="
 echo ""
 
-[ -f "$CONFIG_TEMPLATE" ] && pass "Workflow app config exists" || fail "Workflow app config missing"
+if [ -f "$CONFIG_TEMPLATE" ]; then
+  pass "Workflow app config exists"
+else
+  fail "Workflow app config missing"
+  finish
+  exit 1
+fi
 if grep -Eiq 'ali''ce|bo''b' "$CONFIG_TEMPLATE" "$0"; then
   fail "Workflow scenario should not bake fixed demo participant names"
 else
