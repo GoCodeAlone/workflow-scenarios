@@ -1,0 +1,40 @@
+name: Signal Envelope HTTP Store
+id: "126-signal-envelope-http-store"
+category: C
+description: |
+  Local-only Workflow app proof that workflow-plugin-signal v0.30.0 persists
+  encrypted envelope delivery state with signal.envelope_store backend http.
+  The scenario loads the released external plugin, starts a scenario-local
+  mock host-managed HTTP snapshot store, drives sender/worker/recipient API
+  calls for queued, released, and acked envelopes, restarts Workflow, and
+  proves queued and released envelopes survive while acked envelopes remain
+  terminal. It proves decrypt before restart for the acked path and inspects
+  the mock host store to verify authenticated GET/PUT snapshot traffic,
+  CAS generation metadata, and ciphertext state without plaintext markers.
+components:
+  - workflow-plugin-signal
+  - workflow-server
+  - HTTP trigger routes
+  - Workflow external plugin loader
+  - signal.identity_store
+  - signal.envelope_store
+  - host-managed HTTP snapshot store mock
+  - step.signal_session_prepare
+  - step.signal_encrypt
+  - step.signal_outbox_enqueue
+  - step.signal_outbox_claim
+  - step.signal_outbox_release
+  - step.signal_inbox_receive
+  - step.signal_outbox_ack
+  - step.signal_inbox_decrypt
+status: testable
+tags:
+  - signal
+  - envelope-delivery
+  - http-store
+  - persistence
+  - encrypted-transport
+  - workflow-plugin
+  - local-only
+  - restart
+runtime: local

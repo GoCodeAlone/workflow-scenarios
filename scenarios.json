@@ -1508,7 +1508,33 @@
       "testCount": 40,
       "passCount": 40,
       "failCount": 0
+    },
+    "125-signal-envelope-object-store": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Workflow app proof for workflow-plugin-signal v0.30.0 object_store envelope-store persistence: external plugin loading, scenario-local object-store directory, participant-parametric sender/worker/recipient HTTP routes, pre-restart decrypt, queued/released restart survival, terminal ack persistence, checksum-bearing snapshot metadata, and plaintext-marker absence from object snapshot.",
+      "blockers": [],
+      "testCount": 42,
+      "passCount": 42,
+      "failCount": 0,
+      "lastTested": "2026-07-06T00:23:24.528652Z",
+      "lastResult": "pass"
+    },
+    "126-signal-envelope-http-store": {
+      "status": "passed",
+      "namespace": "local",
+      "deployed": false,
+      "localOnly": true,
+      "notes": "Workflow app proof for workflow-plugin-signal v0.30.0 HTTP envelope-store persistence: external plugin loading, scenario-local mock host-managed HTTP snapshot store, participant-parametric sender/worker/recipient HTTP routes, pre-restart decrypt, queued/released restart survival, terminal ack persistence, authenticated GET/PUT snapshot traffic, CAS generation metadata, and plaintext-marker absence from host store snapshot.",
+      "blockers": [],
+      "testCount": 51,
+      "passCount": 51,
+      "failCount": 0,
+      "lastTested": "2026-07-06T00:24:17.669023Z",
+      "lastResult": "pass"
     }
   },
-  "lastUpdated": "2026-07-05T23:04:11.644760Z"
+  "lastUpdated": "2026-07-06T00:24:17.669023Z"
 }

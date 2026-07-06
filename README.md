@@ -19,5 +19,11 @@ Plugin scenarios should load plugins through Workflow's plugin mechanism. Mocks,
 emulators, fixture pools, and live-boundary approvals must be documented in the
 scenario README and test output.
 
+Local service mocks should run as scenario-owned, controllable processes
+instead of ad hoc `go run` parents or background shell fragments. Build a small
+binary or otherwise ensure cleanup kills the actual listener, because restart
+and failure-mode proofs are only meaningful when the harness controls the
+process that serves the dependency seam.
+
 `make test SCENARIO=...` updates shared `scenarios.json`; run scenario tests
 sequentially unless the harness explicitly provides isolated state or locking.
