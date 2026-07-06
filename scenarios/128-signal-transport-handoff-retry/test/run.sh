@@ -34,7 +34,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCENARIO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$SCENARIO_DIR/../.." && pwd)"
 CONFIG="$SCENARIO_DIR/config/app.yaml"
-BODY_FILE="/tmp/scenario-128-http-body"
+BODY_FILE="${TMPDIR:-/tmp}/scenario-128-http-body-$$"
 
 PASS=0
 FAIL=0
@@ -57,6 +57,7 @@ cleanup() {
     kill "$TRANSPORT_PID" >/dev/null 2>&1 || true
     wait "$TRANSPORT_PID" >/dev/null 2>&1 || true
   fi
+  rm -f "$BODY_FILE"
   [ -n "$DATA_DIR" ] && rm -rf "$DATA_DIR"
 }
 trap cleanup EXIT
@@ -101,7 +102,7 @@ resolve_server() {
   fi
 
   local workflow_repo
-  workflow_repo="$(find_repo "${WORKFLOW_REPO:-${WORKFLOW_DIR:-}}" "$REPO_ROOT/../workflow" "$REPO_ROOT/../../../workflow" "/Users/jon/workspace/workflow")" || return 1
+  workflow_repo="$(find_repo "${WORKFLOW_REPO:-${WORKFLOW_DIR:-}}" "$REPO_ROOT/../workflow" "$REPO_ROOT/../../../workflow")" || return 1
   mkdir -p "$workflow_repo/bin" || return 1
   (cd "$workflow_repo" && GOWORK=off go build -o bin/workflow-server ./cmd/server) >/dev/null 2>&1 || return 1
   printf '%s\n' "$workflow_repo/bin/workflow-server"
@@ -110,7 +111,7 @@ resolve_server() {
 build_plugin() {
   local plugin_dir="$1"
   local plugin_repo
-  plugin_repo="$(find_repo "${SIGNAL_PLUGIN_REPO:-}" "$REPO_ROOT/../workflow-plugin-signal" "$REPO_ROOT/../../../workflow-plugin-signal" "/Users/jon/workspace/workflow-plugin-signal")" || plugin_repo=""
+  plugin_repo="$(find_repo "${SIGNAL_PLUGIN_REPO:-}" "$REPO_ROOT/../workflow-plugin-signal" "$REPO_ROOT/../../../workflow-plugin-signal")" || plugin_repo=""
   if [ -z "$plugin_repo" ] || ! plugin_repo_supports_transport_handoff "$plugin_repo"; then
     plugin_repo="$DATA_DIR/repos/workflow-plugin-signal"
     mkdir -p "$(dirname "$plugin_repo")" || return 1
