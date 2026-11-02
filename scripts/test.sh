@@ -30,30 +30,41 @@ TEST_OUTPUT=$(bash "$TEST_SCRIPT" 2>&1)
 TEST_EXIT=$?
 set -e
 
-echo "$TEST_OUTPUT"
+printf '%s\n' "$TEST_OUTPUT"
 
-# Count PASS/FAIL lines from test output
-PASS=$(echo "$TEST_OUTPUT" | grep -c "^PASS:" || true)
-FAIL=$(echo "$TEST_OUTPUT" | grep -c "^FAIL:" || true)
+# Keep assertion counts separate from skipped checks.
+PASS=$(printf '%s\n' "$TEST_OUTPUT" | grep -c "^PASS:" || true)
+FAIL=$(printf '%s\n' "$TEST_OUTPUT" | grep -c "^FAIL:" || true)
+SKIP=$(printf '%s\n' "$TEST_OUTPUT" | grep -c "^SKIP:" || true)
 TOTAL=$((PASS + FAIL))
 
-if [ $TEST_EXIT -eq 0 ] && [ $FAIL -eq 0 ]; then
-    RESULT="pass"
-    echo ""
-    echo "RESULT: ALL TESTS PASSED ($PASS/$TOTAL)"
-else
+if [ "$TEST_EXIT" -ne 0 ] || [ "$FAIL" -ne 0 ]; then
     RESULT="fail"
-    echo ""
-    echo "RESULT: TESTS FAILED ($FAIL failed, $PASS passed, $TOTAL total)"
+    RESULT_EXIT=1
+    SUMMARY="RESULT: TESTS FAILED ($FAIL failed, $PASS passed, $SKIP skipped; child exit $TEST_EXIT)"
+elif [ "$SKIP" -ne 0 ] || [ "$TOTAL" -eq 0 ]; then
+    RESULT="skip"
+    RESULT_EXIT=77
+    SUMMARY="RESULT: TESTS INCOMPLETE ($PASS passed, $SKIP skipped, $TOTAL assertions)"
+else
+    RESULT="pass"
+    RESULT_EXIT=0
+    SUMMARY="RESULT: ALL TESTS PASSED ($PASS/$TOTAL)"
 fi
 
-# Update scenarios.json with results
-./scripts/update-status.sh "$SCENARIO" test "$RESULT" "$TOTAL" "$PASS" "$FAIL"
-
-# Save test artifacts
+# Persist artifacts before publishing the result or announcing completion.
 ARTIFACTS_DIR="$SCENARIO_DIR/test/artifacts"
-mkdir -p "$ARTIFACTS_DIR"
-echo "$TEST_OUTPUT" > "$ARTIFACTS_DIR/last-run-$(date +%Y%m%d-%H%M%S).log"
-echo "$TEST_OUTPUT" > "$ARTIFACTS_DIR/last-run.log"
+if ! mkdir -p "$ARTIFACTS_DIR" ||
+    ! printf '%s\n' "$TEST_OUTPUT" > "$ARTIFACTS_DIR/last-run-$(date +%Y%m%d-%H%M%S).log" ||
+    ! printf '%s\n' "$TEST_OUTPUT" > "$ARTIFACTS_DIR/last-run.log"; then
+    echo "ERROR: Could not save scenario test artifacts" >&2
+    exit 1
+fi
 
-exit $TEST_EXIT
+if ! ./scripts/update-status.sh "$SCENARIO" test "$RESULT" "$TOTAL" "$PASS" "$FAIL" "$SKIP"; then
+    echo "ERROR: Could not record scenario test result" >&2
+    exit 1
+fi
+
+printf '\n%s\n' "$SUMMARY"
+exit "$RESULT_EXIT"
