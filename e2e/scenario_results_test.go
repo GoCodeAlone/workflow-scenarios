@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
+	osexec "os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -47,7 +47,7 @@ func harnessFixture(t *testing.T, scenarios map[string]string) string {
 		if *scenarioHarnessRef == "" {
 			data, err = os.ReadFile(filepath.Join(repo, name))
 		} else {
-			data, err = exec.Command("git", "-C", repo, "show", *scenarioHarnessRef+":"+name).Output()
+			data, err = osexec.Command("git", "-C", repo, "show", *scenarioHarnessRef+":"+name).Output()
 		}
 		if err != nil {
 			t.Fatalf("read production %s: %v", name, err)
@@ -84,7 +84,7 @@ func runHarness(t *testing.T, root string, extraEnv []string, args ...string) (s
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd := osexec.CommandContext(ctx, args[0], args[1:]...)
 	// Bound pipe draining after child exit or cancellation; the command's
 	// execution deadline remains ten seconds.
 	cmd.WaitDelay = time.Second
@@ -99,7 +99,7 @@ func runHarness(t *testing.T, root string, extraEnv []string, args ...string) (s
 	if err == nil {
 		return string(output), 0
 	}
-	if exit, ok := err.(*exec.ExitError); ok {
+	if exit, ok := err.(*osexec.ExitError); ok {
 		return string(output), exit.ExitCode()
 	}
 	t.Fatalf("harness execution failed: command=%q resolved=%q wait=%v state=%v; output:\n%s", args, cmd.Path, err, cmd.ProcessState, output)
