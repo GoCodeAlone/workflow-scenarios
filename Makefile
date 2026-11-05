@@ -38,12 +38,23 @@ list:
 	done
 
 test-all:
-	@for s in $$(ls scenarios/); do \
-		if [ -f "scenarios/$$s/test/run.sh" ]; then \
-			echo "=== Testing $$s ==="; \
-			./scripts/test.sh $$s || true; \
+	@passed=0; failed=0; skipped=0; \
+	for script in scenarios/*/test/run.sh; do \
+		[ -f "$$script" ] || continue; \
+		s=$${script#scenarios/}; s=$${s%/test/run.sh}; \
+		echo "=== Testing $$s ==="; \
+		if ./scripts/test.sh "$$s"; then \
+			passed=$$((passed + 1)); \
+		else \
+			rc=$$?; \
+			if [ "$$rc" -eq 77 ]; then skipped=$$((skipped + 1)); \
+			else failed=$$((failed + 1)); fi; \
 		fi; \
-	done
+	done; \
+	echo "Scenario results: $$passed passed, $$failed failed, $$skipped skipped"; \
+	if [ "$$failed" -gt 0 ]; then echo "RESULT: SCENARIO TESTS FAILED"; exit 1; fi; \
+	if [ "$$skipped" -gt 0 ]; then echo "RESULT: SCENARIO TESTS INCOMPLETE"; exit 77; fi; \
+	if [ "$$passed" -eq 0 ]; then echo "SKIP: No runnable scenarios"; exit 77; fi
 
 validate:
 	@echo "Validating all scenario configs..."

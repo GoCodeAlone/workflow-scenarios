@@ -27,3 +27,21 @@ process that serves the dependency seam.
 
 `make test SCENARIO=...` updates shared `scenarios.json`; run scenario tests
 sequentially unless the harness explicitly provides isolated state or locking.
+
+## Test Results
+
+Scenario scripts report assertions with `PASS:` / `FAIL:` and unavailable checks
+with `SKIP:`. The runner returns 0 only for a zero-exit child with at least one
+passing assertion and no failures or skips. Child errors or `FAIL:` return 1;
+skipped checks or zero assertions return 77 and record `skip` / `skipped`, never
+a pass. Mixed passing and skipped checks remain incomplete. `testCount` counts
+passing plus failing assertions; `skipCount` is separate.
+
+Artifacts and status must be saved before the runner announces the final result.
+`make test-all` runs sequentially through every runnable scenario, then returns
+nonzero if any failed or skipped, or if none were runnable. Make may translate
+the runner's nonzero exit codes to its own error code. Historical results are
+not rewritten by this change.
+
+The isolated harness regressions in `e2e/scenario_results_test.go` drive these
+scripts with synthetic scenario fixtures; they do not prove application behavior.
